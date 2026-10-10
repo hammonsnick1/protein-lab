@@ -1,0 +1,21 @@
+# Restored with `npm ci` in protein-labs-web
+node_modules/
+
+# Build output
+desktop-dist/
+release/
+build/
+
+# The engine binary is 76 MB and is produced from protein_labs/ by
+# `python -m PyInstaller --noconfirm protein-labs-backend.spec`
+protein-labs/backend/dist/
+
+# Python environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Tooling caches
+tsconfig.tsbuildinfo
+.eslintcache

@@ -1,0 +1,1085 @@
+"""Evidence-linked clients for BLAST, UniProt, PDB, and AlphaFold DB."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from io import StringIO
+import json
+import re
+import time
+from typing import Any, Callable
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from xml.etree import ElementTree
+
+from Bio.Align import PairwiseAligner
+from Bio.PDB.MMCIF2Dict import MMCIF2Dict
+
+
+class RemoteServiceError(RuntimeError):
+    def __init__(self, service: str, message: str, status: int | None = None):
+        super().__init__(f"{service}: {message}")
+        self.service = service
+        self.status = status
+
+
+@dataclass(frozen=True)
+class HttpResponse:
+    status: int
+    text: str
+    headers: dict[str, str]
+
+
+class HttpClient:
+    """Small injectable HTTP client with an identifiable scientific user-agent."""
+
+    def __init__(
+        self,
+        email: str = "",
+        timeout: float = 45.0,
+        transport: Callable[..., HttpResponse] | None = None,
+    ):
+        identity = email.strip() or "local-user"
+        self.user_agent = f"ProteinLabs-ProteinPlanner/0.1 ({identity})"
+        self.timeout = timeout
+        self.transport = transport
+
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        form: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+        accept: str = "application/json",
+        service: str = "Remote service",
+        timeout: float | None = None,
+    ) -> HttpResponse:
+        if params:
+            url = f"{url}?{urlencode(params, doseq=True)}"
+        headers = {"Accept": accept, "User-Agent": self.user_agent}
+        data: bytes | None = None
+        if form is not None:
+            data = urlencode(form).encode("utf-8")
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+        elif json_body is not None:
+            data = json.dumps(json_body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        if self.transport is not None:
+            return self.transport(method, url, data=data, headers=headers)
+        request = Request(url, data=data, headers=headers, method=method)
+        try:
+            with urlopen(request, timeout=timeout or self.timeout) as response:
+                charset = response.headers.get_content_charset() or "utf-8"
+                return HttpResponse(
+                    status=response.status,
+                    text=response.read().decode(charset, errors="replace"),
+                    headers=dict(response.headers.items()),
+                )
+        except HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")[:500]
+            raise RemoteServiceError(service, detail or error.reason, error.code) from error
+        except URLError as error:
+            raise RemoteServiceError(service, str(error.reason)) from error
+        except (TimeoutError, ConnectionError, OSError) as error:
+            raise RemoteServiceError(service, str(error)) from error
+
+    def json(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+        response = self.request(method, url, **kwargs)
+        try:
+            value = json.loads(response.text)
+        except json.JSONDecodeError as error:
+            raise RemoteServiceError(
+                str(kwargs.get("service", "Remote service")), "returned invalid JSON"
+            ) from error
+        if not isinstance(value, dict):
+            raise RemoteServiceError(
+                str(kwargs.get("service", "Remote service")),
+                "returned an unexpected response",
+            )
+        return value
+
+
+class NCBIBlastClient:
+    endpoint = "https://blast.ncbi.nlm.nih.gov/Blast.cgi"
+    ebi_base_url = "https://www.ebi.ac.uk/Tools/services/rest/ncbiblast"
+
+    def __init__(self, http: HttpClient, email: str = ""):
+        self.http = http
+        self.email = email.strip()
+
+    def submit(
+        self, sequence: str, *, database: str = "swissprot", hitlist_size: int = 25
+    ) -> dict[str, Any]:
+        # EMBL-EBI rejects placeholder or local-only addresses. Fall back to
+        # NCBI's public URL API when the desktop has no valid contact email.
+        if self.email and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", self.email):
+            return self._submit_ebi(
+                sequence, database=database, hitlist_size=hitlist_size
+            )
+        form: dict[str, Any] = {
+            "CMD": "Put",
+            "PROGRAM": "blastp",
+            "DATABASE": database,
+            "QUERY": sequence,
+            "EXPECT": 10.0,
+            "HITLIST_SIZE": max(1, min(int(hitlist_size), 100)),
+            # NCBI now packages completed XML2 results as a ZIP archive.  The
+            # classic XML response is still a documented URL-API format and is
+            # returned as ordinary text, which keeps the desktop client small
+            # and works with both queued and completed requests.
+            "FORMAT_TYPE": "XML",
+        }
+        response = self.http.request(
+            "POST", self.endpoint, form=form, accept="text/plain", service="NCBI BLAST"
+        )
+        rid = _match_line(response.text, "RID")
+        rtoe = _match_line(response.text, "RTOE")
+        if not rid:
+            raise RemoteServiceError("NCBI BLAST", "submission did not return a request ID")
+        return {
+            "rid": rid,
+            "estimatedSeconds": int(rtoe) if rtoe and rtoe.isdigit() else None,
+            "database": database,
+            "hitlistSize": form["HITLIST_SIZE"],
+            "provider": "ncbi-url-api",
+        }
+
+    def poll(self, rid: str) -> dict[str, Any]:
+        if rid.startswith("ncbiblast-"):
+            return self._poll_ebi(rid)
+        result_response = self.http.request(
+            "GET",
+            self.endpoint,
+            params={"CMD": "Get", "RID": rid, "FORMAT_TYPE": "XML"},
+            accept="application/xml",
+            service="NCBI BLAST",
+        )
+        status_match = re.search(r"Status=(\w+)", result_response.text)
+        status = status_match.group(1).upper() if status_match else ""
+        if status == "WAITING":
+            return {"rid": rid, "status": "waiting", "results": None}
+        if status in {"FAILED", "UNKNOWN"}:
+            return {
+                "rid": rid,
+                "status": status.lower(),
+                "results": None,
+                "error": "NCBI could not complete or find this BLAST request.",
+            }
+        text = result_response.text.strip()
+        if not text or text.startswith("<!DOCTYPE html") or text.startswith("<html"):
+            raise RemoteServiceError(
+                "NCBI BLAST", "returned an unexpected result page without a job status"
+            )
+        return {
+            "rid": rid,
+            "status": "complete",
+            "results": parse_blast_xml(result_response.text),
+        }
+
+    def _submit_ebi(
+        self, sequence: str, *, database: str, hitlist_size: int
+    ) -> dict[str, Any]:
+        allowed_sizes = (5, 10, 20, 50, 100, 150)
+        result_size = min(
+            allowed_sizes, key=lambda value: abs(value - max(1, hitlist_size))
+        )
+        ebi_database = (
+            "uniprotkb_swissprot" if database == "swissprot" else database
+        )
+        response = self.http.request(
+            "POST",
+            f"{self.ebi_base_url}/run",
+            form={
+                "email": self.email,
+                "title": "Protein Labs sequence search",
+                "program": "blastp",
+                "stype": "protein",
+                "sequence": sequence,
+                "database": ebi_database,
+                "alignments": result_size,
+                "scores": result_size,
+                "exp": 10,
+            },
+            accept="text/plain",
+            service="EMBL-EBI NCBI BLAST",
+        )
+        rid = response.text.strip()
+        if not rid.startswith("ncbiblast-"):
+            raise RemoteServiceError(
+                "EMBL-EBI NCBI BLAST", "submission did not return a job ID"
+            )
+        return {
+            "rid": rid,
+            "estimatedSeconds": 5,
+            "database": ebi_database,
+            "hitlistSize": result_size,
+            "provider": "ebi-ncbiblast",
+        }
+
+    def _poll_ebi(self, rid: str) -> dict[str, Any]:
+        response = self.http.request(
+            "GET",
+            f"{self.ebi_base_url}/status/{rid}",
+            accept="text/plain",
+            service="EMBL-EBI NCBI BLAST",
+        )
+        status = response.text.strip().upper()
+        if status in {"PENDING", "RUNNING", "QUEUED"}:
+            return {"rid": rid, "status": "waiting", "results": None}
+        if status != "FINISHED":
+            return {
+                "rid": rid,
+                "status": "failed",
+                "results": None,
+                "error": f"EMBL-EBI NCBI BLAST ended with status {status or 'UNKNOWN'}.",
+            }
+        raw = self.http.json(
+            "GET",
+            f"{self.ebi_base_url}/result/{rid}/json",
+            service="EMBL-EBI NCBI BLAST",
+        )
+        return {
+            "rid": rid,
+            "status": "complete",
+            "results": parse_ebi_blast_json(raw),
+        }
+
+
+class UniProtClient:
+    base_url = "https://rest.uniprot.org/uniprotkb"
+    peptide_search_url = "https://peptidesearch.uniprot.org/asyncrest/"
+
+    def __init__(self, http: HttpClient):
+        self.http = http
+
+    def fetch(self, accession: str) -> dict[str, Any]:
+        accession = accession.strip().upper()
+        raw = self.http.json(
+            "GET", f"{self.base_url}/{accession}.json", service="UniProt"
+        )
+        return normalize_uniprot(raw)
+
+    def search(self, query: str, size: int = 10) -> list[dict[str, Any]]:
+        raw = self.http.json(
+            "GET",
+            f"{self.base_url}/search",
+            params={"query": query, "format": "json", "size": max(1, min(size, 50))},
+            service="UniProt",
+        )
+        return [normalize_uniprot(item) for item in raw.get("results", [])]
+
+    def fetch_many(self, accessions: list[str]) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        unique = list(dict.fromkeys(accession.upper() for accession in accessions))
+        for start in range(0, len(unique), 40):
+            chunk = unique[start : start + 40]
+            if not chunk:
+                continue
+            query = "(" + " OR ".join(
+                f"accession:{accession}" for accession in chunk
+            ) + ")"
+            records.extend(self.search(query, size=len(chunk)))
+        return records
+
+    def find_sequence_matches(
+        self, sequence: str, *, size: int = 25, hint: str = ""
+    ) -> list[dict[str, Any]]:
+        """Find reviewed candidates by peptide, then rank full-length alignments."""
+        try:
+            accessions = self._peptide_candidates(sequence)
+        except RemoteServiceError:
+            accessions = []
+        records: list[dict[str, Any]] = []
+        records.extend(self.fetch_many(accessions[:100]))
+        if not records:
+            words = [
+                word
+                for word in re.findall(r"[A-Za-z][A-Za-z0-9_-]+", hint)
+                if word.lower()
+                not in {"untitled", "protein", "construct", "sequence", "sample"}
+            ][:5]
+            if words:
+                minimum = max(1, round(len(sequence) * 0.75))
+                maximum = max(minimum, round(len(sequence) * 1.25))
+                text_query = " AND ".join(words)
+                records = self.search(
+                    f"({text_query}) AND reviewed:true AND length:[{minimum} TO {maximum}]",
+                    size=50,
+                )
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for record in records:
+            target = str((record.get("sequence") or {}).get("value") or "")
+            metrics = global_sequence_metrics(sequence, target)
+            if metrics["identity"] < 0.3 or metrics["queryCoverage"] < 0.5:
+                continue
+            record["sequenceMatch"] = {
+                **metrics,
+                "method": "UniProt peptide candidates plus global pairwise alignment",
+            }
+            scored.append(
+                (metrics["identity"] * metrics["queryCoverage"], record)
+            )
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [record for _, record in scored[: max(1, min(size, 50))]]
+
+    def _peptide_candidates(self, sequence: str) -> list[str]:
+        peptides = representative_peptides(sequence)
+        if not peptides:
+            return []
+        response = self.http.request(
+            "POST",
+            self.peptide_search_url,
+            form={"peps": ",".join(peptides), "lEQi": "on", "spOnly": "on"},
+            accept="application/json",
+            service="UniProt peptide search",
+            timeout=8,
+        )
+        location = next(
+            (
+                value
+                for key, value in response.headers.items()
+                if key.lower() == "location"
+            ),
+            "",
+        ).replace("http://", "https://", 1)
+        if not location:
+            raise RemoteServiceError(
+                "UniProt peptide search", "submission did not return a job location"
+            )
+        for _ in range(8):
+            result = self.http.request(
+                "GET",
+                location,
+                accept="application/json",
+                service="UniProt peptide search",
+                timeout=8,
+            )
+            if result.status == 200:
+                return [
+                    value.strip().upper()
+                    for value in result.text.strip().strip('"').split(",")
+                    if re.fullmatch(r"[A-Za-z0-9]{6,10}(?:-\d+)?", value.strip())
+                ][:100]
+            if result.status not in {202, 303}:
+                raise RemoteServiceError(
+                    "UniProt peptide search",
+                    f"job returned HTTP {result.status}",
+                    result.status,
+                )
+            time.sleep(1)
+        raise RemoteServiceError(
+            "UniProt peptide search", "candidate search did not finish in 8 seconds"
+        )
+
+
+class RCSBClient:
+    search_url = "https://search.rcsb.org/rcsbsearch/v2/query"
+    data_url = "https://data.rcsb.org/rest/v1/core"
+    files_url = "https://files.rcsb.org/download"
+
+    def __init__(self, http: HttpClient):
+        self.http = http
+
+    def search_sequence(
+        self,
+        sequence: str,
+        *,
+        identity_cutoff: float = 0.3,
+        evalue_cutoff: float = 1e-3,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        payload = {
+            "query": {
+                "type": "terminal",
+                "service": "sequence",
+                "parameters": {
+                    "evalue_cutoff": float(evalue_cutoff),
+                    "identity_cutoff": float(identity_cutoff),
+                    "sequence_type": "protein",
+                    "value": sequence,
+                },
+            },
+            "return_type": "polymer_entity",
+            "request_options": {
+                "paginate": {"start": 0, "rows": max(1, min(int(limit), 50))},
+                "results_content_type": ["experimental"],
+            },
+        }
+        raw = self.http.json(
+            "POST", self.search_url, json_body=payload, service="RCSB PDB search"
+        )
+        records: list[dict[str, Any]] = []
+        for result in raw.get("result_set", []):
+            identifier = str(result.get("identifier", ""))
+            match = re.fullmatch(r"([0-9A-Za-z]{4})_(\d+)", identifier)
+            if not match:
+                continue
+            pdb_id, entity_id = match.group(1).upper(), match.group(2)
+            services = result.get("services") or []
+            nodes = services[0].get("nodes", []) if services else []
+            match_context = nodes[0].get("match_context", []) if nodes else []
+            context = match_context[0] if match_context else {}
+            records.append(
+                self.fetch_record(
+                    pdb_id,
+                    entity_id,
+                    score=_number(result.get("score")),
+                    identity=_number(context.get("sequence_identity")),
+                    evalue=_number(context.get("evalue")),
+                )
+            )
+        return records
+
+    def fetch_record(
+        self,
+        pdb_id: str,
+        entity_id: str,
+        *,
+        score: float | None = None,
+        identity: float | None = None,
+        evalue: float | None = None,
+    ) -> dict[str, Any]:
+        entry = self.http.json(
+            "GET", f"{self.data_url}/entry/{pdb_id}", service="RCSB PDB data"
+        )
+        entity = self.http.json(
+            "GET",
+            f"{self.data_url}/polymer_entity/{pdb_id}/{entity_id}",
+            service="RCSB PDB data",
+        )
+        cif_response = self.http.request(
+            "GET",
+            f"{self.files_url}/{pdb_id}.cif",
+            accept="text/plain",
+            service="RCSB PDB files",
+        )
+        conditions = parse_mmcif_conditions(cif_response.text)
+        experimental = entry.get("exptl") or []
+        entry_info = entry.get("rcsb_entry_info") or {}
+        struct = entry.get("struct") or {}
+        polymer = entity.get("rcsb_polymer_entity") or {}
+        identifiers = entity.get("rcsb_polymer_entity_container_identifiers") or {}
+        sources = (
+            entity.get("rcsb_entity_source_organism")
+            or entity.get("entity_src_nat")
+            or entity.get("entity_src_gen")
+            or []
+        )
+        return {
+            "pdbId": pdb_id,
+            "entityId": str(entity_id),
+            "score": score,
+            "identity": identity,
+            "evalue": evalue,
+            "title": struct.get("title", ""),
+            "entityDescription": polymer.get("pdbx_description", ""),
+            "uniprotIds": [str(value) for value in identifiers.get("uniprot_ids") or []],
+            "experimentalMethods": [item.get("method") for item in experimental if item.get("method")],
+            "resolutionAngstrom": entry_info.get("resolution_combined") or [],
+            "sourceOrganisms": _organism_names(sources),
+            "crystallizationConditions": conditions["crystallizationConditions"],
+            "purificationConditions": conditions["purificationConditions"],
+            "source": {
+                "provider": "RCSB Protein Data Bank",
+                "entryUrl": f"https://www.rcsb.org/structure/{pdb_id}",
+                "mmcifUrl": f"{self.files_url}/{pdb_id}.cif",
+            },
+        }
+
+
+class AlphaFoldDBClient:
+    """Retrieve current AlphaFold DB metadata and coordinates by UniProt ID."""
+
+    api_url = "https://alphafold.ebi.ac.uk/api/prediction"
+
+    def __init__(self, http: HttpClient):
+        self.http = http
+
+    def fetch(self, accession: str) -> dict[str, Any]:
+        accession = accession.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{1,19}", accession):
+            raise ValueError("A valid UniProt accession is required")
+        response = self.http.request(
+            "GET",
+            f"{self.api_url}/{accession}",
+            service="AlphaFold Database",
+        )
+        try:
+            raw = json.loads(response.text)
+        except json.JSONDecodeError as error:
+            raise RemoteServiceError(
+                "AlphaFold Database", "returned invalid prediction metadata"
+            ) from error
+        predictions = raw if isinstance(raw, list) else [raw]
+        prediction = next(
+            (item for item in predictions if isinstance(item, dict)), None
+        )
+        if prediction is None:
+            raise LookupError(
+                f"AlphaFold DB does not contain a model for {accession}"
+            )
+        cif_url = str(prediction.get("cifUrl") or "").strip()
+        if not cif_url.startswith("https://"):
+            raise RemoteServiceError(
+                "AlphaFold Database", "prediction metadata did not include a CIF file"
+            )
+        coordinates = self.http.request(
+            "GET",
+            cif_url,
+            accept="text/plain",
+            service="AlphaFold Database coordinates",
+            timeout=90,
+        ).text
+        geometry = parse_structure_geometry(coordinates, "cif")
+        model_id = str(
+            prediction.get("entryId") or f"AF-{accession}-F1"
+        ).strip()
+        return {
+            "modelId": model_id,
+            "accession": str(prediction.get("uniprotAccession") or accession),
+            "name": str(
+                prediction.get("uniprotDescription")
+                or prediction.get("uniprotId")
+                or model_id
+            ),
+            "source": "AlphaFold DB",
+            "format": "cif",
+            "structureText": coordinates,
+            "metadata": {
+                **prediction,
+                "entryUrl": f"https://alphafold.ebi.ac.uk/entry/{model_id}",
+                "coordinateUrl": cif_url,
+                "meanPlddt": geometry["meanPlddt"],
+                "residueCount": geometry["residueCount"],
+                "chainCount": geometry["chainCount"],
+                "previewGeometry": structure_preview(geometry),
+            },
+        }
+
+
+def _match_line(text: str, key: str) -> str | None:
+    match = re.search(rf"^\s*{re.escape(key)}\s*=\s*(\S+)", text, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def representative_peptides(
+    sequence: str, *, peptide_length: int = 15, count: int = 4
+) -> list[str]:
+    """Return evenly distributed sequence-only probes for UniProt peptide search."""
+    sequence = sequence.strip().upper()
+    if len(sequence) < 7:
+        return []
+    length = min(max(7, peptide_length), len(sequence))
+    last_start = len(sequence) - length
+    if last_start == 0 or count <= 1:
+        return [sequence]
+    starts = {
+        round(index * last_start / (count - 1)) for index in range(max(2, count))
+    }
+    return [sequence[start : start + length] for start in sorted(starts)]
+
+
+def global_sequence_metrics(query: str, target: str) -> dict[str, float]:
+    """Calculate reproducible identity and query coverage for two proteins."""
+    if not query or not target:
+        return {"identity": 0.0, "queryCoverage": 0.0}
+    aligner = PairwiseAligner(
+        mode="global",
+        match_score=2,
+        mismatch_score=-1,
+        open_gap_score=-5,
+        extend_gap_score=-1,
+    )
+    alignment = aligner.align(query, target)[0]
+    aligned_query = sum(
+        int(end) - int(start) for start, end in alignment.aligned[0]
+    )
+    counts = alignment.counts()
+    return {
+        "identity": counts.identities / max(1, counts.aligned),
+        "queryCoverage": aligned_query / len(query),
+    }
+
+
+def _number(value: Any) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _uniprot_accession(accession: str, hit_id: str) -> str | None:
+    for value in (accession, hit_id):
+        match = re.search(r"(?:sp|tr)\|([A-Z0-9]+)\|", value, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+    clean = accession.strip().upper()
+    if re.fullmatch(r"[A-Z0-9]{6,10}(?:-\d+)?", clean):
+        return clean
+    return None
+
+
+def parse_blast_xml(xml_text: str) -> list[dict[str, Any]]:
+    try:
+        root = ElementTree.fromstring(xml_text)
+    except ElementTree.ParseError as error:
+        raise RemoteServiceError("NCBI BLAST", "returned invalid XML") from error
+    query_length = int(root.findtext(".//BlastOutput_query-len", "0") or 0)
+    results: list[dict[str, Any]] = []
+    for hit in root.findall(".//Hit"):
+        hsp = hit.find(".//Hsp")
+        if hsp is None:
+            continue
+        align_length = int(hsp.findtext("Hsp_align-len", "0") or 0)
+        identities = int(hsp.findtext("Hsp_identity", "0") or 0)
+        query_from = int(hsp.findtext("Hsp_query-from", "0") or 0)
+        query_to = int(hsp.findtext("Hsp_query-to", "0") or 0)
+        accession = hit.findtext("Hit_accession", "")
+        hit_id = hit.findtext("Hit_id", "")
+        results.append(
+            {
+                "rank": len(results) + 1,
+                "accession": accession,
+                "uniprotAccession": _uniprot_accession(accession, hit_id),
+                "hitId": hit_id,
+                "description": hit.findtext("Hit_def", ""),
+                "hitLength": int(hit.findtext("Hit_len", "0") or 0),
+                "identity": identities / align_length if align_length else None,
+                "queryCoverage": (
+                    (abs(query_to - query_from) + 1) / query_length if query_length else None
+                ),
+                "evalue": _number(hsp.findtext("Hsp_evalue")),
+                "bitScore": _number(hsp.findtext("Hsp_bit-score")),
+                "alignmentLength": align_length,
+                "queryStart": query_from,
+                "queryEnd": query_to,
+            }
+        )
+    return results
+
+
+def parse_blast_xml2(xml_text: str) -> list[dict[str, Any]]:
+    """Parse the currently supported NCBI BLAST XML2 result format."""
+    try:
+        root = ElementTree.fromstring(xml_text)
+    except ElementTree.ParseError as error:
+        raise RemoteServiceError("NCBI BLAST", "returned invalid XML2") from error
+    query_length = int(root.findtext(".//{*}query-len", "0") or 0)
+    results: list[dict[str, Any]] = []
+    for hit in root.findall(".//{*}Hit"):
+        description = hit.find("./{*}description/{*}HitDescr")
+        hsp = hit.find("./{*}hsps/{*}Hsp")
+        if description is None or hsp is None:
+            continue
+        accession = description.findtext("./{*}accession", "")
+        hit_id = description.findtext("./{*}id", "")
+        align_length = int(hsp.findtext("./{*}align-len", "0") or 0)
+        identities = int(hsp.findtext("./{*}identity", "0") or 0)
+        query_from = int(hsp.findtext("./{*}query-from", "0") or 0)
+        query_to = int(hsp.findtext("./{*}query-to", "0") or 0)
+        results.append(
+            {
+                "rank": len(results) + 1,
+                "accession": accession,
+                "uniprotAccession": _uniprot_accession(accession, hit_id),
+                "description": description.findtext("./{*}title", ""),
+                "scientificName": description.findtext("./{*}sciname", ""),
+                "taxonId": _integer_or_none(
+                    description.findtext("./{*}taxid", "")
+                ),
+                "length": int(hit.findtext("./{*}len", "0") or 0),
+                "bitScore": float(hsp.findtext("./{*}bit-score", "0") or 0),
+                "evalue": float(hsp.findtext("./{*}evalue", "inf") or "inf"),
+                "identity": identities / align_length if align_length else None,
+                "queryCoverage": (
+                    (abs(query_to - query_from) + 1) / query_length
+                    if query_length and query_from and query_to
+                    else None
+                ),
+                "alignmentLength": align_length,
+            }
+        )
+    return results
+
+
+def parse_ebi_blast_json(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize EMBL-EBI Job Dispatcher output from the NCBI BLAST+ tool."""
+    query_length = int(raw.get("query_len") or 0)
+    results: list[dict[str, Any]] = []
+    for hit in raw.get("hits") or []:
+        hsps = hit.get("hit_hsps") or []
+        if not hsps:
+            continue
+        hsp = hsps[0]
+        query_from = int(hsp.get("hsp_query_from") or 0)
+        query_to = int(hsp.get("hsp_query_to") or 0)
+        accession = str(hit.get("hit_acc") or "")
+        hit_id = str(hit.get("hit_id") or "")
+        identity = _number(hsp.get("hsp_identity"))
+        results.append(
+            {
+                "rank": int(hit.get("hit_num") or len(results) + 1),
+                "accession": accession,
+                "uniprotAccession": _uniprot_accession(accession, hit_id),
+                "description": str(hit.get("hit_desc") or hit.get("hit_def") or ""),
+                "scientificName": str(hit.get("hit_os") or ""),
+                "taxonId": _integer_or_none(str(hit.get("hit_uni_ox") or "")),
+                "length": int(hit.get("hit_len") or 0),
+                "bitScore": _number(hsp.get("hsp_bit_score")),
+                "evalue": _number(hsp.get("hsp_expect")),
+                "identity": identity / 100 if identity is not None else None,
+                "queryCoverage": (
+                    (abs(query_to - query_from) + 1) / query_length
+                    if query_length and query_from and query_to
+                    else None
+                ),
+                "alignmentLength": int(hsp.get("hsp_align_len") or 0),
+            }
+        )
+    return results
+
+
+def _integer_or_none(value: str) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _full_name(description: dict[str, Any]) -> str:
+    recommended = description.get("recommendedName") or {}
+    submitted = description.get("submissionNames") or []
+    alternative = description.get("alternativeNames") or []
+    candidates = [recommended, *(submitted[:1]), *(alternative[:1])]
+    for candidate in candidates:
+        value = (candidate.get("fullName") or {}).get("value")
+        if value:
+            return str(value)
+    return ""
+
+
+PTM_TYPES = {
+    "Modified residue",
+    "Glycosylation",
+    "Lipidation",
+    "Disulfide bond",
+    "Cross-link",
+    "Initiator methionine",
+    "Peptide",
+    "Propeptide",
+    "Signal peptide",
+    "Chain",
+}
+
+
+def _feature_location(location: dict[str, Any]) -> dict[str, int | None]:
+    def position(key: str) -> int | None:
+        value = location.get(key) or {}
+        return value.get("value") if isinstance(value.get("value"), int) else None
+
+    return {"start": position("start"), "end": position("end")}
+
+
+def normalize_uniprot(raw: dict[str, Any]) -> dict[str, Any]:
+    organism = raw.get("organism") or {}
+    genes = raw.get("genes") or []
+    features = raw.get("features") or []
+    comments = raw.get("comments") or []
+    accession = str(raw.get("primaryAccession") or raw.get("uniProtkbId") or "")
+
+    def normalized_feature(feature: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "type": feature.get("type"),
+            "description": feature.get("description", ""),
+            "location": _feature_location(feature.get("location") or {}),
+            "evidences": feature.get("evidences") or [],
+            "featureId": feature.get("featureId"),
+        }
+
+    location_comments = [
+        comment for comment in comments
+        if comment.get("commentType") == "SUBCELLULAR LOCATION"
+    ]
+    cofactor_comments = [
+        comment for comment in comments
+        if comment.get("commentType") == "COFACTOR"
+    ]
+    return {
+        "accession": accession,
+        "entryId": raw.get("uniProtkbId", ""),
+        "reviewed": raw.get("entryType") == "UniProtKB reviewed (Swiss-Prot)",
+        "proteinName": _full_name(raw.get("proteinDescription") or {}),
+        "genes": [
+            gene.get("geneName", {}).get("value")
+            for gene in genes
+            if gene.get("geneName", {}).get("value")
+        ],
+        "organism": {
+            "scientificName": organism.get("scientificName", ""),
+            "commonName": organism.get("commonName", ""),
+            "taxonId": organism.get("taxonId"),
+        },
+        "sequence": {
+            "value": (raw.get("sequence") or {}).get("value", ""),
+            "length": (raw.get("sequence") or {}).get("length"),
+            "molecularWeightDa": (raw.get("sequence") or {}).get("molWeight"),
+            "checksum": (raw.get("sequence") or {}).get("crc64"),
+        },
+        "postTranslationalModifications": [
+            normalized_feature(feature)
+            for feature in features
+            if feature.get("type") in PTM_TYPES
+        ],
+        "transmembraneRegions": [
+            normalized_feature(feature)
+            for feature in features
+            if feature.get("type") in {"Transmembrane", "Intramembrane"}
+        ],
+        "disorderedRegions": [
+            normalized_feature(feature)
+            for feature in features
+            if feature.get("type") == "Disordered"
+            or (
+                feature.get("type") == "Region"
+                and "disorder" in str(feature.get("description") or "").lower()
+            )
+        ],
+        "subcellularLocations": [
+            {
+                "location": (item.get("location") or {}).get("value", ""),
+                "topology": (item.get("topology") or {}).get("value", ""),
+                "orientation": (item.get("orientation") or {}).get("value", ""),
+                "evidences": item.get("evidences") or [],
+            }
+            for comment in location_comments
+            for item in comment.get("subcellularLocations") or []
+        ],
+        "cofactors": [
+            {
+                "name": item.get("name", ""),
+                "chebiId": item.get("chebiId", ""),
+                "evidences": item.get("evidences") or [],
+            }
+            for comment in cofactor_comments
+            for item in comment.get("cofactors") or []
+        ],
+        "comments": [
+            {
+                "type": comment.get("commentType"),
+                "texts": [text.get("value") for text in comment.get("texts", []) if text.get("value")],
+            }
+            for comment in comments
+        ],
+        "pdbCrossReferences": [
+            reference
+            for reference in raw.get("uniProtKBCrossReferences", [])
+            if reference.get("database") == "PDB"
+        ],
+        "source": {
+            "provider": "UniProtKB",
+            "url": f"https://www.uniprot.org/uniprotkb/{accession}/entry",
+        },
+    }
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _clean_cif_value(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_clean_cif_value(item) for item in value]
+    return None if value in {"?", ".", ""} else value
+
+
+def _cif_category(cif: dict[str, Any], prefix: str) -> list[dict[str, Any]]:
+    keys = [key for key in cif if key.startswith(prefix)]
+    if not keys:
+        return []
+    columns = {key[len(prefix):]: _as_list(cif[key]) for key in keys}
+    size = max(len(values) for values in columns.values())
+    rows: list[dict[str, Any]] = []
+    for index in range(size):
+        row = {
+            name: _clean_cif_value(values[index] if index < len(values) else None)
+            for name, values in columns.items()
+        }
+        rows.append({key: value for key, value in row.items() if value is not None})
+    return rows
+
+
+def parse_structure_geometry(text: str, file_format: str) -> dict[str, Any]:
+    """Return a compact C-alpha trace suitable for the native 3D viewer."""
+    normalized_format = file_format.lower().lstrip(".")
+    points: list[dict[str, Any]] = []
+    if normalized_format in {"cif", "mmcif"}:
+        try:
+            cif = MMCIF2Dict(StringIO(text))
+        except Exception as error:
+            raise ValueError("The AlphaFold mmCIF file could not be parsed") from error
+        atoms = _cif_category(cif, "_atom_site.")
+        for atom in atoms:
+            atom_name = str(
+                atom.get("auth_atom_id") or atom.get("label_atom_id") or ""
+            ).strip()
+            group = str(atom.get("group_PDB") or "ATOM").strip().upper()
+            alt_id = str(atom.get("label_alt_id") or "").strip()
+            if atom_name != "CA" or group != "ATOM" or alt_id not in {"", "A"}:
+                continue
+            x = _number(atom.get("Cartn_x"))
+            y = _number(atom.get("Cartn_y"))
+            z = _number(atom.get("Cartn_z"))
+            if x is None or y is None or z is None:
+                continue
+            points.append({
+                "x": round(x, 3),
+                "y": round(y, 3),
+                "z": round(z, 3),
+                "chain": str(
+                    atom.get("auth_asym_id") or atom.get("label_asym_id") or "A"
+                ),
+                "residue": str(
+                    atom.get("auth_seq_id") or atom.get("label_seq_id") or len(points) + 1
+                ),
+                "name": str(atom.get("label_comp_id") or ""),
+                "plddt": _number(atom.get("B_iso_or_equiv")),
+            })
+    elif normalized_format == "pdb":
+        for line in text.splitlines():
+            if not line.startswith("ATOM") or len(line) < 54:
+                continue
+            if line[12:16].strip() != "CA" or line[16:17].strip() not in {"", "A"}:
+                continue
+            try:
+                x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
+            except ValueError:
+                continue
+            try:
+                plddt = float(line[60:66])
+            except (ValueError, IndexError):
+                plddt = None
+            points.append({
+                "x": round(x, 3),
+                "y": round(y, 3),
+                "z": round(z, 3),
+                "chain": line[21:22].strip() or "A",
+                "residue": line[22:27].strip() or str(len(points) + 1),
+                "name": line[17:20].strip(),
+                "plddt": plddt,
+            })
+    else:
+        raise ValueError("AlphaFold results must contain an mmCIF or PDB model")
+
+    if not points:
+        raise ValueError("The structure does not contain any protein C-alpha atoms")
+    confidence = [
+        float(point["plddt"])
+        for point in points
+        if isinstance(point.get("plddt"), (int, float))
+    ]
+    chains = list(dict.fromkeys(str(point["chain"]) for point in points))
+    return {
+        "points": points,
+        "residueCount": len(points),
+        "chainCount": len(chains),
+        "chains": chains,
+        "meanPlddt": (
+            round(sum(confidence) / len(confidence), 2) if confidence else None
+        ),
+    }
+
+
+def structure_preview(
+    geometry: dict[str, Any], *, maximum_points: int = 180
+) -> dict[str, Any]:
+    """Downsample viewer geometry for fast project-card thumbnails."""
+    points = list(geometry.get("points") or [])
+    if len(points) > maximum_points:
+        step = max(1, (len(points) + maximum_points - 1) // maximum_points)
+        sampled = points[::step]
+        if sampled[-1] is not points[-1]:
+            sampled.append(points[-1])
+        points = sampled
+    return {
+        "points": points,
+        "residueCount": geometry.get("residueCount"),
+        "chainCount": geometry.get("chainCount"),
+        "chains": geometry.get("chains") or [],
+        "meanPlddt": geometry.get("meanPlddt"),
+    }
+
+
+PURIFICATION_PATTERN = re.compile(
+    r"\b(purif(?:y|ied|ication)|chromatograph(?:y|ic))\b",
+    re.IGNORECASE,
+)
+
+
+def parse_mmcif_conditions(text: str) -> dict[str, Any]:
+    try:
+        cif = MMCIF2Dict(StringIO(text))
+    except Exception as error:
+        raise RemoteServiceError("RCSB PDB files", "could not parse the mmCIF record") from error
+
+    grow = _cif_category(cif, "_exptl_crystal_grow.")
+    components = _cif_category(cif, "_exptl_crystal_grow_comp.")
+    nmr = _cif_category(cif, "_pdbx_nmr_exptl_sample_conditions.")
+    crystallization = {
+        "status": "reported" if grow or components or nmr else "not_reported",
+        "crystalGrowth": grow,
+        "components": components,
+        "nmrSampleConditions": nmr,
+        "evidence": [
+            {
+                "source": "PDB mmCIF",
+                "categories": [
+                    category
+                    for category, present in (
+                        ("_exptl_crystal_grow", bool(grow)),
+                        ("_exptl_crystal_grow_comp", bool(components)),
+                        ("_pdbx_nmr_exptl_sample_conditions", bool(nmr)),
+                    )
+                    if present
+                ],
+            }
+        ] if grow or components or nmr else [],
+    }
+
+    purification_evidence: list[dict[str, str]] = []
+    for key, raw_value in cif.items():
+        if key.startswith(("_exptl_crystal_grow", "_pdbx_nmr_exptl_sample_conditions")):
+            continue
+        for value in _as_list(raw_value):
+            cleaned = str(_clean_cif_value(value) or "").strip()
+            if cleaned and PURIFICATION_PATTERN.search(cleaned):
+                purification_evidence.append(
+                    {"source": "PDB mmCIF", "field": key, "reportedText": cleaned}
+                )
+    purification = {
+        "status": "reported" if purification_evidence else "not_reported",
+        "evidence": purification_evidence,
+        "note": (
+            "Only deposition text explicitly describing purification is included. "
+            "The PDB does not require a standardized purification-buffer field."
+        ),
+    }
+    return {
+        "crystallizationConditions": crystallization,
+        "purificationConditions": purification,
+    }
+
+
+def _organism_names(rows: Any) -> list[str]:
+    names: list[str] = []
+    for row in _as_list(rows):
+        if not isinstance(row, dict):
+            continue
+        name = row.get("ncbi_scientific_name") or row.get("pdbx_gene_src_scientific_name")
+        if name and name not in names:
+            names.append(str(name))
+    return names
