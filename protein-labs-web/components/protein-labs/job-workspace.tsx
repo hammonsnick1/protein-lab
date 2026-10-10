@@ -1,7 +1,7 @@
 "use client";
 
 import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Atom, BadgeCheck, BookOpen, Boxes, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Dna, Download, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Play, Search, Sparkles, SquareDashedMousePointer, TestTubeDiagonal, Upload, X } from "lucide-react";
+import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, Beaker, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, Play, Scale, Scissors, Search, ShieldCheck, Sparkles, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,23 +20,23 @@ import { isComplete, workflowJobs } from "@/lib/workflow";
 
 const labels: Record<string, [string, string, typeof Dna]> = {
   sequence: ["Protein sequence", "Create or revise the construct that anchors this branch.", Dna],
-  properties: ["Protein properties", "Calculate physicochemical properties with the local ProtParam engine.", Activity],
+  properties: ["Protein properties", "Calculate physicochemical properties with the local ProtParam engine.", Scale],
   research: ["Sequence research", "Run one-click UniProt, NCBI BLAST, and PDB searches.", Search],
   "reference-match": ["Choose reference match", "Select one traceable homolog for cofactor, PTM, localization, and topology evidence.", BadgeCheck],
   structure: ["Structure prediction", "Retrieve or prepare an AlphaFold model and inspect confidence.", Atom],
-  readiness: ["Protein readiness", "Resolve risks before designing expression and purification.", CircleCheck],
-  "expression-system": ["Expression system", "Compare hosts and strains, then choose the cell line for this project.", Boxes],
-  "expression-vector": ["Expression vector design", "Build and annotate a complete expression plasmid.", Dna],
-  "purification-lysis": ["Cell lysis", "Choose a host-compatible lysis method and buffer, then review compatibility.", FlaskConical],
-  "purification-affinity": ["Affinity capture", "Choose an affinity tag, resin, and operating conditions.", FlaskConical],
-  "purification-cleavage": ["Tag cleavage", "Choose a cleavage enzyme and confirm construct compatibility.", FlaskConical],
-  "purification-subtractive": ["Subtractive cleanup", "Plan reverse affinity to remove tag, uncleaved fusion, and tagged protease.", FlaskConical],
-  "purification-sec": ["SEC polishing", "Choose a size-exclusion column and final polishing buffer.", Activity],
-  "purification-buffer": ["Buffer design", "Build editable buffers for every purification step.", FlaskConical],
-  "purification-workflow": ["Purification workflow", "Cross-check the design and generate a bench-ready workflow.", FlaskConical],
-  "transformation-expression": ["Transformation and Expression", "Record starting material, host-specific medium, culture conditions, and expression notes.", Boxes],
+  readiness: ["Protein readiness", "Resolve risks before designing expression and purification.", ShieldCheck],
+  "expression-system": ["Expression system", "Compare hosts and strains, then choose the cell line for this project.", Microscope],
+  "expression-vector": ["Expression vector design", "Build and annotate a complete expression plasmid.", Disc3],
+  "purification-lysis": ["Cell lysis", "Choose a host-compatible lysis method and buffer, then review compatibility.", Zap],
+  "purification-affinity": ["Affinity capture", "Choose an affinity tag, resin, and operating conditions.", Magnet],
+  "purification-cleavage": ["Tag cleavage", "Choose a cleavage enzyme and confirm construct compatibility.", Scissors],
+  "purification-subtractive": ["Subtractive cleanup", "Plan reverse affinity to remove tag, uncleaved fusion, and tagged protease.", Filter],
+  "purification-sec": ["SEC polishing", "Choose a size-exclusion column and final polishing buffer.", ArrowDownNarrowWide],
+  "purification-buffer": ["Buffer design", "Build editable buffers for every purification step.", Beaker],
+  "purification-workflow": ["Purification workflow", "Cross-check the design and generate a bench-ready workflow.", Workflow],
+  "transformation-expression": ["Transformation and Expression", "Record starting material, host-specific medium, culture conditions, and expression notes.", FlaskConical],
   chromatogram: ["Chromatogram Studio", "Import traces, select peaks, calculate areas, and save results.", Activity],
-  gel: ["Gel densitometry", "Detect lanes and bands, estimate molecular weight, and quantify purity.", TestTubeDiagonal],
+  gel: ["Gel densitometry", "Detect lanes and bands, estimate molecular weight, and quantify purity.", Columns3],
 };
 
 type JobProps = { bundle: ProteinBundle; onChanged: () => Promise<void> };
