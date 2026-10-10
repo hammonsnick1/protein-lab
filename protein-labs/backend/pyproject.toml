@@ -1,0 +1,11 @@
+[project]
+name = "protein-labs-backend"
+version = "0.1.0"
+description = "Local backend for Protein Labs and Protein Planner"
+requires-python = ">=3.11"
+dependencies = ["biopython>=1.85,<2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
