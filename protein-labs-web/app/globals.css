@@ -1606,10 +1606,6 @@ p {
   font-style: normal;
   line-height: 1.25;
   margin-top: 4px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 .host-card > svg {
   width: 15px;
@@ -8005,8 +8001,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 
 /* Dedicated purification roadmap and linked experimental records workspace. */
 .roadmap-workspace { min-height: calc(100vh - 62px); background: color-mix(in srgb, var(--muted) 24%, var(--background)); overflow: hidden; }
-.roadmap-workspace-header { display: flex; align-items: center; gap: 24px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--background) 92%, transparent); padding: 22px 25px; }
-.roadmap-workspace-header > div:first-child { flex: 1; }
+.roadmap-workspace-header { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--background) 92%, transparent); padding: 22px 25px; }
+.roadmap-workspace-header > div:first-child { flex: 1 1 460px; }
 .roadmap-heading-group { display: flex; align-items: flex-start; gap: 16px; min-width: 0; }
 .roadmap-heading-group > div { min-width: 0; }
 .roadmap-workflow-back { flex: none; margin-top: 1px; white-space: nowrap; }
@@ -10734,7 +10730,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .reports-sidebar hr { width: 100%; border: none; border-top: 1px solid var(--border); margin: 5px 0; }
 .reports-sidebar strong { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-foreground); }
 .reports-page-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.reports-page-list li { display: flex; align-items: center; gap: 4px; border-radius: 8px; padding: 2px 3px; }
+.reports-page-list li { position: relative; display: flex; align-items: center; gap: 4px; border-radius: 8px; padding: 2px 3px; }
 .reports-page-list li:hover { background: var(--muted); }
 .reports-page-list li.hidden-page { opacity: .5; }
 .reports-page-list li > button {
@@ -10760,9 +10756,12 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   border-radius: 6px;
   font: 600 11px var(--font-mono);
 }
-.reports-page-list li > button small { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reports-page-tools { display: flex; gap: 1px; opacity: 0; transition: opacity .15s; }
-.reports-page-list li:hover .reports-page-tools { opacity: 1; }
+.reports-page-list li > button small { font-size: 11.5px; line-height: 1.35; }
+/* The tools overlay the row's end while it is hovered or focused, so the
+   page name keeps the full row width the rest of the time. */
+.reports-page-tools { position: absolute; top: 50%; right: 3px; transform: translateY(-50%); display: flex; gap: 1px; border-radius: 6px; background: var(--muted); opacity: 0; pointer-events: none; transition: opacity .15s; }
+.reports-page-list li:hover .reports-page-tools,
+.reports-page-list li:focus-within .reports-page-tools { opacity: 1; pointer-events: auto; }
 .reports-page-tools button { border: none; background: none; color: var(--muted-foreground); cursor: pointer; padding: 2px; display: grid; place-items: center; }
 .reports-page-tools button:hover:not(:disabled) { color: var(--primary); }
 .reports-page-tools button:disabled { opacity: .3; cursor: default; }
@@ -10932,7 +10931,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .vector-card-empty svg { width: 18px; flex: none; }
 .vector-card-empty > span { display: flex; flex-direction: column; min-width: 0; }
 .vector-card-empty strong { font-size: 12px; color: var(--foreground); }
-.vector-card-empty small { font-size: 11px; line-height: 1.4; }
+.vector-card-empty small { font-size: 11px; line-height: 1.4; white-space: normal; overflow: visible; }
 
 /* With four rows these two carry more content than their row height, so they
    scroll inside the card rather than being cut off. */
