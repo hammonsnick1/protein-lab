@@ -2,6 +2,7 @@
 
 import { type CSSProperties, useMemo, useState } from "react";
 import { Check, CircleAlert, Dna, FlaskConical, LoaderCircle, Snowflake, Sprout, X } from "lucide-react";
+import { CatalogCartoon, mediaCartoonKind } from "@/components/protein-labs/catalog-cartoons";
 import { Button } from "@/components/ui/button";
 import { ensureProjectJob, type ProteinBundle } from "@/lib/protein-labs-api";
 
@@ -114,7 +115,7 @@ export function TransformationExpressionJob({ bundle, onChanged }: { bundle: Pro
     <section className="execution-panel">
       <header><span><strong>2 · Host system and medium</strong><small>Open a card for details, then select the medium used for this run.</small></span></header>
       <nav className="media-system-tabs">{(Object.keys(systemLabels) as HostSystem[]).map((value) => <button key={value} className={system === value ? "active" : ""} onClick={() => chooseSystem(value)}>{systemLabels[value]}</button>)}</nav>
-      <div className="media-choice-grid">{available.map((value) => <button key={value.id} className={mediaId === value.id ? "selected" : ""} style={{ "--media-color": value.color } as CSSProperties} onClick={() => setInspecting(value.id)}><span><FlaskConical/></span><strong>{value.name}</strong><small>{value.summary}</small><em>{value.type}</em>{mediaId === value.id && <Check/>}</button>)}</div>
+      <div className="media-choice-grid">{available.map((value) => <button key={value.id} className={mediaId === value.id ? "selected" : ""} style={{ "--media-color": value.color } as CSSProperties} onClick={() => setInspecting(value.id)}><span><CatalogCartoon kind={mediaCartoonKind(value.type)}/></span><strong>{value.name}</strong><small>{value.summary}</small><em>{value.type}</em>{mediaId === value.id && <Check/>}</button>)}</div>
     </section>
 
     <section className="execution-panel expression-record-fields">
@@ -127,7 +128,7 @@ export function TransformationExpressionJob({ bundle, onChanged }: { bundle: Pro
 
     {inspected && <aside className="selection-inspector media-inspector" style={{ "--catalog-color": inspected.color } as CSSProperties}>
       <header><span><small>{systemLabels[inspected.system]} MEDIUM</small><strong>{inspected.name}</strong></span><Button variant="ghost" size="icon" onClick={() => setInspecting(null)}><X/></Button></header>
-      <div className="selection-inspector-body"><div className="media-inspector-hero"><FlaskConical/><span><strong>{inspected.type}</strong><p>{inspected.summary}</p></span></div><dl className="inspector-detail-list"><div><dt>Best for</dt><dd>{inspected.bestFor}</dd></div><div><dt>Strengths</dt><dd>{inspected.strengths}</dd></div><div><dt>Watch-outs</dt><dd>{inspected.cautions}</dd></div></dl></div>
+      <div className="selection-inspector-body"><div className="media-inspector-hero"><CatalogCartoon kind={mediaCartoonKind(inspected.type)}/><span><strong>{inspected.type}</strong><p>{inspected.summary}</p></span></div><dl className="inspector-detail-list"><div><dt>Best for</dt><dd>{inspected.bestFor}</dd></div><div><dt>Strengths</dt><dd>{inspected.strengths}</dd></div><div><dt>Watch-outs</dt><dd>{inspected.cautions}</dd></div></dl></div>
       <footer><Button variant="outline" onClick={() => setInspecting(null)}>Close</Button><Button onClick={() => { setMediaId(inspected.id); setInspecting(null); }}><Check/> Use this medium</Button></footer>
     </aside>}
   </div>;

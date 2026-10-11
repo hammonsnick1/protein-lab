@@ -10973,7 +10973,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   place-items: center;
   width: 100%;
   height: 100%;
-  color: var(--catalog-color, var(--primary));
+  color: var(--catalog-color, currentColor);
 }
 .catalog-cartoon svg {
   width: 100%;
@@ -11031,8 +11031,37 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .stage-column-icon {
   overflow: visible;
 }
+.stage-column-icon {
+  color: var(--stage-color);
+}
 .stage-choice-icon > .catalog-cartoon,
 .stage-column-icon > .catalog-cartoon {
   width: 26px;
   height: 30px;
+}
+.catalog-cartoon .cartoon-liquid {
+  fill: color-mix(in srgb, currentColor 30%, transparent);
+}
+/* Buffer and growth-medium cards: the cartoon sits in the card's icon well. */
+.stage-buffer-icon {
+  flex: 0 0 auto;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--stage-color);
+  background: color-mix(in srgb, var(--stage-color) 13%, var(--muted));
+}
+.stage-buffer-icon > .catalog-cartoon,
+.stage-current .stage-buffer-icon > .catalog-cartoon,
+.media-choice-grid > button > span > .catalog-cartoon {
+  width: 24px;
+  height: 28px;
+}
+.media-inspector-hero > .catalog-cartoon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 36px;
+  color: var(--catalog-color);
 }
