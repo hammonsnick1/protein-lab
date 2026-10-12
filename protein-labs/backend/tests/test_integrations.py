@@ -3,7 +3,9 @@ from protein_labs.protein_planner.integrations import (
     HttpClient,
     HttpResponse,
     NCBIBlastClient,
+    RCSBClient,
     global_sequence_metrics,
+    local_alignment_metrics,
     normalize_uniprot,
     parse_blast_xml,
     parse_blast_xml2,
@@ -300,3 +302,59 @@ def test_alphafold_db_downloads_current_cif_metadata():
     assert result["modelId"] == "AF-P02067-F1"
     assert result["metadata"]["meanPlddt"] == 88.5
     assert result["metadata"]["residueCount"] == 2
+
+
+HUMAN_HBA = "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLSHGSAQVKGHGKKVADALTNAVAHVDDMPNALSALSDLHAHKLRVDPVNFKLLSHCLLVTLAAHLPAEFTPAVHASLDKFLASVSTVLTSKYR"
+HUMAN_HBB = "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH"
+
+
+def test_local_alignment_metrics_match_blast_identities_and_positives():
+    # BLASTp reports human alpha vs beta globin as 61/145 identities (42%),
+    # 86/145 positives (59%) and 8 gaps.
+    metrics = local_alignment_metrics(HUMAN_HBA, HUMAN_HBB)
+    assert metrics["alignmentLength"] == 145
+    assert metrics["identities"] == 61
+    assert metrics["positives"] == 86
+    assert metrics["gaps"] == 8
+    assert round(metrics["identity"] * 100) == 42
+    assert round(metrics["similarity"] * 100) == 59
+
+
+def test_local_alignment_metrics_report_coverage_of_a_fragment():
+    metrics = local_alignment_metrics(HUMAN_HBA, HUMAN_HBA[20:100])
+    assert metrics["identity"] == 1.0
+    assert metrics["similarity"] == 1.0
+    assert (metrics["queryStart"], metrics["queryEnd"]) == (21, 100)
+    assert round(metrics["queryCoverage"], 3) == round(80 / len(HUMAN_HBA), 3)
+
+
+def test_rcsb_search_reports_identity_and_similarity_closest_first():
+    import json
+
+    posted = {}
+    entities = {"1AAA": HUMAN_HBB, "2BBB": HUMAN_HBA}
+
+    def transport(method, url, *, data, headers):
+        if url.endswith("/query"):
+            posted.update(json.loads(data))
+            return HttpResponse(200, json.dumps({"result_set": [
+                {"identifier": "1AAA_1", "score": 1.0, "services": [{"nodes": [{"match_context": [{"sequence_identity": 0.42, "evalue": 1e-30}]}]}]},
+                {"identifier": "2BBB_1", "score": 0.9, "services": [{"nodes": [{"match_context": [{"sequence_identity": 1.0, "evalue": 1e-90}]}]}]},
+            ]}), {})
+        if "/polymer_entity/" in url:
+            pdb_id = url.split("/polymer_entity/")[1].split("/")[0]
+            return HttpResponse(200, json.dumps({"entity_poly": {"pdbx_seq_one_letter_code_can": entities[pdb_id]}, "rcsb_polymer_entity": {"pdbx_description": "Hemoglobin"}}), {})
+        if "/entry/" in url:
+            return HttpResponse(200, json.dumps({"struct": {"title": "Hemoglobin"}}), {})
+        return HttpResponse(200, "data_test\n", {})
+
+    records = RCSBClient(HttpClient(transport=transport)).search_sequence(HUMAN_HBA)
+
+    assert posted["request_options"]["results_verbosity"] == "verbose"
+    assert [record["pdbId"] for record in records] == ["2BBB", "1AAA"]
+    assert records[0]["identity"] == 1.0 and records[0]["similarity"] == 1.0
+    assert round(records[1]["identity"] * 100) == 42
+    assert round(records[1]["similarity"] * 100) == 59
+    assert records[1]["rcsbIdentity"] == 0.42
+    assert records[1]["evalue"] == 1e-30
+
