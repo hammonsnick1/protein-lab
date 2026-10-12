@@ -11174,3 +11174,18 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   height: 36px;
   color: var(--catalog-color);
 }
+
+/* Subtractive cleanup's tag-cleavage section and Affinity capture's buffers. */
+.cleavage-chooser,
+.affinity-buffers { margin-bottom: 28px; }
+.affinity-buffers { margin-top: 28px; }
+.cleavage-chooser-note {
+  margin: 0 0 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 9px 12px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}

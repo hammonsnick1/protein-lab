@@ -62,6 +62,7 @@ export function ConstructDesigner({
   onPlanChange,
   vectors,
   onReport,
+  stage,
 }: {
   targetSequence: string;
   targetName: string;
@@ -71,6 +72,10 @@ export function ConstructDesigner({
   onPlanChange: (plan: ConstructPlan) => void;
   vectors: JsonObject[];
   onReport?: (report: ConstructReport) => void;
+  /** "tag": Affinity capture sets the tag, linker and position, and shows the
+   *  cleavage only if a protease is already chosen. "cleavage": Subtractive
+   *  cleanup shows that tag read-only and applies the chosen protease. */
+  stage: "tag" | "cleavage";
 }) {
   const construct = useMemo(
     () => assembleConstruct(targetSequence, { ...plan, cleavageId: proteaseId }),
@@ -162,14 +167,19 @@ export function ConstructDesigner({
       <span>
         <strong>Construct and recalculated properties</strong>
         <small>
-          {affinityTagLabel ? `Tag from affinity capture: ${affinityTagLabel}. ` : ""}
-          Mass and extinction coefficient are recalculated from the assembled sequence.
+          {stage === "tag"
+            ? `${affinityTagLabel ? `Tag from the selected resin: ${affinityTagLabel}. ` : ""}Adding the tag and linker changes the sequence, mass and extinction coefficient.`
+            : "The protease's site is inserted after the tag and linker from Affinity capture; cleavage leaves its scar on the target."}
         </small>
       </span>
       {busy && <LoaderCircle className="spin" />}
     </header>
 
-    <div className="construct-controls">
+    {stage === "cleavage" && <p className="construct-source">
+      Set in Affinity capture: {plan.terminus === "N" ? "N-terminal" : "C-terminal"} {tag?.name ?? "no tag"} · {linkerOptions.find((option) => option.id === plan.linkerId)?.name ?? "no linker"}{plan.initiatorMet ? " · initiator Met" : ""}.
+    </p>}
+
+    {stage === "tag" && <div className="construct-controls">
       <label>Tag position
         <select value={plan.terminus} onChange={(event) => update({ terminus: event.target.value as "N" | "C" })}>
           <option value="N">N-terminal</option>
@@ -191,9 +201,9 @@ export function ConstructDesigner({
         <input type="checkbox" checked={plan.initiatorMet} onChange={(event) => update({ initiatorMet: event.target.checked })} />
         <span>Initiator Met</span>
       </label>
-    </div>
+    </div>}
 
-    {construct.unresolvedTag && <div className="construct-resolve">
+    {stage === "tag" && construct.unresolvedTag && <div className="construct-resolve">
       <TriangleAlert />
       <div>
         <strong>{construct.unresolvedTag.name} needs its real sequence</strong>
@@ -234,7 +244,7 @@ export function ConstructDesigner({
       <MetricCard title="Expressed fusion" subtitle={`${targetName} with tag`} sequence={construct.fusion} metrics={metrics.fusion} onCopy={copy} copied={copied} />
       {construct.cleaves
         ? <MetricCard title="After tag cleavage" subtitle={construct.scar ? `Retains ${construct.scar} scar` : "No residual scar"} sequence={construct.cleaved} metrics={metrics.cleaved} onCopy={copy} copied={copied} highlight />
-        : <MetricCard title="After tag cleavage" subtitle="Tag retained — no cleavage step" sequence="" metrics={null} onCopy={copy} copied={copied} />}
+        : <MetricCard title="After tag cleavage" subtitle={stage === "tag" && !proteaseId ? "Choose the protease in Subtractive cleanup" : "Tag retained — no cleavage step"} sequence="" metrics={null} onCopy={copy} copied={copied} />}
       <MetricCard title="Released tag fragment" subtitle={construct.cleaves ? "Removed during cleanup" : "Not applicable"} sequence={construct.released} metrics={metrics.released} onCopy={copy} copied={copied} />
     </div>
 

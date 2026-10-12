@@ -19,10 +19,8 @@ const jobIcons = {
   "expression-vector": Beaker,
   "purification-lysis": Beaker,
   "purification-affinity": FlaskConical,
-  "purification-cleavage": FlaskConical,
   "purification-subtractive": FlaskConical,
   "purification-sec": Activity,
-  "purification-buffer": Beaker,
   "purification-workflow": GitBranch,
 } as const;
 
