@@ -7209,7 +7209,19 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .timeline-date { display: flex; align-items: center; justify-content: space-between; }
 .timeline-date strong { font-size: 11px; }
 .timeline-date small { color: var(--muted-foreground); font-size: 10.5px; }
-.timeline-add { display: grid; grid-template-columns: minmax(105px, 1fr) minmax(76px, .7fr) 100px 30px; gap: 5px; margin-top: 7px; }
+/* Two rows so the form fits the card at any width: the milestone title on
+   top, then its project, stage and the add button. */
+.timeline-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px;
+  grid-template-areas: "title title title" "project stage add";
+  gap: 5px;
+  margin-top: 7px;
+}
+.timeline-add > input { grid-area: title; min-width: 0; }
+.timeline-add > select:nth-of-type(1) { grid-area: project; min-width: 0; }
+.timeline-add > select:nth-of-type(2) { grid-area: stage; min-width: 0; }
+.timeline-add > button { grid-area: add; }
 .timeline-add input,
 .timeline-add select,
 .dashboard-project-select select {
@@ -7225,7 +7237,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .timeline-add input:focus,
 .timeline-add select:focus,
 .dashboard-project-select select:focus { border-color: var(--primary); }
-.timeline-add button { width: 30px; }
+.timeline-add button { width: 34px; }
 .timeline-add button svg { width: 13px; }
 .timeline-items { max-height: 82px; overflow: auto; margin-top: 7px; }
 .timeline-items > div { display: grid; grid-template-columns: 5px 1fr 24px; align-items: center; gap: 7px; border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent); padding: 5px 1px; }
@@ -10428,6 +10440,10 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .dashboard-board .dashboard-project-overview-card { flex: 1; }
 .dashboard-board .dashboard-project-overview-card .project-tile-grid { flex: 1; }
 .dashboard-board .dashboard-calendar-card .timeline-editor { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* The day's milestones are listed in full; the card itself scrolls, so the
+   list never becomes a second scroll box squeezed inside it. */
+.dashboard-board .dashboard-calendar-card .timeline-items { flex: none; max-height: none; overflow: visible; }
+.dashboard-board .timeline-items strong { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 
 /* Current job */
 .dashboard-current-job-card .current-job-body {
