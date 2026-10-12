@@ -8,7 +8,11 @@ export const STRUCTURE_PALETTES = [
   { id: "fern", name: "Fern", colors: ["#60a86e", "#aed07c", "#408777", "#d3df9d"], bond: "#deebc8" },
 ] as const;
 
-export type StructurePaletteId = typeof STRUCTURE_PALETTES[number]["id"];
+/** The app icon's chain colours, used for the welcome protein. Kept out of
+ *  STRUCTURE_PALETTES so projects' automatic palettes and the picker are unchanged. */
+export const PROTEIN_LAB_PALETTE = { id: "protein-lab", name: "Protein Lab", colors: ["#d35532", "#ebb21e", "#189af7", "#1eb846"], bond: "#f7f2e8" } as const;
+
+export type StructurePaletteId = typeof STRUCTURE_PALETTES[number]["id"] | typeof PROTEIN_LAB_PALETTE.id;
 
 export function structurePaletteForKey(key: string) {
   let hash = 2166136261;
@@ -17,5 +21,6 @@ export function structurePaletteForKey(key: string) {
 }
 
 export function findStructurePalette(id: string | null | undefined) {
+  if (id === PROTEIN_LAB_PALETTE.id) return PROTEIN_LAB_PALETTE;
   return STRUCTURE_PALETTES.find((palette) => palette.id === id);
 }
