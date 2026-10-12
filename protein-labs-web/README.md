@@ -5,48 +5,20 @@ application starts its bundled Python scientific engine automatically and saves
 projects in the user's local application-data directory. No browser or manually
 started web server is required.
 
-## Run the portable Arch Linux build
+## Running and building
 
-```bash
-cd ~/protein-labs-web/release
-chmod +x Protein-Labs-0.2.0-x86_64.AppImage
-APPIMAGE_EXTRACT_AND_RUN=1 ./Protein-Labs-0.2.0-x86_64.AppImage
-```
+Installing, launching and rebuilding are covered in the
+[top-level README](../README.md): `./build-and-install.sh` builds and installs
+the app, and `./protein-lab` runs it with its data kept in `data/`.
 
-The extraction flag runs without FUSE. Protein Lab uses native Wayland on
-Arch Linux (X11 on X11 desktops), with Vulkan disabled. The window appears while
-the bundled engine starts. Reopening the app focuses its existing window.
-To explicitly choose a different display platform, set
+Protein Lab uses native Wayland on Wayland desktops (X11 on X11 desktops), with Vulkan
+disabled. To choose a different display platform, set
 `PROTEIN_LABS_OZONE_PLATFORM=wayland` or `PROTEIN_LABS_OZONE_PLATFORM=x11`.
 
-The installed launcher opens `~/Applications/Protein-Labs.AppImage`. Local
-projects remain in `~/.config/protein-labs/data/protein_labs.sqlite3`, and
-startup diagnostics are in `~/.config/protein-labs/logs/desktop.log`.
-
-## Install the native Arch Linux package
-
-```bash
-cd ~/protein-labs-web/release
-sudo pacman -U ./protein-labs-0.2.0-1-x86_64.pkg.tar.zst
-```
-
-After installation, launch **Protein Lab** from the application menu or run
-`protein-labs`.
-
-## Development mode
-
-Run both the Python engine and React frontend from the suite directory:
-
-```bash
-cd ../protein-labs
-./run-web.sh
-```
-
-Open `http://127.0.0.1:5173`. The frontend connects to
-`http://127.0.0.1:8770` by default. Set `NEXT_PUBLIC_PROTEIN_LABS_API` before
-building or starting the frontend to use another API origin; the value is baked
-into the bundle and added to the page's `connect-src` policy, so it must be set
-for the build, not only at runtime.
+The UI connects to the engine at `http://127.0.0.1:8770`. Set
+`NEXT_PUBLIC_PROTEIN_LABS_API` before building to use another API origin; the
+value is baked into the bundle and added to the page's `connect-src` policy, so
+it must be set for the build, not only at runtime.
 
 ## Expression vector design
 
@@ -77,9 +49,3 @@ cleavage (including any scar residues the protease leaves behind), and the
 released tag fragment. Short peptide tags carry their published sequences;
 large fusion partners such as GST, MBP and SUMO are resolved from the selected
 vector's annotated CDS or from a pasted sequence, never from a built-in guess.
-
-## Acceptance verification
-
-The reproducible 8U0I workflow check is in
-`../protein-labs/backend/scripts/verify_8u0i_workflow.py`; the latest result is
-recorded in `docs/verification-8u0i.json`.
