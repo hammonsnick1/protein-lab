@@ -10321,14 +10321,15 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .plasmid-map g.selected text { font-weight: 700; }
 
 /* ===========================================================================
-   Dashboard: one screen, no vertical scrolling.
-   The dashboard fills the space under the topbar and every card scrolls its
-   own body instead of pushing the page taller.
+   Dashboard: fills the space under the topbar.
+   List cards scroll their own bodies to fit; the page itself scrolls only
+   when the window is too short for every card's minimum.
    ======================================================================== */
 .suite-dashboard {
+  /* The window's height, but never less than the cards need at their
+     floors; a shorter window scrolls the page instead of cutting cards. */
   height: calc(100vh - 68px);
-  max-height: calc(100vh - 68px);
-  overflow: hidden;
+  min-height: 900px;
   padding: 14px clamp(14px, 2vw, 28px) 14px;
   display: flex;
   flex-direction: column;
@@ -10356,7 +10357,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   font-size: 11.5px;
   margin: 0;
 }
-.dashboard-mascot-column {
+.dashboard-mascot-column,
+.suite-dashboard .dashboard-mascot-column {
   position: static;
   height: auto;
   min-height: 0;
@@ -10364,31 +10366,55 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .dashboard-mascot-companion {
   min-height: 0;
 }
-/* The three remaining card rows share the available height. */
+/* Three columns, each stacking its own cards. Cards with a fixed amount of
+   content take their natural height; the list cards (projects, trees, team,
+   timeline) share what is left and scroll inside. Each list card keeps a
+   floor, and when a short window cannot hold the floors the page scrolls
+   rather than any card being cut off. */
 .dashboard-board {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.05fr);
-  grid-template-rows: repeat(4, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
 }
-.dashboard-board > article,
-.dashboard-board > section {
+.dashboard-board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
   min-height: 0;
+}
+.dashboard-board-column > article,
+.dashboard-board-column > section {
+  flex: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.dashboard-board .dashboard-project-overview-card { grid-area: 1 / 1 / span 2 / 2; }
-.dashboard-board .dashboard-tree-overview-card { grid-area: 3 / 1 / span 2 / 2; }
-.dashboard-board .dashboard-current-job-card { grid-area: 1 / 2; }
-/* The report sits between the current job and the team, in the middle column. */
-.dashboard-board .dashboard-reports-card { grid-area: 2 / 2; }
-.dashboard-board .dashboard-team-card { grid-area: 3 / 2 / span 2 / 3; }
-.dashboard-board .dashboard-calendar-card { grid-area: 1 / 3 / span 2 / 4; }
-/* The vector database sits between the timeline and AlphaFold access. */
-.dashboard-board .dashboard-vector-card { grid-area: 3 / 3; }
-.dashboard-board .dashboard-account-card { grid-area: 4 / 3; }
+.dashboard-board .dashboard-project-overview-card,
+.dashboard-board .dashboard-tree-overview-card { flex: 1 1 0; min-height: 230px; }
+.dashboard-board .dashboard-team-card { flex: 1 1 0; min-height: 230px; }
+/* Only the member list gives way; the project picker keeps its height. */
+.dashboard-board .dashboard-team-card > * { flex: none; }
+.dashboard-board .dashboard-team-card > .team-list { flex: 0 1 auto; }
+.dashboard-board .dashboard-calendar-card { flex: 1 1 0; min-height: 300px; }
+/* The report's page preview gives way first: the list scrolls down to a
+   few rows while the project picker and the open button stay in view. */
+.dashboard-board .dashboard-reports-card { flex: 0 1 auto; min-height: 290px; }
+.dashboard-board .dashboard-vector-card { flex: 0 1 auto; min-height: 175px; }
+.dashboard-board .dashboard-account-card { flex: 0 1 auto; min-height: 200px; overflow: auto; }
+.dashboard-board .dashboard-account-card > * { flex: none; }
+/* Names, roles and notes in the narrower columns wrap instead of being cut
+   to an ellipsis; an email address may break anywhere. */
+.dashboard-board .team-member strong,
+.dashboard-board .team-member small,
+.dashboard-board .account-identity small {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
 .dashboard-board .dashboard-card > *:not(.dashboard-card-header):not(header) {
   min-height: 0;
 }
@@ -10603,7 +10629,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
      dashboard goes back to a normal scrolling page. */
   .suite-dashboard { height: auto; max-height: none; overflow: visible; }
   .dashboard-board { grid-template-columns: 1fr; grid-template-rows: none; }
-  .dashboard-board > article { grid-area: auto !important; }
+  .dashboard-board-column { display: contents; }
+  .dashboard-board .dashboard-card { flex: none; min-height: 0; }
   .companion-flip { min-height: 620px; }
 }
 
@@ -10933,11 +10960,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .vector-card-empty strong { font-size: 12px; color: var(--foreground); }
 .vector-card-empty small { font-size: 11px; line-height: 1.4; white-space: normal; overflow: visible; }
 
-/* With four rows these two carry more content than their row height, so they
-   scroll inside the card rather than being cut off. */
-.dashboard-board .dashboard-account-card,
+/* The timeline carries more than its share of the column can always show,
+   so it scrolls inside the card rather than being cut off. */
 .dashboard-board .dashboard-calendar-card { overflow: auto; }
-.dashboard-board .dashboard-account-card > *,
 .dashboard-board .dashboard-calendar-card > * { flex: none; }
 
 /* Labels sit at a legible size now, so controls grow to fit their text

@@ -191,71 +191,79 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
     {notice && <div className="dashboard-notice"><Sparkles/><span>{notice}</span><button onClick={() => setNotice("")}><X/></button></div>}
 
     <div className="dashboard-board">
-      <article className="dashboard-card dashboard-project-overview-card">
-        <CardHeader icon={FolderKanban} title="Projects" subtitle={`${roots.length} local protein project${roots.length === 1 ? "" : "s"} · ${completedJobs}/${totalJobs} workflow jobs complete`}><div><Button variant="outline" size="sm" onClick={onProjects}>View gallery <ArrowRight/></Button><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div></CardHeader>
-        <div className="project-tile-grid">
-          {roots.map((protein, index) => { const projectBundle = bundles.find((value) => value.protein.id === protein.id); return <ProjectTile key={protein.id} protein={protein} index={index} complete={projectBundle?.projectJobs.filter((job) => job.status === "complete").length ?? 0} total={projectBundle?.projectJobs.length ?? 0} linked={projectIdsInTrees.has(protein.id)} onOpen={() => onOpenProject(protein.id)}/>; })}
-          {!roots.length && <button className="project-tile project-tile-new" onClick={onCreate}><span><Plus/></span><strong>Create your first project</strong><small>Start from an amino-acid sequence</small></button>}
-        </div>
-      </article>
+      {/* Each column stacks its own cards: fixed cards keep their natural
+          height and the list cards share what is left, so no card is cut off. */}
+      <div className="dashboard-board-column">
+        <article className="dashboard-card dashboard-project-overview-card">
+          <CardHeader icon={FolderKanban} title="Projects" subtitle={`${roots.length} local protein project${roots.length === 1 ? "" : "s"} · ${completedJobs}/${totalJobs} workflow jobs complete`}><div><Button variant="outline" size="sm" onClick={onProjects}>View gallery <ArrowRight/></Button><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div></CardHeader>
+          <div className="project-tile-grid">
+            {roots.map((protein, index) => { const projectBundle = bundles.find((value) => value.protein.id === protein.id); return <ProjectTile key={protein.id} protein={protein} index={index} complete={projectBundle?.projectJobs.filter((job) => job.status === "complete").length ?? 0} total={projectBundle?.projectJobs.length ?? 0} linked={projectIdsInTrees.has(protein.id)} onOpen={() => onOpenProject(protein.id)}/>; })}
+            {!roots.length && <button className="project-tile project-tile-new" onClick={onCreate}><span><Plus/></span><strong>Create your first project</strong><small>Start from an amino-acid sequence</small></button>}
+          </div>
+        </article>
 
-      <article className="dashboard-card dashboard-tree-overview-card">
-        <CardHeader icon={GitBranch} title="Project trees" subtitle="How your constructs relate and what changed"><Button variant="outline" size="sm" onClick={onTrees}>Open trees <ArrowRight/></Button></CardHeader>
-        <button className="tree-stat-strip" onClick={onTrees}><span><strong>{treeStats.trees}</strong><small>Tree{treeStats.trees === 1 ? "" : "s"}</small></span><span><strong>{treeStats.branches}</strong><small>Branch{treeStats.branches === 1 ? "" : "es"}</small></span><span><strong>{projectIdsInTrees.size}</strong><small>Linked project{projectIdsInTrees.size === 1 ? "" : "s"}</small></span></button>
-        {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].relationships.length} branch{trees[0].relationships.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
-        <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.relationships.length} branch{tree.relationships.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
-      </article>
+        <article className="dashboard-card dashboard-tree-overview-card">
+          <CardHeader icon={GitBranch} title="Project trees" subtitle="How your constructs relate and what changed"><Button variant="outline" size="sm" onClick={onTrees}>Open trees <ArrowRight/></Button></CardHeader>
+          <button className="tree-stat-strip" onClick={onTrees}><span><strong>{treeStats.trees}</strong><small>Tree{treeStats.trees === 1 ? "" : "s"}</small></span><span><strong>{treeStats.branches}</strong><small>Branch{treeStats.branches === 1 ? "" : "es"}</small></span><span><strong>{projectIdsInTrees.size}</strong><small>Linked project{projectIdsInTrees.size === 1 ? "" : "s"}</small></span></button>
+          {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].relationships.length} branch{trees[0].relationships.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
+          <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.relationships.length} branch{tree.relationships.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
+        </article>
+      </div>
 
-      <article className="dashboard-card dashboard-current-job-card">
-        <CardHeader icon={Activity} title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}>{currentJob && <Button variant="ghost" size="sm" onClick={() => onOpenProject(currentJob.project.id)}>Resume <ArrowRight/></Button>}</CardHeader>
-        {currentJob ? <button className="current-job-body" onClick={() => onOpenProject(currentJob.project.id)}>
-          <span className="current-job-head">
-            <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
-            <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small></span>
-            <em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em>
-          </span>
-          <span className="current-job-progress">
-            <i style={{ "--value": `${Math.round(currentJob.progress * 100)}%` } as React.CSSProperties}/>
-            <small>{currentJob.complete} of {currentJob.total} workflow jobs complete in this project</small>
-          </span>
-          <span className="current-job-steps">
-            {currentJob.recent.map((job) => <span key={job.id} className={job.status === "complete" ? "done" : ""}><i/>{job.name}</span>)}
-          </span>
-        </button> : <div className="current-job-empty"><FlaskConical/><span><strong>No job has been opened yet</strong><small>Open a project and save a workflow step; the most recent one appears here.</small></span><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div>}
-      </article>
+      <div className="dashboard-board-column">
+        <article className="dashboard-card dashboard-current-job-card">
+          <CardHeader icon={Activity} title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}>{currentJob && <Button variant="ghost" size="sm" onClick={() => onOpenProject(currentJob.project.id)}>Resume <ArrowRight/></Button>}</CardHeader>
+          {currentJob ? <button className="current-job-body" onClick={() => onOpenProject(currentJob.project.id)}>
+            <span className="current-job-head">
+              <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
+              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small></span>
+              <em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em>
+            </span>
+            <span className="current-job-progress">
+              <i style={{ "--value": `${Math.round(currentJob.progress * 100)}%` } as React.CSSProperties}/>
+              <small>{currentJob.complete} of {currentJob.total} workflow jobs complete in this project</small>
+            </span>
+            <span className="current-job-steps">
+              {currentJob.recent.map((job) => <span key={job.id} className={job.status === "complete" ? "done" : ""}><i/>{job.name}</span>)}
+            </span>
+          </button> : <div className="current-job-empty"><FlaskConical/><span><strong>No job has been opened yet</strong><small>Open a project and save a workflow step; the most recent one appears here.</small></span><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div>}
+        </article>
 
-      <article className="dashboard-card dashboard-calendar-card">
-        <CardHeader icon={CalendarDays} title="Purification timeline" subtitle="Schedule expression, columns, and quality control"><button className="calendar-today" onClick={() => { setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedDate(dateKey(now)); }}>Today</button></CardHeader>
-        <div className="calendar-toolbar"><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, -1))}><ChevronLeft/></button><strong>{calendarMonth.toLocaleDateString([], { month: "long", year: "numeric" })}</strong><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, 1))}><ChevronRight/></button></div>
-        <div className="purification-calendar"><div className="calendar-weekdays">{["S", "M", "T", "W", "T", "F", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div><div className="calendar-days">{cells.map((cell) => { const key = dateKey(cell.date); const dayEvents = events.filter((event) => event.date === key); return <button key={key} className={`${cell.outside ? "outside" : ""} ${key === dateKey(now) ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => setSelectedDate(key)}><span>{cell.date.getDate()}</span><i>{dayEvents.slice(0, 3).map((event) => <b key={event.id} style={{ background: stage(event.stage).color }}/>)}</i></button>; })}</div></div>
-        <div className="timeline-editor"><div className="timeline-date"><strong>{formatCalendarDate(selectedDate)}</strong><small>{selectedEvents.length} planned item{selectedEvents.length === 1 ? "" : "s"}</small></div><div className="timeline-add"><input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addEvent(); }} placeholder="e.g. Run Superdex 200 Increase"/><select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">General lab work</option>}</select><select value={eventStage} onChange={(event) => setEventStage(event.target.value as TimelineStage)}>{timelineStages.map((value) => <option key={value.id} value={value.id}>{value.label}</option>)}</select><button onClick={addEvent}><Plus/></button></div><div className="timeline-items">{selectedEvents.map((event) => <div key={event.id}><i style={{ background: stage(event.stage).color }}/><span><strong>{event.title}</strong><small>{stage(event.stage).label} · {projectName(roots, event.projectId)}</small></span><button onClick={() => removeEvent(event.id)}><X/></button></div>)}{!selectedEvents.length && <p>Select a day and add the next purification milestone.</p>}</div></div>
-      </article>
+        <article className="dashboard-card dashboard-reports-card">
+          <CardHeader icon={FileText} title="Reports" subtitle="Publication-quality records to print or send to a client"/>
+          <div className="reports-card-body">
+            <label className="dashboard-project-select">Project<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">No projects yet</option>}</select></label>
+            <ul className="reports-card-pages">
+              {["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"].map((page) => <li key={page}><i/>{page}</li>)}
+            </ul>
+            <Button className="wide" disabled={!activeProjectId} onClick={() => onOpenReports(activeProjectId)}><FileText/> Open the report</Button>
+          </div>
+        </article>
 
-      <article className="dashboard-card dashboard-reports-card">
-        <CardHeader icon={FileText} title="Reports" subtitle="Publication-quality records to print or send to a client"/>
-        <div className="reports-card-body">
-          <label className="dashboard-project-select">Project<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">No projects yet</option>}</select></label>
-          <ul className="reports-card-pages">
-            {["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"].map((page) => <li key={page}><i/>{page}</li>)}
-          </ul>
-          <Button className="wide" disabled={!activeProjectId} onClick={() => onOpenReports(activeProjectId)}><FileText/> Open the report</Button>
-        </div>
-      </article>
+        <article className="dashboard-card dashboard-team-card">
+          <CardHeader icon={Users} title="Team members" subtitle="Prepare project handoffs for collaborators"><Button variant="ghost" size="icon" onClick={() => setMemberOpen(true)} aria-label="Add team member"><UserPlus/></Button></CardHeader>
+          <label className="dashboard-project-select">Project to share<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>)}</select></label>
+          <div className="team-list"><div className="team-member owner"><span>{initials(profile.name)}</span><div><strong>{profile.name || "Researcher"}</strong><small>{profile.googleEmail || "Local workspace owner"}</small></div><em>Owner</em></div>{members.map((member) => <div className="team-member" key={member.id}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><em>{member.role}</em><button title={`Share with ${member.name}`} onClick={() => void shareWith(member)}><Send/></button><button title={`Remove ${member.name}`} onClick={() => removeMember(member.id)}><Trash2/></button></div>)}{!members.length && <div className="team-empty"><Users/><span><strong>No collaborators yet</strong><small>Add a researcher, then create an email-ready project handoff.</small></span></div>}</div>
+        </article>
+      </div>
 
-      <article className="dashboard-card dashboard-team-card">
-        <CardHeader icon={Users} title="Team members" subtitle="Prepare project handoffs for collaborators"><Button variant="ghost" size="icon" onClick={() => setMemberOpen(true)} aria-label="Add team member"><UserPlus/></Button></CardHeader>
-        <label className="dashboard-project-select">Project to share<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>)}</select></label>
-        <div className="team-list"><div className="team-member owner"><span>{initials(profile.name)}</span><div><strong>{profile.name || "Researcher"}</strong><small>{profile.googleEmail || "Local workspace owner"}</small></div><em>Owner</em></div>{members.map((member) => <div className="team-member" key={member.id}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><em>{member.role}</em><button title={`Share with ${member.name}`} onClick={() => void shareWith(member)}><Send/></button><button title={`Remove ${member.name}`} onClick={() => removeMember(member.id)}><Trash2/></button></div>)}{!members.length && <div className="team-empty"><Users/><span><strong>No collaborators yet</strong><small>Add a researcher, then create an email-ready project handoff.</small></span></div>}</div>
-      </article>
+      <div className="dashboard-board-column">
+        <article className="dashboard-card dashboard-calendar-card">
+          <CardHeader icon={CalendarDays} title="Purification timeline" subtitle="Schedule expression, columns, and quality control"><button className="calendar-today" onClick={() => { setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedDate(dateKey(now)); }}>Today</button></CardHeader>
+          <div className="calendar-toolbar"><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, -1))}><ChevronLeft/></button><strong>{calendarMonth.toLocaleDateString([], { month: "long", year: "numeric" })}</strong><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, 1))}><ChevronRight/></button></div>
+          <div className="purification-calendar"><div className="calendar-weekdays">{["S", "M", "T", "W", "T", "F", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div><div className="calendar-days">{cells.map((cell) => { const key = dateKey(cell.date); const dayEvents = events.filter((event) => event.date === key); return <button key={key} className={`${cell.outside ? "outside" : ""} ${key === dateKey(now) ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => setSelectedDate(key)}><span>{cell.date.getDate()}</span><i>{dayEvents.slice(0, 3).map((event) => <b key={event.id} style={{ background: stage(event.stage).color }}/>)}</i></button>; })}</div></div>
+          <div className="timeline-editor"><div className="timeline-date"><strong>{formatCalendarDate(selectedDate)}</strong><small>{selectedEvents.length} planned item{selectedEvents.length === 1 ? "" : "s"}</small></div><div className="timeline-add"><input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addEvent(); }} placeholder="e.g. Run Superdex 200 Increase"/><select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">General lab work</option>}</select><select value={eventStage} onChange={(event) => setEventStage(event.target.value as TimelineStage)}>{timelineStages.map((value) => <option key={value.id} value={value.id}>{value.label}</option>)}</select><button onClick={addEvent}><Plus/></button></div><div className="timeline-items">{selectedEvents.map((event) => <div key={event.id}><i style={{ background: stage(event.stage).color }}/><span><strong>{event.title}</strong><small>{stage(event.stage).label} · {projectName(roots, event.projectId)}</small></span><button onClick={() => removeEvent(event.id)}><X/></button></div>)}{!selectedEvents.length && <p>Select a day and add the next purification milestone.</p>}</div></div>
+        </article>
 
-      <VectorDatabaseCard onOpenProject={onOpenProject}/>
+        <VectorDatabaseCard onOpenProject={onOpenProject}/>
 
-      <article className="dashboard-card dashboard-account-card">
-        <CardHeader icon={Sparkles} title="AlphaFold access" subtitle="Use your Google-authenticated system browser"/>
-        <div className="account-identity"><span className={profile.googleConnected ? "connected" : ""}>{profile.googleConnected ? "G" : mascot.emoji}</span><div><strong>{profile.googleConnected ? "Google browser link ready" : "Connect a Google account"}</strong><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab."}</small></div></div>
-        {profile.googleConnected ? <><label className="dashboard-project-select">Sequence to prepare<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>)}</select></label><Button className="wide" onClick={() => void openAlphaFold()}><ExternalLink/> Copy FASTA & open AlphaFold</Button><button className="account-text-action" onClick={disconnectGoogle}>Disconnect browser link</button></> : <Button className="wide" onClick={connectGoogle}><ExternalLink/> Choose Google account</Button>}
-        <p>AlphaFold Server remains a Google-hosted service. Protein Lab opens the official site and prepares the selected sequence; it never stores your Google password or authentication token.</p>
-      </article>
+        <article className="dashboard-card dashboard-account-card">
+          <CardHeader icon={Sparkles} title="AlphaFold access" subtitle="Use your Google-authenticated system browser"/>
+          <div className="account-identity"><span className={profile.googleConnected ? "connected" : ""}>{profile.googleConnected ? "G" : mascot.emoji}</span><div><strong>{profile.googleConnected ? "Google browser link ready" : "Connect a Google account"}</strong><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab."}</small></div></div>
+          {profile.googleConnected ? <><label className="dashboard-project-select">Sequence to prepare<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>)}</select></label><Button className="wide" onClick={() => void openAlphaFold()}><ExternalLink/> Copy FASTA & open AlphaFold</Button><button className="account-text-action" onClick={disconnectGoogle}>Disconnect browser link</button></> : <Button className="wide" onClick={connectGoogle}><ExternalLink/> Choose Google account</Button>}
+          <p>AlphaFold Server remains a Google-hosted service. Protein Lab opens the official site and prepares the selected sequence; it never stores your Google password or authentication token.</p>
+        </article>
+      </div>
     </div>
     </div>
     </div>
