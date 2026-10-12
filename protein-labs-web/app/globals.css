@@ -5524,21 +5524,71 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   border-radius: 3px;
   background: var(--primary);
 }
-.composition-table {
+/* Amino-acid composition: two aligned halves of a real table, then a total
+   row showing the shares add up to the whole sequence. */
+.composition-halves {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 6px 28px;
+}
+.composition-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.composition-table thead th {
+  padding: 0 10px 7px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+.composition-table tbody th,
+.composition-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  text-align: left;
+  font-weight: 400;
+}
+.composition-table tbody tr:last-child > * { border-bottom: none; }
+.composition-table tbody tr:hover > * { background: color-mix(in srgb, var(--primary) 5%, transparent); }
+.composition-table tbody th { white-space: nowrap; }
+.composition-table tbody th strong {
+  display: inline-block;
+  width: 1.5em;
+  font-weight: 800;
+}
+.composition-table tbody th span { color: var(--muted-foreground); }
+.composition-table .num { width: 1%; text-align: right; white-space: nowrap; }
+.composition-bar-cell { width: 42%; }
+.composition-bar {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 13%, transparent);
   overflow: hidden;
 }
-.composition-table > span {
-  display: flex;
-  justify-content: space-between;
-  padding: 7px;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  font: 11px var(--font-mono);
+.composition-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
 }
+.composition-total {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin: 8px 0 0;
+  padding: 9px 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.composition-total span { margin-right: auto; color: var(--muted-foreground); font-weight: 700; }
+.composition-empty { color: var(--muted-foreground); font-size: 12px; }
 .assumption-list {
   font-size: 11px;
   line-height: 1.6;
