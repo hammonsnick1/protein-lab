@@ -11,7 +11,7 @@ type AtomPoint = { x: number; y: number; z: number; chain: string; plddt: number
 type Projected = AtomPoint & { px: number; py: number; depth: number; scale: number };
 type Representation = "ribbon" | "surface" | "atoms";
 type ColorMode = "theme" | "confidence";
-type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId };
+type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId; /** Fixes the colouring, ignoring the user's saved choice. */ colorMode?: ColorMode };
 
 export function StructureViewer(props: StructureViewerProps) {
   const structureText = typeof props.geometry?.structureText === "string" ? props.geometry.structureText : "";
@@ -19,12 +19,13 @@ export function StructureViewer(props: StructureViewerProps) {
   return <TraceStructureViewer {...props} />;
 }
 
-function TraceStructureViewer({ geometry, compact = false, autoRotate = false, hologram = false, label = "Predicted structure", paletteKey, palette }: StructureViewerProps) {
+function TraceStructureViewer({ geometry, compact = false, autoRotate = false, hologram = false, label = "Predicted structure", paletteKey, palette, colorMode: fixedColorMode }: StructureViewerProps) {
   const [yaw, setYaw] = useState(-.65);
   const [pitch, setPitch] = useState(.35);
   const [zoom, setZoom] = useState(1);
   const [representation, setRepresentation] = useState<Representation>("ribbon");
-  const [colorMode, setColorMode] = useState<ColorMode>("theme");
+  const [savedColorMode, setColorMode] = useState<ColorMode>("theme");
+  const colorMode = fixedColorMode ?? savedColorMode;
   const [paletteChoice, setPaletteChoice] = useState<StructurePaletteId | "auto" | "theme">("auto");
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
   const rawId = useId();
