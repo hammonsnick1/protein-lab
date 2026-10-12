@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Starts the installed Protein Lab with its data kept in this folder.
+#
+#   app/Protein-Labs.AppImage   the desktop app (built by ./build-and-install.sh)
+#   data/                       projects database, settings and logs
+#
+# ~/.local/bin/protein-labs and the app-menu entry both point here, so this
+# folder can be moved: rerun ./build-and-install.sh afterwards to update them.
+set -euo pipefail
+
+root="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+app="$root/app/Protein-Labs.AppImage"
+
+if [[ ! -x "$app" ]]; then
+  echo "Protein Lab is not installed yet: run $root/build-and-install.sh" >&2
+  exit 1
+fi
+
+mkdir -p "$root/data"
+# The AppImage unpacks itself instead of mounting through FUSE.
+export APPIMAGE_EXTRACT_AND_RUN=1
+exec "$app" --user-data-dir="$root/data" "$@"
