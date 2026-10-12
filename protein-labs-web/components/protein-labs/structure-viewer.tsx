@@ -11,7 +11,7 @@ type AtomPoint = { x: number; y: number; z: number; chain: string; plddt: number
 type Projected = AtomPoint & { px: number; py: number; depth: number; scale: number };
 type Representation = "ribbon" | "surface" | "atoms";
 type ColorMode = "theme" | "confidence";
-type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId; /** Fixes the colouring, ignoring the user's saved choice. */ colorMode?: ColorMode };
+type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId; /** Fixes the colouring, ignoring the user's saved choice. */ colorMode?: ColorMode; /** Wraps the ribbon in a translucent molecular surface. */ envelope?: boolean };
 
 export function StructureViewer(props: StructureViewerProps) {
   const structureText = typeof props.geometry?.structureText === "string" ? props.geometry.structureText : "";
@@ -19,7 +19,7 @@ export function StructureViewer(props: StructureViewerProps) {
   return <TraceStructureViewer {...props} />;
 }
 
-function TraceStructureViewer({ geometry, compact = false, autoRotate = false, hologram = false, label = "Predicted structure", paletteKey, palette, colorMode: fixedColorMode }: StructureViewerProps) {
+function TraceStructureViewer({ geometry, compact = false, autoRotate = false, hologram = false, label = "Predicted structure", paletteKey, palette, colorMode: fixedColorMode, envelope = false }: StructureViewerProps) {
   const [yaw, setYaw] = useState(-.65);
   const [pitch, setPitch] = useState(.35);
   const [zoom, setZoom] = useState(1);
@@ -30,6 +30,7 @@ function TraceStructureViewer({ geometry, compact = false, autoRotate = false, h
   const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
   const rawId = useId();
   const filterId = `protein-surface-${rawId.replaceAll(":", "")}`;
+  const envelopeId = `protein-envelope-${rawId.replaceAll(":", "")}`;
   const points = useMemo(() => parsePoints(geometry?.points), [geometry]);
   const projected = useMemo(() => project(points, yaw, pitch, zoom), [points, yaw, pitch, zoom]);
   const activePalette = paletteChoice === "theme" ? undefined : findStructurePalette(paletteChoice) ?? findStructurePalette(palette) ?? (paletteKey ? structurePaletteForKey(paletteKey) : undefined);
@@ -83,9 +84,20 @@ function TraceStructureViewer({ geometry, compact = false, autoRotate = false, h
 
   return <div className={`structure-viewer ${compact ? "compact" : ""} ${hologram ? "hologram" : ""} representation-${representation}`} style={paletteStyle} data-structure-palette={activePalette?.id ?? "theme"}>
     {points.length ? <svg viewBox="0 0 800 600" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onWheel={wheel} onDoubleClick={reset}>
-      <defs><filter id={filterId} x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="7"/><feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"/></filter></defs>
+      <defs><filter id={filterId} x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="7"/><feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"/></filter>
+        {envelope && <filter id={envelopeId} x="-35%" y="-35%" width="170%" height="170%">
+          {/* Blur the residues into one blob, keep it faintly filled, and trace its edge as a rim. */}
+          <feGaussianBlur stdDeviation="10" result="blur"/>
+          <feColorMatrix in="blur" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" result="blob"/>
+          <feMorphology in="blob" operator="erode" radius="2.5" result="inner"/>
+          <feComposite in="blob" in2="inner" operator="out" result="rim"/>
+          <feComponentTransfer in="blob" result="fill"><feFuncA type="linear" slope=".2"/></feComponentTransfer>
+          <feComponentTransfer in="rim" result="edge"><feFuncA type="linear" slope=".6"/></feComponentTransfer>
+          <feMerge><feMergeNode in="fill"/><feMergeNode in="edge"/></feMerge>
+        </filter>}</defs>
       {hologram && Array.from({ length: 30 }, (_, index) => <line key={index} x1="0" x2="800" y1={index * 20} y2={index * 20} className="holo-scanline" style={{ stroke: "var(--structure-0)" }}/>)}
       {representation === "ribbon" && <>
+        {envelope && <g filter={`url(#${envelopeId})`}>{projected.map((point, index) => index % sampleEvery === 0 ? <circle key={`e-${index}`} cx={point.px} cy={point.py} r={Math.max(18, 30 * point.scale)} fill={color(point, index)}/> : null)}</g>}
         {projected.slice(1).map((point, index) => { const previous = projected[index]; if (previous.chain !== point.chain) return null; const width = Math.max(4, 12 * (previous.scale + point.scale) / 2); return <g key={index}><line className="comic-ink" x1={previous.px} y1={previous.py} x2={point.px} y2={point.py} strokeWidth={width + 5}/><line x1={previous.px} y1={previous.py} x2={point.px} y2={point.py} stroke={color(point, index)} strokeWidth={width} strokeLinecap="round" opacity={Math.max(.58, Math.min(1, .74 + point.depth * .002))}/></g>; })}
         {projected.map((point, index) => index % sampleEvery === 0 ? <circle key={`p-${index}`} cx={point.px} cy={point.py} r={Math.max(2, 3.8 * point.scale)} fill={color(point, index)} stroke="var(--comic-ink)" strokeWidth="1.5"/> : null)}
       </>}

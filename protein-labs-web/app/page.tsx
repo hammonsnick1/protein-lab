@@ -44,7 +44,6 @@ const welcomeGeometry: JsonObject = {
     y: 27 * Math.sin(index * .23 + .8) + 9 * Math.cos(index * .51),
     z: 30 * Math.cos(index * .19) + 7 * Math.sin(index * .47),
     chain: "A",
-    // Above 90, so confidence colouring draws it in AlphaFold's "very high" blue.
     plddt: 92,
   })),
 };
@@ -162,7 +161,7 @@ function StartupScreen({ mounted, ready, leaving, engineOnline, onStart }: { mou
         <span className="startup-orbit startup-orbit-one"/>
         <span className="startup-orbit startup-orbit-two"/>
         <div className="startup-hologram">
-          {mounted ? <StructureViewer geometry={welcomeGeometry} compact autoRotate hologram colorMode="confidence" label="Protein Lab"/> : <span className="startup-protein-seed"><i className="protein-lab-logo" style={{ backgroundImage: "url('./protein-lab-logo.png')" }} aria-hidden="true"/></span>}
+          {mounted ? <StructureViewer geometry={welcomeGeometry} compact autoRotate hologram colorMode="theme" palette="protein-lab" envelope label="Protein Lab"/> : <span className="startup-protein-seed"><i className="protein-lab-logo" style={{ backgroundImage: "url('./protein-lab-logo.png')" }} aria-hidden="true"/></span>}
         </div>
         <span className="startup-shadow"/>
       </div>
