@@ -4,7 +4,17 @@ Offline protein expression, purification, and analysis workspace. The app is an
 Electron desktop shell around a React UI, with a local Python engine that does
 every calculation on this computer. Nothing is sent to a server.
 
-## Layout
+## Everything in this folder
+
+    protein-lab                Launcher: runs the installed app against data/
+    build-and-install.sh       Fresh dependencies → tests → build → install
+    app/                       The installed app (not in git)
+      Protein-Labs.AppImage
+      Protein-Labs.previous.AppImage   the build it replaced, for rollback
+    data/                      Your projects database, settings and logs (not in git)
+      data/protein_labs.sqlite3
+    archive/                   Old builds, the September prototype data and the
+                               original Codex sources (not in git)
 
     protein-labs-web/          Desktop app: Electron shell, React UI, build config
       desktop/electron/        Main process; starts the engine and the window
@@ -20,33 +30,40 @@ every calculation on this computer. Nothing is sent to a server.
       protein_labs/            Python package: server, planner, analysis
       tests/                   Engine test suite (62 tests)
       protein-labs-backend.spec  PyInstaller recipe that builds the engine
-      dist/protein-labs-backend  The built engine (present on disk, not in git)
-    protein-labs/build-omarchy.sh  Full build: engine + packaged desktop app
 
-The relative position of the two directories matters: the Electron main process
-looks for the engine at `../../../protein-labs/backend/dist/protein-labs-backend`
+The relative position of the two source directories matters: the Electron main
+process looks for the engine at `../../../protein-labs/backend/dist/protein-labs-backend`
 when running unpackaged.
 
-## Running it
+## Using the app
+
+Open **Protein Lab** from the app menu, or run `protein-labs` in a terminal.
+Both go through `./protein-lab`, which starts `app/Protein-Labs.AppImage` with
+`--user-data-dir=data`, so your projects stay in this folder. Back up `data/`
+to back up everything you have made.
+
+## Rebuilding and installing
+
+    ./build-and-install.sh
+
+This recreates the engine's Python environment, runs the engine tests, builds
+the engine, does a clean `npm ci`, lints and type-checks the UI, packages the
+AppImage, and installs it into `app/` (keeping the previous build as
+`Protein-Labs.previous.AppImage`). It also points the app-menu entry and
+`~/.local/bin/protein-labs` at this folder, so rerun it after moving the folder.
+Close the app first; the script stops if the engine is still running.
+`data/` is never touched.
+
+## Developing
 
     cd protein-labs-web
-    npm ci                    # restores dependencies from package-lock.json
-    npm install-scripts approve electron   # lets Electron fetch its runtime
     npm run desktop:run       # builds the UI bundle and opens the app
 
-If the engine binary is missing (a fresh clone), build it first — see *Working
-on the engine* below.
+`desktop:run` uses Electron's default data directory (`~/.config/protein-labs`,
+which now only holds the copy your data was moved from). To try changes on a
+throwaway database, pass a scratch directory:
 
-`desktop:run` launches `dist/protein-labs-backend` automatically and stores data
-in the platform user-data directory (`~/.config/protein-labs/data` on Linux).
-
-## Building a distributable
-
-    cd protein-labs
-    ./build-omarchy.sh  # rebuilds the engine with PyInstaller, then packages
-
-Or, with the engine already built, `npm run desktop:package` from
-`protein-labs-web` produces a Linux AppImage.
+    npm run desktop:build:web && npx electron . --user-data-dir=/tmp/protein-lab-scratch
 
 ## Working on the engine
 
@@ -63,8 +80,8 @@ it up:
 
 ## What is not here
 
-`node_modules/`, `.venv/`, build output and the previous Flutter prototype are
-left out, and so is the built engine binary — it is 76 MB and reproducible from
+`node_modules/`, `.venv/`, build output, `app/`, `data/` and `archive/` are
+kept out of git, and so is the built engine binary — it is 76 MB and reproducible from
 `protein_labs/` with one PyInstaller command.
 
 Dependencies are limited to what the app imports. The UI needs 3dmol,
