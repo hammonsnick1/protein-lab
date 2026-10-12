@@ -6014,6 +6014,39 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .research-result-card > a svg {
   width: 15px;
 }
+/* PDB match closeness: identity, similarity and coverage side by side. */
+.pdb-metrics-legend {
+  margin: 0 0 8px;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.pdb-metrics-legend strong { color: var(--foreground); font-size: inherit; }
+.research-result-card .pdb-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 5px 0 2px;
+}
+.research-result-card .pdb-metrics > span {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  padding: 4px 9px;
+}
+.research-result-card .pdb-metrics b {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.research-result-card .pdb-metrics small { margin: 0; font-size: 11px; }
+.research-result-card .pdb-metrics.pending {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
 .research-result-card.failed {
   border-left-color: #e06565;
 }

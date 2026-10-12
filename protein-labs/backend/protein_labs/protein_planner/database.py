@@ -359,7 +359,7 @@ class Database:
                 (protein_id,),
             ).fetchall()
             pdb = connection.execute(
-                "SELECT * FROM pdb_matches WHERE protein_id = ? ORDER BY score DESC",
+                "SELECT * FROM pdb_matches WHERE protein_id = ? ORDER BY identity IS NULL, identity DESC, score DESC",
                 (protein_id,),
             ).fetchall()
             alphafold = connection.execute(

@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
-from Bio.Align import PairwiseAligner
+from Bio.Align import PairwiseAligner, substitution_matrices
 from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
 
@@ -406,6 +406,9 @@ class RCSBClient:
             "request_options": {
                 "paginate": {"start": 0, "rows": max(1, min(int(limit), 50))},
                 "results_content_type": ["experimental"],
+                # Without verbose results RCSB returns only identifiers and a
+                # score, dropping the sequence identity and E-value.
+                "results_verbosity": "verbose",
             },
         }
         raw = self.http.json(
@@ -429,8 +432,11 @@ class RCSBClient:
                     score=_number(result.get("score")),
                     identity=_number(context.get("sequence_identity")),
                     evalue=_number(context.get("evalue")),
+                    query_sequence=sequence,
                 )
             )
+        # Closest structures first.
+        records.sort(key=lambda record: record.get("identity") or 0, reverse=True)
         return records
 
     def fetch_record(
@@ -441,6 +447,7 @@ class RCSBClient:
         score: float | None = None,
         identity: float | None = None,
         evalue: float | None = None,
+        query_sequence: str = "",
     ) -> dict[str, Any]:
         entry = self.http.json(
             "GET", f"{self.data_url}/entry/{pdb_id}", service="RCSB PDB data"
@@ -462,6 +469,14 @@ class RCSBClient:
         struct = entry.get("struct") or {}
         polymer = entity.get("rcsb_polymer_entity") or {}
         identifiers = entity.get("rcsb_polymer_entity_container_identifiers") or {}
+        entity_sequence = re.sub(
+            r"\s+", "", str((entity.get("entity_poly") or {}).get("pdbx_seq_one_letter_code_can") or "")
+        )
+        comparison = (
+            local_alignment_metrics(query_sequence, entity_sequence)
+            if query_sequence and entity_sequence
+            else None
+        )
         sources = (
             entity.get("rcsb_entity_source_organism")
             or entity.get("entity_src_nat")
@@ -472,8 +487,14 @@ class RCSBClient:
             "pdbId": pdb_id,
             "entityId": str(entity_id),
             "score": score,
-            "identity": identity,
+            # Identity and similarity come from our own BLOSUM62 alignment so
+            # they are measured the same way; RCSB's identity is kept beside it.
+            "identity": comparison["identity"] if comparison else identity,
+            "similarity": comparison["similarity"] if comparison else None,
+            "comparison": comparison,
+            "rcsbIdentity": identity,
             "evalue": evalue,
+            "entitySequenceLength": len(entity_sequence) or None,
             "title": struct.get("title", ""),
             "entityDescription": polymer.get("pdbx_description", ""),
             "uniprotIds": [str(value) for value in identifiers.get("uniprot_ids") or []],
@@ -580,6 +601,65 @@ def representative_peptides(
         round(index * last_start / (count - 1)) for index in range(max(2, count))
     }
     return [sequence[start : start + length] for start in sorted(starts)]
+
+
+_BLOSUM62 = substitution_matrices.load("BLOSUM62")
+
+
+def local_alignment_metrics(query: str, target: str) -> dict[str, Any] | None:
+    """Compare two proteins the way BLAST reports a hit.
+
+    A local alignment scored with BLOSUM62 and BLAST's default gap costs
+    (11 to open, 1 per residue; Biopython charges the first residue as the
+    opening, hence -12/-1). Identity counts identical residues and similarity
+    counts identical or conservative ones (positive BLOSUM62 score), both as
+    fractions of the aligned length including gaps, matching BLAST's
+    Identities and Positives.
+    """
+    alphabet = set(_BLOSUM62.alphabet)
+    query = "".join(residue if residue in alphabet else "X" for residue in query.upper())
+    target = "".join(residue if residue in alphabet else "X" for residue in target.upper())
+    if not query or not target:
+        return None
+    aligner = PairwiseAligner(
+        mode="local",
+        substitution_matrix=_BLOSUM62,
+        open_gap_score=-12,
+        extend_gap_score=-1,
+    )
+    alignment = aligner.align(query, target)[0]
+    query_blocks, target_blocks = alignment.aligned
+    if not len(query_blocks):
+        return None
+    identities = positives = paired = 0
+    for (query_start, query_end), (target_start, target_end) in zip(query_blocks, target_blocks):
+        for a, b in zip(query[query_start:query_end], target[target_start:target_end]):
+            identities += a == b
+            positives += a == b or _BLOSUM62[a][b] > 0
+        paired += int(query_end) - int(query_start)
+    gaps = sum(
+        int(query_blocks[index + 1][0]) - int(query_blocks[index][1])
+        + int(target_blocks[index + 1][0]) - int(target_blocks[index][1])
+        for index in range(len(query_blocks) - 1)
+    )
+    length = paired + gaps
+    query_start, query_end = int(query_blocks[0][0]), int(query_blocks[-1][1])
+    return {
+        "method": "Local alignment, BLOSUM62, gap open 11 / extend 1",
+        "identity": identities / length,
+        "similarity": positives / length,
+        "identities": identities,
+        "positives": positives,
+        "gaps": gaps,
+        "alignmentLength": length,
+        "queryStart": query_start + 1,
+        "queryEnd": query_end,
+        "queryLength": len(query),
+        "queryCoverage": (query_end - query_start) / len(query),
+        "targetStart": int(target_blocks[0][0]) + 1,
+        "targetEnd": int(target_blocks[-1][1]),
+        "targetLength": len(target),
+    }
 
 
 def global_sequence_metrics(query: str, target: str) -> dict[str, float]:
