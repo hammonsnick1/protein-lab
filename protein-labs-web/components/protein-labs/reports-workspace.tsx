@@ -1,23 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDown, ArrowUp, Check, Eye, EyeOff, FileCode2, FileText, Image as ImageIcon,
-  LoaderCircle, Plus, Printer, Trash2, X,
+  ArrowDown, ArrowUp, Check, Eye, EyeOff, FileCode2, FileDown, FileText, Image as ImageIcon,
+  LoaderCircle, Plus, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
+import { CaveatsBlock, MethodsBlock, PurityBlock, SecBlock, YieldBlock } from "@/components/protein-labs/report-blocks";
+import { desktopBridge } from "@/lib/desktop-bridge";
+import { captureFigure } from "@/lib/report-figures";
+import {
+  buildReportData, emptyYieldEntry, formatMass, formatNumber, loadYieldEntries, yieldStages,
+  type ReportData, type YieldEntry,
+} from "@/lib/report-data";
+import { dedupe, reportDocumentHtml, runningHeader, type PrintBlock, type PrintFigure, type PrintPage } from "@/lib/report-print";
 
 /**
  * Publication-quality purification report.
  *
  * One page per stage of the work, each pre-filled from what the project
- * actually saved and each fully editable. The pages print as a clean record a
- * client or a lab can file, so the on-screen editing controls are the only
- * thing the print stylesheet removes.
+ * actually saved and each fully editable, plus the consolidated pages that
+ * carry the purification itself: yield across every stage, purity per stage
+ * from the gel, the size-exclusion mass with its fit quality, a methods
+ * section a reader could follow, and every flag the engines raised.
+ *
+ * `lib/report-data.ts` is the only place project data is read, and
+ * `lib/report-print.ts` turns the same model into the printable document the
+ * PDF and the standalone HTML are both written from.
  */
 
 type Figure = { id: string; jobId: string; caption: string };
@@ -40,37 +53,72 @@ type PageTemplate = {
   // Workflow jobs whose saved configuration fills this page in.
   sources: string[];
   figures: boolean;
+  /** Calculated pages hold a table rather than an A4 box of prose. */
+  flows?: boolean;
 };
 
 const pageTemplates: PageTemplate[] = [
   { id: "properties", title: "Protein properties", subtitle: "Target, construct, and predicted characteristics", prompt: "Summarise what the protein is, why it was made, and anything a reader needs before the methods.", sources: [], figures: false },
   { id: "vector", title: "Expression vector", subtitle: "The annotated plasmid carrying the construct", prompt: "Note the backbone, the cloning strategy, how the insert was verified, and the sequencing result.", sources: ["expression-planning"], figures: false },
+  { id: "methods", title: "Methods", subtitle: "Conditions a reader could follow to repeat the work", prompt: "Add anything the planning jobs cannot know: equipment, timings, temperatures, and deviations.", sources: [], figures: false, flows: true },
   { id: "expression", title: "Transformation and expression", subtitle: "Host, medium, induction, and harvest", prompt: "Record the starting material, culture scale, induction conditions, harvest, and any deviation from the plan.", sources: ["expression-system", "expression-planning", "transformation-expression"], figures: true },
   { id: "lysis", title: "Cell lysis and clarification", subtitle: "Disruption and removal of insoluble material", prompt: "Record cell mass, resuspension volume, disruption settings, temperature, clarification, and retained samples.", sources: ["purification-lysis"], figures: true },
   { id: "affinity", title: "Affinity capture", subtitle: "Tag capture on the selected medium", prompt: "Record load, flow-through, wash volumes, elution, pooled fractions, yield, and purity.", sources: ["purification-affinity"], figures: true },
   { id: "cleavage", title: "Affinity-tag cleavage", subtitle: "Protease treatment and completion", prompt: "Record protease ratio, time, temperature, completion checked by gel, and retained samples.", sources: ["purification-cleavage"], figures: true },
   { id: "cleanup", title: "Subtractive cleanup", subtitle: "Removal of tag, uncleaved fusion, and protease", prompt: "Record load, flow-through recovery, and how completely the tagged species were removed.", sources: ["purification-subtractive"], figures: true },
   { id: "sec", title: "SEC polishing", subtitle: "Final size-exclusion step and solution state", prompt: "Record column, injection volume, flow rate, elution volume, pooled fractions, and the oligomeric state.", sources: ["purification-sec"], figures: true },
+  { id: "yield", title: "Yield and recovery", subtitle: "Volume, total protein, and recovery at each stage", prompt: "Explain anything the table cannot: pooling decisions, samples held back, and losses you can account for.", sources: ["purification-roadmap"], figures: false, flows: true },
+  { id: "purity", title: "Purity by stage", subtitle: "Quantified from the saved gel densitometry", prompt: "Note which lane was loaded from which stage, the load per lane, and the stain used.", sources: ["gel-analysis"], figures: true, flows: true },
+  { id: "mass", title: "Size-exclusion molecular mass", subtitle: "Apparent mass, calibration, and fit quality", prompt: "Interpret the oligomeric state and say how confident the assignment is.", sources: ["chromatogram-studio"], figures: true, flows: true },
   { id: "quality", title: "Quality control and storage", subtitle: "Final concentration, purity, and handling", prompt: "Record final concentration and how it was measured, purity, aliquots, storage buffer, temperature, and freeze–thaw guidance.", sources: ["purification-buffer", "purification-workflow"], figures: true },
+  { id: "caveats", title: "Caveats and engine flags", subtitle: "Every flag the analysis engines raised on these numbers", prompt: "Add any caveat the software cannot see, and say what was done about the flags above.", sources: [], figures: false, flows: true },
 ];
+
+/** Which calculated block, if any, a page carries. */
+const dataBlocks: Record<string, PrintBlock["kind"]> = {
+  yield: "yield",
+  purity: "purity",
+  mass: "sec",
+  methods: "methods",
+  caveats: "flags",
+};
 
 export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle; onChanged: () => Promise<void> }) {
   const saved = bundle.projectNotebook;
   const [title, setTitle] = useState(saved?.title ?? `${bundle.protein.name} — purification report`);
   const [summary, setSummary] = useState(saved?.summary ?? "Expression, purification, and quality-control record.");
   const [pages, setPages] = useState<ReportPage[]>(() => loadPages(saved?.sections));
+  const [entries, setEntries] = useState<YieldEntry[]>(() => loadEntries(bundle, saved?.sections));
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState("");
   const [dirty, setDirty] = useState(false);
   const [picker, setPicker] = useState<string>("");
   const [geometry, setGeometry] = useState<JsonObject | null>(null);
   const [vectors, setVectors] = useState<JsonObject[]>([]);
   const hydrated = useRef(false);
+  const desktop = useMemo(() => desktopBridge(), []);
 
   const analyses = useMemo(
     () => bundle.projectJobs.filter((job) => job.appType === "chromatogram-studio" || job.appType === "gel-analysis"),
     [bundle.projectJobs],
   );
+  // Everything calculated in the report comes from one derivation of the
+  // project, so the screen, the PDF, and the HTML export cannot disagree.
+  const data = useMemo(() => buildReportData(bundle, entries), [bundle, entries]);
+  // Figure numbers run across the whole report, assigned once here so the
+  // caption on screen and the caption in the printed document are the same
+  // number.
+  const figureNumbers = useMemo(() => {
+    const numbers = new Map<string, number>();
+    let next = 0;
+    for (const page of pages.filter((value) => !value.hidden)) {
+      if (page.templateId === "properties" && geometry) numbers.set(plateId("structure", page.id), (next += 1));
+      if (page.templateId === "vector" && vectors.length) numbers.set(plateId("vector", page.id), (next += 1));
+      for (const figure of page.figures) numbers.set(figure.id, (next += 1));
+    }
+    return numbers;
+  }, [geometry, pages, vectors.length]);
 
   useEffect(() => {
     if (hydrated.current || dirty) return;
@@ -78,7 +126,8 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
     setTitle(saved?.title ?? `${bundle.protein.name} — purification report`);
     setSummary(saved?.summary ?? "Expression, purification, and quality-control record.");
     setPages(loadPages(saved?.sections));
-  }, [bundle.protein.name, dirty, saved]);
+    setEntries(loadEntries(bundle, saved?.sections));
+  }, [bundle, dirty, saved]);
 
   // The predicted structure is stored separately from the bundle, so the
   // cover page fetches the saved model's coordinates once.
@@ -107,9 +156,19 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
     return () => window.clearTimeout(timer);
     // Autosave follows edits rather than a refreshed bundle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, summary, pages, dirty]);
+  }, [title, summary, pages, entries, dirty]);
 
   function edit(next: ReportPage[]) { setPages(next); setDirty(true); }
+  function editEntry(id: string, patch: Partial<YieldEntry>) {
+    const stage = data.yieldRows.find((row) => row.id === id)?.stage ?? "";
+    setEntries((current) => {
+      const existing = current.find((value) => value.id === id);
+      return existing
+        ? current.map((value) => (value.id === id ? { ...value, ...patch } : value))
+        : [...current, { ...emptyYieldEntry(id, stage), ...patch }];
+    });
+    setDirty(true);
+  }
   function updatePage(id: string, patch: Partial<ReportPage>) { edit(pages.map((page) => (page.id === id ? { ...page, ...patch } : page))); }
   function movePage(index: number, direction: -1 | 1) {
     const target = index + direction;
@@ -148,27 +207,67 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
     setBusy(true);
     if (!automatic) setMessage("");
     try {
-      await proteinLabsApi.saveNotebook(bundle.protein.id, title, summary, pages.map(toSection) as unknown as JsonObject[]);
+      const sections = [...pages.map(toSection), yieldSection(entries)] as unknown as JsonObject[];
+      await proteinLabsApi.saveNotebook(bundle.protein.id, title, summary, sections);
       setDirty(false);
       if (!automatic) { await onChanged(); setMessage("Report saved locally."); }
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }
   }
 
+  /**
+   * The printable document, built from what is on screen.
+   *
+   * Figures are lifted out of the live report as SVG rather than redrawn, so a
+   * chromatogram reaches the PDF as vector paths and stays sharp at any zoom.
+   */
+  const printInput = useCallback((mode: "pdf" | "html") => ({
+    mode,
+    title,
+    summary,
+    preparedOn: new Date().toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" }),
+    protein: {
+      name: bundle.protein.name,
+      length: bundle.protein.sequence.length,
+      organism: bundle.protein.organism,
+      geneName: bundle.protein.geneName,
+    },
+    data,
+    pages: pages.filter((page) => !page.hidden).map((page) => printPage(page, bundle, vectors, figureNumbers)),
+  }), [bundle, data, figureNumbers, pages, summary, title, vectors]);
+
+  async function exportPdf() {
+    if (!desktop) {
+      setMessage("PDF export needs the Protein Lab desktop app, which writes the file with a real PDF engine. In a browser, use Standalone HTML and print it to PDF.");
+      return;
+    }
+    setExporting(true);
+    setMessage("");
+    try {
+      const document = reportDocumentHtml(printInput("pdf"));
+      const result = await desktop.exportReportPdf({
+        html: document,
+        filename: safeName(title),
+        header: runningHeader(title, bundle.protein.name),
+        footer: `${bundle.protein.name} · prepared ${new Date().toLocaleDateString()}`,
+      });
+      if (result.ok) setMessage(`Report written to ${result.path}.`);
+      else if (result.cancelled) setMessage("PDF export cancelled.");
+      else setMessage(result.reason ?? "The PDF could not be written.");
+    } catch (reason) {
+      setMessage(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function exportHtml() {
-    const blob = new Blob([reportHtml(bundle, title, summary, pages, analyses)], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url; link.download = `${safeName(title)}.html`; link.click();
-    URL.revokeObjectURL(url);
-    setMessage("A standalone HTML report was exported.");
+    download(`${safeName(title)}.html`, reportDocumentHtml(printInput("html")), "text/html");
+    setMessage("A standalone HTML report was exported. It prints with the same layout as the PDF.");
   }
   function exportMarkdown() {
-    const blob = new Blob([reportMarkdown(bundle, title, summary, pages)], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url; link.download = `${safeName(title)}.md`; link.click();
-    URL.revokeObjectURL(url);
+    download(`${safeName(title)}.md`, reportMarkdown(bundle, title, summary, pages, data), "text/markdown");
+    setMessage("A Markdown summary was exported.");
   }
 
   const visible = pages.filter((page) => !page.hidden);
@@ -179,7 +278,10 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
       <h2>Purification report</h2>
       <p>Each page is filled in from what this project saved and stays fully editable. Print or export when the record is complete.</p>
       <Button onClick={() => void save(false)} disabled={busy}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save report</Button>
-      <Button variant="outline" onClick={() => window.print()}><Printer/> Print / PDF</Button>
+      <Button onClick={() => void exportPdf()} disabled={exporting || !desktop} title={desktop ? "Write a PDF with selectable text and vector figures" : "Available in the Protein Lab desktop app"}>
+        {exporting ? <LoaderCircle className="spin"/> : <FileDown/>} {exporting ? "Writing PDF…" : "Export PDF"}
+      </Button>
+      {!desktop && <small className="reports-sidebar-note">PDF export runs in the desktop app. In a browser, export standalone HTML and print that.</small>}
       <hr/>
       <strong>Pages</strong>
       <ol className="reports-page-list">
@@ -227,7 +329,8 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
         const template = pageTemplates.find((value) => value.id === page.templateId);
         const facts = pageFacts(bundle, page.templateId);
         const pageNumber = page.hidden ? null : visible.indexOf(page) + 1;
-        return <article key={page.id} id={`report-page-${page.id}`} className={`report-sheet ${page.hidden ? "is-excluded" : ""}`}>
+        const block = dataBlocks[page.templateId];
+        return <article key={page.id} id={`report-page-${page.id}`} className={`report-sheet ${template?.flows ? "report-sheet-flow" : ""} ${page.hidden ? "is-excluded" : ""}`}>
           <div className="report-sheet-inner">
             <header className="report-sheet-header">
               <span>
@@ -237,14 +340,19 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
               <span className="report-page-number">{pageNumber ? `Page ${pageNumber}` : "Not included"}</span>
             </header>
 
-            {page.templateId === "properties" && <PropertiesBlocks bundle={bundle} geometry={geometry}/>}
-            {page.templateId === "vector" && <VectorBlocks bundle={bundle} vectors={vectors}/>}
+            {page.templateId === "properties" && <PropertiesBlocks bundle={bundle} geometry={geometry} plate={figureNumbers.get(plateId("structure", page.id)) ?? null} frameId={plateId("structure", page.id)}/>}
+            {page.templateId === "vector" && <VectorBlocks bundle={bundle} vectors={vectors} plate={figureNumbers.get(plateId("vector", page.id)) ?? null} frameId={plateId("vector", page.id)}/>}
+            {block === "yield" && <YieldBlock rows={data.yieldRows} entries={entries} onEntryChange={editEntry}/>}
+            {block === "purity" && <PurityBlock purity={data.purity}/>}
+            {block === "sec" && <SecBlock sec={data.sec}/>}
+            {block === "methods" && <MethodsBlock data={data}/>}
+            {block === "flags" && <CaveatsBlock flags={data.flags}/>}
 
             {page.showFacts && facts.length > 0 && <section className="report-facts">
               <h3>Recorded plan</h3>
               <dl>{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
             </section>}
-            {page.showFacts && facts.length === 0 && page.templateId !== "properties" && page.templateId !== "vector" && <p className="report-missing">
+            {page.showFacts && facts.length === 0 && !block && page.templateId !== "properties" && page.templateId !== "vector" && <p className="report-missing">
               Nothing has been saved for this step yet. Complete it in the workflow and the plan will appear here, or write the record by hand below.
             </p>}
 
@@ -261,9 +369,11 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
               {page.figures.map((figure, index) => {
                 const job = analyses.find((value) => value.id === figure.jobId);
                 return <figure key={figure.id}>
-                  <div className="report-figure-frame">{job ? <AnalysisFigure job={job}/> : <p className="report-missing">That analysis is no longer saved in this project.</p>}</div>
+                  <div className="report-figure-frame" data-report-figure={figure.id}>
+                    {job ? <AnalysisFigure job={job}/> : <p className="report-missing">That analysis is no longer saved in this project.</p>}
+                  </div>
                   <figcaption>
-                    <b>Figure {index + 1}.</b>
+                    <b>Figure {figureNumbers.get(figure.id) ?? index + 1}.</b>
                     <input value={figure.caption} onChange={(event) => updateFigure(page.id, figure.id, { caption: event.target.value })}/>
                     <button className="report-figure-remove" title="Remove figure" onClick={() => removeFigure(page.id, figure.id)}><Trash2/></button>
                   </figcaption>
@@ -300,7 +410,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
   </main>;
 }
 
-function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometry: JsonObject | null }) {
+function PropertiesBlocks({ bundle, geometry, plate, frameId }: { bundle: ProteinBundle; geometry: JsonObject | null; plate: number | null; frameId: string }) {
   const protparam = bundle.protparam?.result ?? {};
   const construct = constructSummary(bundle);
   const vector = jobConfig(bundle, "expression-planning");
@@ -309,12 +419,12 @@ function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometr
   return <>
     <section className="report-properties">
       <div className="report-structure">
-        <div className="report-structure-frame">
+        <div className="report-structure-frame" data-report-figure={frameId}>
           {geometry
             ? <StructureViewer geometry={geometry} compact paletteKey={bundle.protein.id} label=""/>
             : <p className="report-missing">No predicted structure has been saved. Run the Structure prediction job to include it.</p>}
         </div>
-        <small>{model ? `${text(model.name, text(model.modelId))} · ${text(model.source, "AlphaFold")}${geometry?.meanPlddt ? ` · mean pLDDT ${text(geometry.meanPlddt)}` : ""}` : "Predicted structure"}</small>
+        <small>{plate ? <b>Figure {plate}. </b> : null}{structureCaption(model, geometry)}</small>
       </div>
       <dl className="report-property-grid">
         <div><dt>Molecular weight</dt><dd>{number(protparam.molecularWeightDa, 2)} Da</dd></div>
@@ -344,9 +454,8 @@ function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometr
   </>;
 }
 
-function VectorBlocks({ bundle, vectors }: { bundle: ProteinBundle; vectors: JsonObject[] }) {
-  const planned = String(jobConfig(bundle, "expression-planning").vectorId ?? "");
-  const vector = vectors.find((value) => String(value.id) === planned) ?? vectors[0] ?? null;
+function VectorBlocks({ bundle, vectors, plate, frameId }: { bundle: ProteinBundle; vectors: JsonObject[]; plate: number | null; frameId: string }) {
+  const vector = plannedVector(bundle, vectors);
   if (!vector) {
     return <p className="report-missing">No vector has been saved for this project. Build one in Expression vector design and the annotated map will appear here.</p>;
   }
@@ -354,9 +463,10 @@ function VectorBlocks({ bundle, vectors }: { bundle: ProteinBundle; vectors: Jso
   const insert = features.find((feature) => feature.isInsert === true);
   const length = Number(vector.length ?? String(vector.sequence ?? "").length) || 0;
   return <section className="report-vector">
-    <div className="report-vector-map">
+    <div className="report-vector-map" data-report-figure={frameId}>
       <PlasmidMap name={text(vector.name, "Vector")} length={length} circular={vector.circular !== false} features={features}/>
     </div>
+    {plate && <small className="report-plate-caption"><b>Figure {plate}.</b> Annotated map of {text(vector.name, "the expression vector")}, {length.toLocaleString()} bp, with {features.length} saved annotations.</small>}
     <dl className="report-property-grid">
       <div><dt>Vector</dt><dd>{text(vector.name)}</dd></div>
       <div><dt>Length</dt><dd>{length.toLocaleString()} bp</dd></div>
@@ -457,7 +567,15 @@ function PlasmidMap({ name, length, circular, features }: { name: string; length
   </svg>;
 }
 
-/** Chromatogram traces and gel images both come straight from the saved job. */
+/**
+ * A chromatogram or gel, drawn for print.
+ *
+ * The trace is vector from end to end: axes labelled with the units the
+ * Chromatogram Studio project recorded, fraction windows marked where they
+ * were collected, and peaks labelled with the apparent mass the SEC
+ * calibration assigned. Traces are distinguished by dash pattern as well as
+ * colour so the figure survives a greyscale printer.
+ */
 function AnalysisFigure({ job }: { job: ProjectJob }) {
   if (job.appType === "gel-analysis") {
     const preview = String(job.config.previewBase64 ?? "");
@@ -466,24 +584,48 @@ function AnalysisFigure({ job }: { job: ProjectJob }) {
       ? <img className="report-gel-image" alt={job.name} src={`data:image/png;base64,${preview}`}/>
       : <p className="report-missing">This gel analysis has no saved image.</p>;
   }
-  const traces = array(job.config.traces).filter((trace) => trace.visible !== false);
-  const series = traces.map((trace) => ({
-    name: String(trace.name ?? "Trace"),
-    color: String(trace.color ?? "#444"),
-    points: array(trace.points).map((point) => ({ x: Number(point.x), y: Number(point.y) })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
-  })).filter((trace) => trace.points.length > 1);
+  const figure = asObject(job.config.figure);
+  const series = array(job.config.traces)
+    .filter((trace) => trace.visible !== false)
+    .map((trace, index) => ({
+      name: text(trace.name, `Trace ${index + 1}`),
+      color: String(trace.color ?? "#2b3a42"),
+      dash: dashPatterns[index % dashPatterns.length],
+      points: array(trace.points)
+        .map((point) => ({ x: Number(point.x), y: Number(point.y) }))
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
+    }))
+    .filter((trace) => trace.points.length > 1);
   if (!series.length) return <p className="report-missing">This chromatogram has no saved traces.</p>;
+
   const xs = series.flatMap((trace) => trace.points.map((point) => point.x));
   const ys = series.flatMap((trace) => trace.points.map((point) => point.y));
   const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(0, ...ys), yMax = Math.max(...ys);
-  const W = 640, H = 300, left = 62, right = 16, top = 16, bottom = 44;
+  const W = 680, H = 340, left = 72, right = 18, top = 20, bottom = 58;
   const sx = (value: number) => left + ((value - xMin) / Math.max(1e-12, xMax - xMin)) * (W - left - right);
   const sy = (value: number) => H - bottom - ((value - yMin) / Math.max(1e-12, yMax - yMin)) * (H - top - bottom);
   const ticks = (low: number, high: number) => Array.from({ length: 5 }, (_, index) => low + (index / 4) * (high - low));
   const digits = yMax - yMin < 1 ? 3 : yMax - yMin < 20 ? 2 : 0;
-  return <svg className="report-chromatogram" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={job.name}>
-    <line x1={left} x2={W - right} y1={H - bottom} y2={H - bottom} stroke="currentColor"/>
-    <line x1={left} x2={left} y1={top} y2={H - bottom} stroke="currentColor"/>
+  const inRange = (value: unknown) => {
+    const position = Number(value);
+    return Number.isFinite(position) && position >= xMin && position <= xMax;
+  };
+  const fractions = array(job.config.fractions).filter((value) => inRange(value.start) && inRange(value.end));
+  const peaks = array(job.config.peaks).filter((value) => inRange(value.apexX));
+
+  return <svg className="report-chromatogram" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${job.name}: ${series.map((trace) => trace.name).join(", ")}`}>
+    {/* Collected fractions sit behind the trace as light bands with their names. */}
+    {fractions.map((fraction, index) => {
+      const start = sx(Number(fraction.start)), end = sx(Number(fraction.end));
+      return <g key={`f${index}`}>
+        <rect x={Math.min(start, end)} y={top} width={Math.max(1.5, Math.abs(end - start))} height={H - bottom - top} fill="#9aa3a9" fillOpacity=".14"/>
+        {/* Fraction names sit at the foot of their band, clear of the peak
+            callouts along the top. */}
+        <text x={(start + end) / 2} y={H - bottom - 6} textAnchor="middle" fontSize="8.5" fill="#5c656b" {...halo}>{text(fraction.name, "")}</text>
+      </g>;
+    })}
+    <line x1={left} x2={W - right} y1={H - bottom} y2={H - bottom} stroke="currentColor" strokeWidth="1.1"/>
+    <line x1={left} x2={left} y1={top} y2={H - bottom} stroke="currentColor" strokeWidth="1.1"/>
     {ticks(xMin, xMax).map((value) => <g key={`x${value}`}>
       <line x1={sx(value)} x2={sx(value)} y1={H - bottom} y2={H - bottom + 5} stroke="currentColor"/>
       <text x={sx(value)} y={H - bottom + 18} textAnchor="middle" fontSize="10">{value.toFixed(xMax - xMin < 10 ? 1 : 0)}</text>
@@ -496,15 +638,40 @@ function AnalysisFigure({ job }: { job: ProjectJob }) {
       key={trace.name}
       fill="none"
       stroke={trace.color}
-      strokeWidth="1.6"
+      strokeWidth="1.5"
+      strokeDasharray={series.length > 1 ? trace.dash : undefined}
+      strokeLinejoin="round"
       points={trace.points.map((point) => `${sx(point.x).toFixed(1)},${sy(point.y).toFixed(1)}`).join(" ")}
     />)}
+    {/* A peak is labelled with the mass the calibration gave it, or with its
+        elution volume when the calibration could not assign one. */}
+    {peaks.map((peak, index) => {
+      const x = sx(Number(peak.apexX));
+      const mass = Number(peak.mwKDa);
+      const label = Number.isFinite(mass) && mass > 0 ? formatMass(mass) : `${Number(peak.apexX).toFixed(2)} mL`;
+      return <g key={`p${index}`}>
+        <line x1={x} x2={x} y1={top + 18} y2={top + 26} stroke="currentColor" strokeWidth=".9"/>
+        <text x={x} y={top + 15} textAnchor="middle" fontSize="9" fontWeight="600" {...halo}>{text(peak.name, `Peak ${index + 1}`)}</text>
+        <text x={x} y={top + 36} textAnchor="middle" fontSize="8.5" fill="#5c656b" {...halo}>{label}</text>
+      </g>;
+    })}
+    <text x={left + (W - left - right) / 2} y={H - 8} textAnchor="middle" fontSize="11" fontWeight="600">
+      {text(figure.xLabel, "Elution volume (mL)")}
+    </text>
+    <text transform={`translate(16 ${top + (H - bottom - top) / 2}) rotate(-90)`} textAnchor="middle" fontSize="11" fontWeight="600">
+      {text(figure.yLabel, "Response (mAU)")}
+    </text>
     {series.length > 1 && series.map((trace, index) => <g key={`k${trace.name}`}>
-      <line x1={W - right - 92} x2={W - right - 74} y1={top + 10 + index * 14} y2={top + 10 + index * 14} stroke={trace.color} strokeWidth="2.4"/>
-      <text x={W - right - 68} y={top + 13 + index * 14} fontSize="10">{trace.name}</text>
+      <line x1={W - right - 104} x2={W - right - 82} y1={top + 8 + index * 13} y2={top + 8 + index * 13} stroke={trace.color} strokeWidth="2" strokeDasharray={trace.dash}/>
+      <text x={W - right - 76} y={top + 11 + index * 13} fontSize="9">{trace.name}</text>
     </g>)}
   </svg>;
 }
+
+/** Greyscale-safe trace styles: colour alone is not enough on a printer. */
+const dashPatterns = ["", "6 3", "2 2.5", "8 3 2 3", "1 2"];
+/** A label that crosses the trace stays readable, on screen and in print. */
+const halo = { stroke: "#ffffff", strokeWidth: 3, paintOrder: "stroke" as const, strokeLinejoin: "round" as const };
 
 function defaultPages(): ReportPage[] {
   return pageTemplates.map((template) => ({
@@ -520,10 +687,12 @@ function defaultPages(): ReportPage[] {
 }
 
 function loadPages(sections: JsonObject[] | undefined): ReportPage[] {
-  if (!Array.isArray(sections) || !sections.length) return defaultPages();
+  // The yield table is stored as a section but is not a page of its own.
+  const pageSections = (sections ?? []).filter((value) => value.type !== "report-yield");
+  if (!pageSections.length) return defaultPages();
   // Sections written by the earlier notebook have no page data; they come
   // through as extra pages so nothing a researcher wrote is lost.
-  return sections.map((raw, index) => {
+  return pageSections.map((raw, index) => {
     const data = asObject(raw.data);
     return {
       id: String(raw.id ?? crypto.randomUUID()),
@@ -550,6 +719,33 @@ function toSection(page: ReportPage) {
     content: page.content,
     sourceAppType: page.templateId,
     data: { templateId: page.templateId, subtitle: page.subtitle, hidden: page.hidden, showFacts: page.showFacts, figures: page.figures },
+  };
+}
+
+/**
+ * The yield table a saved report carries.
+ *
+ * The measurements belong to the report rather than to any planning job, so
+ * they ride along in the notebook as one extra section. A stage the roadmap no
+ * longer contains keeps its row in storage but is not shown, so renaming a
+ * roadmap step does not silently delete recorded numbers.
+ */
+function loadEntries(bundle: ProteinBundle, sections: JsonObject[] | undefined): YieldEntry[] {
+  const section = (sections ?? []).find((value) => value.type === "report-yield");
+  const stored = loadYieldEntries(asObject(section?.data).rows);
+  const stages = yieldStages(bundle);
+  return stages.map((stage) => stored.find((entry) => entry.id === stage.id) ?? emptyYieldEntry(stage.id, stage.stage))
+    .concat(stored.filter((entry) => !stages.some((stage) => stage.id === entry.id)));
+}
+
+function yieldSection(entries: YieldEntry[]) {
+  return {
+    id: "report-yield",
+    type: "report-yield",
+    title: "Yield and recovery",
+    content: "",
+    sourceAppType: "purification-roadmap",
+    data: { rows: entries },
   };
 }
 
@@ -632,12 +828,132 @@ function constructSummary(bundle: ProteinBundle) {
   };
 }
 
-function reportMarkdown(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[]) {
+/* ========================================================================
+   Building the printable document
+   ======================================================================== */
+
+/** Stable frame ids for the two figures a page draws rather than places. */
+function plateId(kind: "structure" | "vector", pageId: string) {
+  return `plate-${kind}-${pageId}`;
+}
+
+function plannedVector(bundle: ProteinBundle, vectors: JsonObject[]) {
+  const planned = String(jobConfig(bundle, "expression-planning").vectorId ?? "");
+  return vectors.find((value) => String(value.id) === planned) ?? vectors[0] ?? null;
+}
+
+function structureCaption(model: JsonObject | undefined, geometry: JsonObject | null) {
+  if (!model) return "Predicted structure";
+  const parts = [text(model.name, text(model.modelId)), text(model.source, "AlphaFold")];
+  if (geometry?.meanPlddt) parts.push(`mean pLDDT ${text(geometry.meanPlddt)}`);
+  return parts.filter((value) => value && value !== "—").join(" · ");
+}
+
+/**
+ * One report page, ready to print.
+ *
+ * Figures are captured out of the live DOM rather than re-derived, so the
+ * exported document carries the same vector markup the reader is looking at.
+ */
+function printPage(
+  page: ReportPage,
+  bundle: ProteinBundle,
+  vectors: JsonObject[],
+  figureNumbers: Map<string, number>,
+): PrintPage {
+  const blocks: PrintBlock[] = [];
+  if (page.templateId === "properties") {
+    const protparam = bundle.protparam?.result ?? {};
+    const construct = constructSummary(bundle);
+    const host = jobConfig(bundle, "expression-planning");
+    const system = jobConfig(bundle, "expression-system");
+    const frame = plateId("structure", page.id);
+    const figureNo = figureNumbers.get(frame);
+    blocks.push({
+      kind: "properties",
+      figure: figureNo ? { ...captureFigure(frame, structureCaption(bundle.alphaFoldModels[0], null)), number: figureNo } : null,
+      rows: [
+        ["Molecular weight", `${number(protparam.molecularWeightDa, 2)} Da`],
+        ["ε₂₈₀ (reduced cysteines)", `${number(asObject(protparam.extinctionCoefficient280).reducedMolarM1Cm1, 0)} M⁻¹cm⁻¹`],
+        ["ε₂₈₀ (cystines formed)", `${number(asObject(protparam.extinctionCoefficient280).oxidizedMolarM1Cm1, 0)} M⁻¹cm⁻¹`],
+        ["Theoretical pI", number(protparam.theoreticalPI, 2)],
+        ["Residues", String(bundle.protein.sequence.length)],
+        ["Expression host", text(system.strainName, text(system.hostSystem, "Not selected"))],
+      ],
+    });
+    blocks.push({
+      kind: "construct",
+      header: ["Species", "Residues", "Molecular weight (Da)", "ε₂₈₀ reduced (M⁻¹cm⁻¹)"],
+      rows: [
+        ["Uncleaved fusion", construct.fusionLength, construct.fusionMass, construct.fusionExt],
+        ["After tag cleavage", construct.cleavedLength, construct.cleavedMass, construct.cleavedExt],
+      ],
+      facts: [
+        ["Affinity tag", construct.tag],
+        ["Cleavage", construct.protease],
+        ["Expression vector", text(host.vectorName, text(system.vectorFamilyName, "Not selected"))],
+      ],
+    });
+  }
+  if (page.templateId === "vector") {
+    const vector = plannedVector(bundle, vectors);
+    const features = array(vector?.features);
+    const insert = features.find((feature) => feature.isInsert === true);
+    const length = Number(vector?.length ?? String(vector?.sequence ?? "").length) || 0;
+    const frame = plateId("vector", page.id);
+    const figureNo = figureNumbers.get(frame);
+    blocks.push({
+      kind: "vector",
+      figure: vector && figureNo
+        ? { ...captureFigure(frame, `Annotated map of ${text(vector.name, "the expression vector")}, ${length.toLocaleString()} bp, with ${features.length} saved annotations.`), number: figureNo }
+        : null,
+      note: "No vector has been saved for this project.",
+      facts: vector ? [
+        ["Vector", text(vector.name)],
+        ["Length", `${length.toLocaleString()} bp`],
+        ["Topology", vector.circular === false ? "Linear" : "Circular"],
+        ["Annotations", String(features.length)],
+        ["Insert", insert ? text(insert.name) : "Not marked"],
+        ["Insert length", insert ? `${Number(insert.end) - Number(insert.start)} bp` : ""],
+      ] : [],
+    });
+  }
+  const dataBlock = dataBlocks[page.templateId];
+  if (dataBlock) blocks.push({ kind: dataBlock } as PrintBlock);
+  if (page.showFacts) {
+    const facts = pageFacts(bundle, page.templateId);
+    if (facts.length) blocks.push({ kind: "facts", title: "Recorded plan", rows: facts });
+  }
+  blocks.push({ kind: "prose", text: page.content });
+
+  const figures: PrintFigure[] = page.figures.map((figure) => ({
+    ...captureFigure(figure.id, figure.caption),
+    number: figureNumbers.get(figure.id) ?? 0,
+  }));
+  return { id: page.id, title: page.title, subtitle: page.subtitle, blocks, figures };
+}
+
+/* ========================================================================
+   Exports
+   ======================================================================== */
+
+function download(filename: string, content: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** A plain-text companion to the PDF, for pasting into a lab wiki. */
+function reportMarkdown(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], data: ReportData) {
   const lines = [`# ${title}`, "", summary, "", `**${bundle.protein.name}** · ${bundle.protein.sequence.length} aa · ${bundle.protein.organism || "organism not entered"}`, ""];
   for (const page of pages.filter((value) => !value.hidden)) {
     lines.push(`## ${page.title}`);
     if (page.subtitle) lines.push(`*${page.subtitle}*`);
     lines.push("");
+    if (dataBlocks[page.templateId]) lines.push(...markdownBlock(page.templateId, data), "");
     if (page.showFacts) for (const [label, value] of pageFacts(bundle, page.templateId)) lines.push(`- **${label}:** ${value}`);
     if (page.content.trim()) { lines.push("", page.content.trim()); }
     for (const [index, figure] of page.figures.entries()) lines.push("", `_Figure ${index + 1}. ${figure.caption}_`);
@@ -646,42 +962,44 @@ function reportMarkdown(bundle: ProteinBundle, title: string, summary: string, p
   return lines.join("\n");
 }
 
-function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], analyses: ProjectJob[]) {
-  const body = pages.filter((page) => !page.hidden).map((page) => {
-    const facts = page.showFacts ? pageFacts(bundle, page.templateId) : [];
-    const figures = page.figures.map((figure, index) => {
-      const job = analyses.find((value) => value.id === figure.jobId);
-      const image = job?.appType === "gel-analysis" && job.config.previewBase64
-        ? `<img src="data:image/png;base64,${String(job.config.previewBase64)}" alt="${escapeHtml(figure.caption)}"/>`
-        : `<p class="placeholder">${escapeHtml(job?.name ?? "Figure")}</p>`;
-      return `<figure>${image}<figcaption><b>Figure ${index + 1}.</b> ${escapeHtml(figure.caption)}</figcaption></figure>`;
-    }).join("");
-    return `<section class="sheet">
-      <h2>${escapeHtml(page.title)}</h2>
-      ${page.subtitle ? `<p class="subtitle">${escapeHtml(page.subtitle)}</p>` : ""}
-      ${facts.length ? `<dl>${facts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>` : ""}
-      ${page.content.trim() ? `<div class="notes">${escapeHtml(page.content).replace(/\n/g, "<br/>")}</div>` : ""}
-      ${figures}
-    </section>`;
-  }).join("");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title><style>
-    body { font-family: Georgia, "Times New Roman", serif; color: #14181b; margin: 0; background: #f2f2f3; }
-    .sheet { background: #fff; max-width: 820px; margin: 24px auto; padding: 48px 56px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
-    h1 { font-size: 30px; margin: 0 0 6px; } h2 { font-size: 21px; margin: 0 0 4px; border-bottom: 2px solid #14181b; padding-bottom: 7px; }
-    .subtitle { color: #5d666c; margin: 6px 0 16px; font-style: italic; }
-    dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 26px; margin: 16px 0; }
-    dl > div { display: flex; justify-content: space-between; gap: 14px; border-bottom: 1px solid #e3e5e7; padding: 6px 0; }
-    dt { color: #5d666c; font-size: 13px; } dd { margin: 0; font-weight: 600; font-size: 13px; text-align: right; }
-    .notes { white-space: pre-wrap; line-height: 1.6; margin: 16px 0; }
-    figure { margin: 22px 0; } figure img { max-width: 100%; border: 1px solid #d8dadd; }
-    figcaption { font-size: 12px; color: #5d666c; margin-top: 7px; }
-    .placeholder { color: #8a9197; font-style: italic; }
-    @media print { body { background: #fff; } .sheet { box-shadow: none; margin: 0; page-break-after: always; } }
-  </style></head><body>
-    <section class="sheet"><h1>${escapeHtml(title)}</h1><p class="subtitle">${escapeHtml(summary)}</p>
-    <dl><div><dt>Construct</dt><dd>${escapeHtml(bundle.protein.name)}</dd></div><div><dt>Length</dt><dd>${bundle.protein.sequence.length} aa</dd></div><div><dt>Organism</dt><dd>${escapeHtml(bundle.protein.organism || "—")}</dd></div><div><dt>Prepared</dt><dd>${new Date().toLocaleDateString()}</dd></div></dl></section>
-    ${body}
-  </body></html>`;
+function markdownBlock(templateId: string, data: ReportData): string[] {
+  if (templateId === "yield") {
+    if (!data.yieldRows.length) return ["_No purification stages are recorded yet._"];
+    return [
+      "| Stage | Volume (mL) | Conc. (mg/mL) | Total protein (mg) | Step | Overall | Purity |",
+      "| --- | --- | --- | --- | --- | --- | --- |",
+      ...data.yieldRows.map((row) => `| ${row.stage}${row.flags.length ? " ⚠" : ""} | ${formatNumber(row.volumeMl, 1)} | ${formatNumber(row.concentrationMgMl, 2)} | ${formatNumber(row.totalProteinMg, 2)} | ${row.stepRecoveryPercent === null ? "—" : `${row.stepRecoveryPercent.toFixed(0)}%`} | ${row.overallRecoveryPercent === null ? "—" : `${row.overallRecoveryPercent.toFixed(0)}%`} | ${row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}%`} |`),
+    ];
+  }
+  if (templateId === "purity") {
+    if (!data.purity) return ["_No gel densitometry is saved for this project._"];
+    return [
+      "| Lane / stage | Target band | Apparent mass | Bands | Lane purity |",
+      "| --- | --- | --- | --- | --- |",
+      ...data.purity.rows.filter((row) => !row.isLadder).map((row) => `| ${row.lane}${row.flags.length ? " ⚠" : ""} | ${row.targetBand || "Not marked"} | ${row.targetMwKDa === null ? "—" : formatMass(row.targetMwKDa)} | ${row.bandCount} | ${row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}%`} |`),
+    ];
+  }
+  if (templateId === "mass") {
+    if (!data.sec) return ["_No chromatogram is saved for this project._"];
+    const header = data.sec.fit
+      ? `Kav = ${data.sec.fit.slope.toFixed(4)} log₁₀(Mr) + ${data.sec.fit.intercept.toFixed(4)} · R² ${data.sec.fit.r2.toFixed(4)} · n = ${data.sec.fit.standards}`
+      : "No SEC calibration is stored with this chromatogram.";
+    return [
+      `**${data.sec.columnName || "Column not recorded"}** — ${header}`,
+      "",
+      "| Peak | Vₑ (mL) | Kav | Apparent mass | Area |",
+      "| --- | --- | --- | --- | --- |",
+      ...data.sec.peaks.map((peak) => `| ${peak.name}${peak.flags.length ? " ⚠" : ""} | ${formatNumber(peak.veMl, 2)} | ${peak.kav === null ? "—" : peak.kav.toFixed(3)} | ${peak.mwKDa === null ? "Not assigned" : formatMass(peak.mwKDa)} | ${peak.areaPercent === null ? "—" : `${peak.areaPercent.toFixed(1)}%`} |`),
+    ];
+  }
+  if (templateId === "methods") {
+    return data.methods.flatMap((block) => [`### ${block.title}`, "", ...block.lines.map((item) => `- **${item.label}:** ${item.value}`), ""]);
+  }
+  if (templateId === "caveats") {
+    if (!data.flags.length) return ["_The analysis engines raised no flags on these numbers._"];
+    return dedupe(data.flags).map((item) => `- **${item.scope} — ${item.title}.** ${item.detail}`);
+  }
+  return [];
 }
 
 function asObject(value: unknown): JsonObject {
@@ -695,9 +1013,6 @@ function text(value: unknown, fallback = "—") {
 }
 function number(value: unknown, digits: number) {
   return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "—";
-}
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character] ?? character));
 }
 function safeName(value: string) {
   return value.trim().replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "purification-report";
