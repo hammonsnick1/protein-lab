@@ -49,7 +49,9 @@ export type ProteinBundle = {
 
 export type BackendHealth = { service: string; version: number; apps: string[]; database: string };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+// Exported so feature-specific engine clients (chromatography, gels) share one
+// transport, one error shape and one base URL instead of hand-rolling fetch.
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },

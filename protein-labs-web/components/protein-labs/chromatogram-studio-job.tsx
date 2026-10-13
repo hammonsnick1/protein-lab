@@ -38,9 +38,29 @@ import {
 import { Button } from "@/components/ui/button";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
+import type {
+  AnalyzeRequest,
+  AxisX,
+  AxisY,
+  EngineMassBalance,
+  EngineMethods,
+  EnginePeak,
+  ResultUnits,
+  SecCalibration,
+  SecPrediction,
+} from "@/lib/chromatography-api";
+import {
+  chromatographyApi,
+  clampToSegment,
+  minimumSegmentPoints,
+  traceSegments,
+} from "@/lib/chromatography-api";
 import { secColumns } from "@/lib/sec-column-catalog";
 
-type Point = { x: number; y: number };
+// `gap` marks the first sample after an excluded region. The plot starts a new
+// sub-path there so a missing stretch of data is never drawn as a straight line
+// joining the two sides of the hole.
+type Point = { x: number; y: number; gap?: boolean };
 type Range = { start: number; end: number };
 type RegionTransform = Range & { scale: number; offset: number };
 type Trace = {
@@ -64,6 +84,15 @@ type Trace = {
   fillOpacity: number;
   excludedRanges: Range[];
   regionTransforms: RegionTransform[];
+  // The engine refuses to guess an axis, and so does the studio: every number
+  // it reports is stated in these units.
+  xUnit: AxisX;
+  yUnit: AxisY;
+  // Mass recovery needs independently measured factors. Left null, the engine
+  // is asked for peak measurements only and reports recovery as not requested.
+  loadedMg: number | null;
+  responseFactorMAUPerMgMl: number | null;
+  flowMlPerMin: number | null;
 };
 type Peak = {
   id: string;
@@ -92,7 +121,19 @@ type Peak = {
   mwKDa?: number;
   kav?: number;
   fraction?: string;
+  // Engine measurements. `start`/`end` stay the integration range the
+  // researcher asked for; the engine reports the samples it actually used as
+  // `measuredStart`/`measuredEnd`, so re-measuring never drifts the request.
+  measuredStart?: number;
+  measuredEnd?: number;
+  fwhm?: number | null;
+  asymmetry10?: number | null;
+  outOfRange?: boolean;
 };
+// A peak joined to the current engine result. `measured` is false whenever the
+// numbers on screen did not come from this engine run, so the studio can say so
+// instead of presenting a stored or stale value as a fresh measurement.
+type MeasuredPeak = Peak & { measured: boolean; rs: number | null };
 type Standard = {
   id: string;
   protein: string;
@@ -135,7 +176,49 @@ type AnnotationItem = {
   length: number;
   thickness: number;
 };
-type SecFit = { slope: number; intercept: number; r2: number } | null;
+// The fit is whatever the engine returned, never a locally refitted copy.
+type SecFit = SecCalibration | null;
+type TraceAnalysis = {
+  status: "pending" | "ready" | "error";
+  error: string;
+  // Engine-processed samples, kept split at the excluded regions so neither the
+  // drawing nor the integration bridges a gap in the data.
+  segments: Point[][];
+  units: ResultUnits | null;
+  peaks: Record<string, EnginePeak>;
+  // Resolution from the peak immediately to the left, keyed by the right peak.
+  rsByPeakId: Record<string, number | null>;
+  massBalance: EngineMassBalance | null;
+  methods: EngineMethods | null;
+  baselineOffsets: number[];
+  // Integration ranges the studio could not send, with the reason why.
+  notes: string[];
+  // True while the drawn curve is the imported samples rather than an engine
+  // result, so the studio can say that no smoothing or baseline was applied.
+  raw: boolean;
+};
+const emptyAnalysis: TraceAnalysis = {
+  status: "pending",
+  error: "",
+  segments: [],
+  units: null,
+  peaks: {},
+  rsByPeakId: {},
+  massBalance: null,
+  methods: null,
+  baselineOffsets: [],
+  notes: [],
+  raw: true,
+};
+type SecState = {
+  status: "idle" | "pending" | "ready" | "error";
+  error: string;
+  calibration: SecFit;
+  // Keyed by the elution volume exactly as it was sent, which is how the engine
+  // echoes it back.
+  predictions: Record<string, SecPrediction>;
+};
+const idleSec: SecState = { status: "idle", error: "", calibration: null, predictions: {} };
 type FigureConfig = {
   layout: "stacked" | "overlay";
   align: "none" | "peak" | "manual";
@@ -346,6 +429,265 @@ const defaultFigure: FigureConfig = {
   panelBadgeSize: 28,
 };
 
+// Imported samples are never mutated, so one identity per array is enough to
+// tell whether a request has to be sent again.
+const pointsKeys = new WeakMap<Point[], string>();
+let pointsKeySeed = 0;
+function pointsKey(points: Point[]) {
+  const existing = pointsKeys.get(points);
+  if (existing) return existing;
+  const key = `points-${(pointsKeySeed += 1)}`;
+  pointsKeys.set(points, key);
+  return key;
+}
+// An x shift is an alignment of the retention axis, so the engine measures on
+// the shifted axis and every reported volume matches the one on screen. The
+// shifted copy is cached because a 200 000-sample trace must not be rebuilt on
+// each keystroke elsewhere in the studio.
+const shiftedPoints = new WeakMap<Point[], Map<number, Point[]>>();
+function shiftPoints(points: Point[], shift: number) {
+  if (!shift) return points;
+  let byShift = shiftedPoints.get(points);
+  if (!byShift) {
+    byShift = new Map();
+    shiftedPoints.set(points, byShift);
+  }
+  const cached = byShift.get(shift);
+  if (cached) return cached;
+  if (byShift.size > 4) byShift.clear();
+  const shifted = points.map((point) => ({ x: point.x + shift, y: point.y }));
+  byShift.set(shift, shifted);
+  return shifted;
+}
+type SegmentRequest = { points: Point[]; ranges: (Range & { peakId: string; name: string })[] };
+type TraceRequest = {
+  traceId: string;
+  signature: string;
+  units: AnalyzeRequest["units"];
+  processing: AnalyzeRequest["processing"];
+  massBalance?: AnalyzeRequest["massBalance"];
+  segments: SegmentRequest[];
+  notes: string[];
+};
+/**
+ * Turn one trace plus its peaks into the engine requests that measure it.
+ *
+ * Exclusions split the trace into independent segments, peaks are routed to
+ * the segment that fully contains them, and anything that cannot be sent is
+ * reported in `notes` rather than quietly dropped or merged.
+ */
+function buildTraceRequest(trace: Trace, peaks: Peak[]): TraceRequest {
+  const notes: string[] = [];
+  const axis = shiftPoints(trace.points, trace.xShift);
+  const found = traceSegments(axis, trace.excludedRanges);
+  const segments: SegmentRequest[] = [];
+  for (const points of found) {
+    if (points.length < minimumSegmentPoints) {
+      notes.push(
+        `A region of ${points.length} sample${points.length === 1 ? "" : "s"} between exclusions is too short to measure (the engine needs ${minimumSegmentPoints}); it is drawn but not integrated.`,
+      );
+      continue;
+    }
+    segments.push({ points, ranges: [] });
+  }
+  const requested = peaks
+    .filter((peak) => peak.traceId === trace.id)
+    .map((peak) => ({
+      peakId: peak.id,
+      name: peak.name,
+      start: Math.min(peak.start, peak.end),
+      end: Math.max(peak.start, peak.end),
+    }))
+    .sort((a, b) => a.start - b.start);
+  for (const range of requested) {
+    if (!(range.start < range.end)) {
+      notes.push(`${range.name} has no width, so it was not integrated.`);
+      continue;
+    }
+    const index = segments.findIndex(
+      (segment) =>
+        segment.points[0].x <= range.start &&
+        range.end <= segment.points[segment.points.length - 1].x,
+    );
+    if (index < 0) {
+      notes.push(
+        `${range.name} does not lie inside one continuous region of ${trace.name}, so it was not integrated.`,
+      );
+      continue;
+    }
+    const previous = segments[index].ranges.at(-1);
+    if (previous && range.start < previous.end) {
+      notes.push(
+        `${range.name} overlaps ${previous.name}; overlapping ranges would count the same mass twice, so it was not integrated.`,
+      );
+      continue;
+    }
+    segments[index].ranges.push(range);
+  }
+  const window = Math.min(1001, Math.max(1, Math.round(trace.smoothing) || 1));
+  let massBalance: AnalyzeRequest["massBalance"];
+  if (trace.loadedMg !== null && trace.loadedMg > 0) {
+    if (segments.length !== 1)
+      notes.push(
+        "Mass recovery is reported for one continuous region only; clear the excluded regions to request it.",
+      );
+    else if (trace.yUnit === "mAU" && !(Number(trace.responseFactorMAUPerMgMl) > 0))
+      notes.push(
+        "A mAU trace needs an independently measured response factor (mAU per mg/mL) before recovery can be calculated.",
+      );
+    else if (trace.xUnit === "min" && !(Number(trace.flowMlPerMin) > 0))
+      notes.push(
+        "A time axis needs the measured flow rate (mL/min) before recovery can be calculated.",
+      );
+    else
+      massBalance = {
+        loadedMg: trace.loadedMg,
+        ...(trace.yUnit === "mAU"
+          ? { responseFactorMAUPerMgMl: Number(trace.responseFactorMAUPerMgMl) }
+          : {}),
+        ...(trace.xUnit === "min" ? { flowMlPerMin: Number(trace.flowMlPerMin) } : {}),
+      };
+  }
+  return {
+    traceId: trace.id,
+    units: { x: trace.xUnit, y: trace.yUnit },
+    processing: { smoothing: window, baseline: trace.baseline ? "percentile5" : "none" },
+    massBalance,
+    segments,
+    notes,
+    signature: [
+      trace.id,
+      pointsKey(trace.points),
+      trace.xShift,
+      window,
+      trace.baseline,
+      trace.xUnit,
+      trace.yUnit,
+      JSON.stringify(trace.excludedRanges),
+      JSON.stringify(segments.map((segment) => segment.ranges.map((range) => [range.start, range.end]))),
+      JSON.stringify(massBalance ?? null),
+    ].join("|"),
+  };
+}
+
+function flattenSegments(segments: Point[][]): Point[] {
+  return segments.flatMap((segment, index) =>
+    index === 0 || !segment.length
+      ? segment
+      : [{ ...segment[0], gap: true }, ...segment.slice(1)],
+  );
+}
+/**
+ * Join engine results back onto the peaks that asked for them.
+ *
+ * A range with no positive peak returns nothing, so the response can be
+ * shorter than the request. Both lists are in ascending range order, so they
+ * are walked together: a peak is claimed only by the range that contains it.
+ */
+function composeAnalysis(
+  request: TraceRequest,
+  results: Awaited<ReturnType<typeof chromatographyApi.analyze>>[],
+): TraceAnalysis {
+  const peaks: Record<string, EnginePeak> = {};
+  const rsByPeakId: Record<string, number | null> = {};
+  results.forEach((result, segmentIndex) => {
+    const idByResultIndex: (string | undefined)[] = [];
+    let next = 0;
+    for (const range of request.segments[segmentIndex].ranges) {
+      const candidate = result.peaks[next];
+      if (!candidate) break;
+      if (candidate.start < range.start - 1e-9 || candidate.end > range.end + 1e-9) continue;
+      peaks[range.peakId] = candidate;
+      idByResultIndex[next] = range.peakId;
+      next += 1;
+    }
+    for (const resolution of result.resolutions) {
+      const id = idByResultIndex[resolution.rightPeakIndex];
+      if (id) rsByPeakId[id] = resolution.rs;
+    }
+  });
+  return {
+    status: "ready",
+    error: "",
+    raw: false,
+    segments: results.map((result) => result.points),
+    units: results[0]?.units ?? null,
+    peaks,
+    rsByPeakId,
+    // Recovery is only requested, and only meaningful, for one continuous region.
+    massBalance: results.length === 1 ? results[0].massBalance : null,
+    methods: results[0]?.methods ?? null,
+    baselineOffsets: results.map((result) => result.baselineOffset),
+    notes: request.notes,
+  };
+}
+type AnalysisMap = Record<string, TraceAnalysis>;
+async function measureTraces(
+  requests: TraceRequest[],
+  signal: AbortSignal,
+  apply: (next: (previous: AnalysisMap) => AnalysisMap) => void,
+) {
+  apply((previous) =>
+    Object.fromEntries(
+      requests.map((request) => {
+        const held = previous[request.traceId];
+        const keep = Boolean(held?.segments.length);
+        return [
+          request.traceId,
+          {
+            ...(held ?? emptyAnalysis),
+            status: "pending" as const,
+            error: "",
+            notes: request.notes,
+            // Show the imported samples until the first result arrives rather
+            // than an empty plot, and say that is what they are.
+            segments: keep ? held!.segments : request.segments.map((segment) => segment.points),
+            raw: keep ? held!.raw : true,
+          },
+        ];
+      }),
+    ),
+  );
+  for (const request of requests) {
+    if (signal.aborted) return;
+    try {
+      const results = await Promise.all(
+        request.segments.map((segment) =>
+          chromatographyApi.analyze(
+            {
+              schemaVersion: 1,
+              units: request.units,
+              points: segment.points,
+              processing: request.processing,
+              ranges: segment.ranges.map(({ start, end }) => ({ start, end })),
+              ...(request.massBalance ? { massBalance: request.massBalance } : {}),
+            },
+            signal,
+          ),
+        ),
+      );
+      if (signal.aborted) return;
+      apply((previous) => ({ ...previous, [request.traceId]: composeAnalysis(request, results) }));
+    } catch (reason) {
+      if (signal.aborted) return;
+      // No local fallback: the imported samples are drawn as-is and labelled
+      // unmeasured, because recomputing the science here would be a second,
+      // unverified answer.
+      apply((previous) => ({
+        ...previous,
+        [request.traceId]: {
+          ...emptyAnalysis,
+          status: "error",
+          error: errorText(reason),
+          notes: request.notes,
+          segments: request.segments.map((segment) => segment.points),
+          raw: true,
+        },
+      }));
+    }
+  }
+}
+
 export function ChromatogramStudioJob({
   bundle,
   onChanged,
@@ -402,17 +744,148 @@ export function ChromatogramStudioJob({
     traces.find((value) => value.id === activeTraceId) ?? traces[0];
   const selectedPeak = peaks.find((value) => value.id === selectedPeakId);
   const selectedAnnotation = annotations.find((value) => value.id === selectedAnnotationId);
-  const fit = useMemo(() => fitSec(standards, vo, vt), [standards, vo, vt]);
-  const calibratedPeaks = useMemo(
-    () => peaks.map((peak) => calibratePeak(peak, fit, vo, vt)),
-    [peaks, fit, vo, vt],
+  const [analyses, setAnalyses] = useState<AnalysisMap>({});
+  const [sec, setSec] = useState<SecState>(idleSec);
+
+  // One engine request descriptor per trace, rebuilt only when something the
+  // engine would measure has changed.
+  const traceRequests = useMemo(
+    () => traces.map((trace) => buildTraceRequest(trace, peaks)),
+    [traces, peaks],
   );
+  const requestKey = traceRequests.map((request) => request.signature).join("~");
+  const traceRequestsRef = useRef(traceRequests);
+  traceRequestsRef.current = traceRequests;
+  useEffect(() => {
+    if (!traceRequestsRef.current.length) {
+      setAnalyses({});
+      return;
+    }
+    const controller = new AbortController();
+    // Dragging a bound or typing in a processing field must not put one request
+    // per keystroke on the engine, and aborting on change guarantees a slow
+    // earlier response can never overwrite a newer measurement.
+    const timer = window.setTimeout(() => {
+      void measureTraces(traceRequestsRef.current, controller.signal, setAnalyses);
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [requestKey]);
+
+  // Every volume the SEC calibration has to answer for: each standard, plus the
+  // engine-measured apex of each peak on an mL axis.
+  const secVolumes = useMemo(() => {
+    const volumes = standards.map((standard) => standard.veMl);
+    for (const peak of peaks) {
+      const measured = analyses[peak.traceId]?.peaks[peak.id];
+      const trace = traces.find((value) => value.id === peak.traceId);
+      if (measured && trace?.xUnit === "mL") volumes.push(measured.apexX);
+    }
+    return Array.from(new Set(volumes.filter((value) => Number.isFinite(value))));
+  }, [standards, peaks, traces, analyses]);
+  const secKey = JSON.stringify([
+    vo,
+    vt,
+    standards.map((standard) => [standard.mwDa, standard.veMl, standard.included]),
+    secVolumes,
+  ]);
+  const secPayloadRef = useRef({ vo, vt, standards, volumes: secVolumes });
+  secPayloadRef.current = { vo, vt, standards, volumes: secVolumes };
+  useEffect(() => {
+    const payload = secPayloadRef.current;
+    if (!payload.standards.length) {
+      setSec(idleSec);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSec((value) => ({ ...value, status: "pending", error: "" }));
+      chromatographyApi
+        .calibrateSec(
+          {
+            voMl: payload.vo,
+            vtMl: payload.vt,
+            standards: payload.standards.map((standard) => ({
+              mwDa: standard.mwDa,
+              veMl: standard.veMl,
+              included: standard.included,
+            })),
+            elutionVolumesMl: payload.volumes,
+          },
+          controller.signal,
+        )
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setSec({
+            status: "ready",
+            error: "",
+            calibration: result.calibration,
+            predictions: Object.fromEntries(
+              result.predictions.map((prediction) => [String(prediction.veMl), prediction]),
+            ),
+          });
+        })
+        .catch((reason) => {
+          if (controller.signal.aborted) return;
+          setSec({
+            status: "error",
+            error: errorText(reason),
+            calibration: null,
+            predictions: {},
+          });
+        });
+    }, 200);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [secKey]);
+
+  const fit = sec.calibration;
+  const activeAnalysis = activeTrace ? analyses[activeTrace.id] : undefined;
+  // Kav comes from the engine for every volume the studio shows, so the table,
+  // the figure and the exports can never disagree with the fit.
+  const kavAt = (ve: number) => sec.predictions[String(ve)]?.kav;
+  // Peaks joined to the engine result that measured them. Identity, label,
+  // style and requested range stay local; every quantity comes from the engine.
+  const calibratedPeaks = useMemo<MeasuredPeak[]>(
+    () =>
+      peaks.map((peak) => {
+        const analysis = analyses[peak.traceId];
+        const measured = analysis?.peaks[peak.id];
+        if (!measured) return { ...peak, measured: false, rs: null };
+        const trace = traces.find((value) => value.id === peak.traceId);
+        const prediction =
+          trace?.xUnit === "mL" ? sec.predictions[String(measured.apexX)] : undefined;
+        return {
+          ...peak,
+          measured: true,
+          rs: analysis?.rsByPeakId[peak.id] ?? null,
+          measuredStart: measured.start,
+          measuredEnd: measured.end,
+          apexX: measured.apexX,
+          response: measured.response,
+          height: measured.height,
+          area: measured.area,
+          fwhm: measured.fwhm,
+          asymmetry10: measured.asymmetry10,
+          kav: prediction?.kav,
+          mwKDa: prediction?.mwKDa ?? undefined,
+          outOfRange: prediction?.outOfRange,
+        };
+      }),
+    [peaks, analyses, traces, sec],
+  );
+  // Presentation only. Y scaling, regional rescaling and normalisation change
+  // how the measured signal is drawn, never what the studio reports.
   const allProcessed = useMemo(
     () =>
       Object.fromEntries(
-        traces.map((trace) => [trace.id, processTrace(trace)]),
+        traces.map((trace) => [trace.id, presentTrace(trace, analyses[trace.id])]),
       ),
-    [traces],
+    [traces, analyses],
   );
   useEffect(() => {
     function keyDown(event: KeyboardEvent) {
@@ -466,6 +939,11 @@ export function ChromatogramStudioJob({
           fillOpacity: 0.16,
           excludedRanges: [],
           regionTransforms: [],
+          xUnit: "mL",
+          yUnit: "mAU",
+          loadedMg: null,
+          responseFactorMAUPerMgMl: null,
+          flowMlPerMin: null,
         });
       }
       setTraces([...traces, ...imported]);
@@ -630,68 +1108,128 @@ export function ChromatogramStudioJob({
       ]);
     setDrag(null);
   }
-  function detectPeak(range: Range) {
-    if (!activeTrace) return;
-    const result = findPeak(allProcessed[activeTrace.id] ?? [], range);
-    if (!result) {
-      setMessage("No peak maximum was found in that region.");
-      return;
+  // A dragged region is the integration range itself: the engine measures
+  // exactly what the researcher selected instead of walking outwards from the
+  // apex to a threshold the researcher never chose.
+  function requestedRange(traceId: string, range: Range, ignorePeakId = "") {
+    const request = traceRequests.find((value) => value.traceId === traceId);
+    const segment = request?.segments.find(
+      (value) =>
+        value.points[0].x <= Math.min(range.start, range.end) &&
+        Math.max(range.start, range.end) <= value.points.at(-1)!.x,
+    );
+    const clamped = segment ? clampToSegment(range, segment.points) : null;
+    if (!clamped) {
+      setMessage(
+        `That region does not hold ${minimumSegmentPoints} analysable samples inside one continuous part of the trace.`,
+      );
+      return null;
     }
-    const peak: Peak = {
+    const overlap = peaks.find(
+      (peak) =>
+        peak.traceId === traceId &&
+        peak.id !== ignorePeakId &&
+        clamped.start < Math.max(peak.start, peak.end) &&
+        Math.min(peak.start, peak.end) < clamped.end,
+    );
+    if (overlap) {
+      setMessage(
+        `That region overlaps ${overlap.name}. Integration ranges may not overlap or the same mass is counted twice.`,
+      );
+      return null;
+    }
+    return clamped;
+  }
+  function newPeak(traceId: string, color: string, range: Range, index: number, name: string): Peak {
+    return {
       id: crypto.randomUUID(),
-      traceId: activeTrace.id,
-      name: `Peak ${peaks.filter((value) => value.traceId === activeTrace.id).length + 1}`,
-      ...result,
-      color: activeTrace.color,
-      fillColor: activeTrace.color,
+      traceId,
+      name,
+      start: range.start,
+      end: range.end,
+      // Placeholders only. `calibratedPeaks` reports nothing for a peak until
+      // the engine has measured it, and marks it unmeasured until then.
+      apexX: (range.start + range.end) / 2,
+      response: 0,
+      height: 0,
+      area: 0,
+      color,
+      fillColor: color,
       fillVisible: true,
       fillOpacity: 0.25,
       outlineWidth: 2,
       calloutVisible: true,
       calloutBorder: true,
-      calloutX: result.apexX,
-      calloutY: 8 + (peaks.length % 4) * 22,
+      calloutX: (range.start + range.end) / 2,
+      calloutY: 8 + (index % 4) * 22,
       showVe: true,
       showResponse: true,
       showArea: true,
       showMw: true,
       customText: "",
     };
+  }
+  function detectPeak(range: Range) {
+    if (!activeTrace) return;
+    const clamped = requestedRange(activeTrace.id, range);
+    if (!clamped) return;
+    const peak = newPeak(
+      activeTrace.id,
+      activeTrace.color,
+      clamped,
+      peaks.length,
+      `Peak ${peaks.filter((value) => value.traceId === activeTrace.id).length + 1}`,
+    );
     setPeaks([...peaks, peak]);
     setSelectedPeakId(peak.id);
     setInspector("peak");
   }
-  function autoFind() {
+  async function autoFind() {
     if (!activeTrace) return;
-    const found = findAllPeaks(allProcessed[activeTrace.id] ?? [], 5).map(
-      (result, index): Peak => ({
-        id: crypto.randomUUID(),
-        traceId: activeTrace.id,
-        name: `Peak ${index + 1}`,
-        ...result,
-        color: activeTrace.color,
-        fillColor: activeTrace.color,
-        fillVisible: true,
-        fillOpacity: 0.25,
-        outlineWidth: 2,
-        calloutVisible: true,
-        calloutBorder: true,
-        calloutX: result.apexX,
-        calloutY: 8 + (index % 4) * 22,
-        showVe: true,
-        showResponse: true,
-        showArea: true,
-        showMw: true,
-        customText: "",
-      }),
-    );
-    setPeaks([
-      ...peaks.filter((value) => value.traceId !== activeTrace.id),
-      ...found,
-    ]);
-    setMessage(
-      `${found.length} peak${found.length === 1 ? "" : "s"} detected across ${activeTrace.name}.`,
-    );
+    const request = traceRequests.find((value) => value.traceId === activeTrace.id);
+    if (!request?.segments.length) {
+      setMessage("Import a trace with at least three analysable samples first.");
+      return;
+    }
+    setBusy(true);
+    try {
+      // Detection is the engine's: omitting `ranges` asks it to find them,
+      // segment by segment, so no peak is detected across an excluded region.
+      const results = await Promise.all(
+        request.segments.map((segment) =>
+          chromatographyApi.analyze({
+            schemaVersion: 1,
+            units: request.units,
+            points: segment.points,
+            processing: request.processing,
+            maxPeaks: 5,
+          }),
+        ),
+      );
+      const found = results
+        .flatMap((result) => result.peaks)
+        .sort((a, b) => a.apexX - b.apexX)
+        .map((result, index) =>
+          newPeak(
+            activeTrace.id,
+            activeTrace.color,
+            { start: result.start, end: result.end },
+            index,
+            `Peak ${index + 1}`,
+          ),
+        );
+      setPeaks([...peaks.filter((value) => value.traceId !== activeTrace.id), ...found]);
+      setSelectedPeakId("");
+      setMessage(
+        found.length
+          ? `${found.length} peak${found.length === 1 ? "" : "s"} detected across ${activeTrace.name} by the Python engine.`
+          : `The engine found no peak above its noise threshold in ${activeTrace.name}.`,
+      );
+    } catch (reason) {
+      setMessage(`Peak detection failed: ${errorText(reason)}`);
+    } finally {
+      setBusy(false);
+    }
   }
   function updatePeak(id: string, patch: Partial<Peak>) {
     setPeaks((values) =>
@@ -699,13 +1237,9 @@ export function ChromatogramStudioJob({
     );
   }
   function adjustPeak(range: Range) {
-    if (!selectedPeak || !activeTrace) return;
-    const result = findPeak(
-      allProcessed[selectedPeak.traceId] ?? [],
-      range,
-      true,
-    );
-    if (result) updatePeak(selectedPeak.id, result);
+    if (!selectedPeak) return;
+    const clamped = requestedRange(selectedPeak.traceId, range, selectedPeak.id);
+    if (clamped) updatePeak(selectedPeak.id, clamped);
   }
   // Frames the selected peak with a margin either side, which is where figure
   // work on a shoulder or a tailing edge starts.
@@ -724,7 +1258,8 @@ export function ChromatogramStudioJob({
   function projectSnapshot() {
     return {
       format: "protein-labs.chromatogram-project",
-      schemaVersion: 11,
+      // 12 adds explicit axis units and the mass-balance factors per trace.
+      schemaVersion: 12,
       projectName,
       traces,
       activeTraceId,
@@ -768,7 +1303,7 @@ export function ChromatogramStudioJob({
     setBusy(true);
     try {
       const config = {
-        schemaVersion: 10,
+        schemaVersion: 12,
         projectName,
         traces,
         activeTraceId,
@@ -843,10 +1378,23 @@ export function ChromatogramStudioJob({
     if (!(vo > 0 && vo < value.vt * 0.9)) setVo(voidEstimate(value.vt));
   }
   function exportProcessed() {
-    const rows: string[][] = [["trace", "retention_volume", "response"]];
-    for (const trace of traces)
-      for (const point of allProcessed[trace.id] ?? [])
-        rows.push([trace.name, String(point.x), String(point.y)]);
+    const rows: string[][] = [["trace", "x", "x_unit", "y", "y_unit", "source"]];
+    for (const trace of traces) {
+      const analysis = analyses[trace.id];
+      // Export the engine's processed samples, not the display transform, and
+      // say which of the two every row is.
+      const source = analysis?.status === "ready" ? "engine_processed" : "imported_raw";
+      for (const segment of analysis?.segments ?? [])
+        for (const point of segment)
+          rows.push([
+            trace.name,
+            String(point.x),
+            trace.xUnit,
+            String(point.y),
+            trace.yUnit,
+            source,
+          ]);
+    }
     downloadText(
       "processed-chromatograms.csv",
       rows
@@ -865,20 +1413,20 @@ export function ChromatogramStudioJob({
         "Ve (mL)",
         "Log Mr",
         "Ve/Vo",
-        "Vo",
-        "Vt",
-        "Kav",
+        "Vo (mL)",
+        "Vt (mL)",
+        "Kav (engine)",
         "Included",
       ],
       ...standards.map((value) => [
         value.protein,
         value.mwDa,
         value.veMl,
-        Math.log10(value.mwDa),
-        value.veMl / vo,
+        value.mwDa > 0 ? Math.log10(value.mwDa) : "",
+        vo > 0 ? value.veMl / vo : "",
         vo,
         vt,
-        kav(value.veMl, vo, vt),
+        kavAt(value.veMl) ?? "",
         value.included,
       ]),
     ]);
@@ -888,29 +1436,53 @@ export function ChromatogramStudioJob({
       [
         "Trace",
         "Peak",
-        "Start",
-        "End",
-        "Ve (mL)",
+        "Requested start",
+        "Requested end",
+        "Integrated from",
+        "Integrated to",
+        "X unit",
+        "Ve / apex",
         "Response",
         "Height",
+        "Y unit",
         "Area",
+        "Area unit",
+        "FWHM",
+        "Asymmetry (10%)",
+        "Rs from previous peak",
         "Kav",
         "MW (kDa)",
+        "MW outside calibration",
+        "Measured by engine",
         "Fraction",
       ],
-      ...calibratedPeaks.map((value) => [
-        traces.find((trace) => trace.id === value.traceId)?.name ?? "",
-        value.name,
-        value.start,
-        value.end,
-        value.apexX,
-        value.response,
-        value.height,
-        value.area,
-        value.kav ?? "",
-        value.mwKDa ?? "",
-        value.fraction ?? "",
-      ]),
+      ...calibratedPeaks.map((value) => {
+        const trace = traces.find((item) => item.id === value.traceId);
+        const unitless = !value.measured;
+        return [
+          trace?.name ?? "",
+          value.name,
+          value.start,
+          value.end,
+          unitless ? "" : (value.measuredStart ?? ""),
+          unitless ? "" : (value.measuredEnd ?? ""),
+          trace?.xUnit ?? "",
+          unitless ? "" : value.apexX,
+          unitless ? "" : value.response,
+          unitless ? "" : value.height,
+          trace?.yUnit ?? "",
+          unitless ? "" : value.area,
+          trace ? `${trace.yUnit}*${trace.xUnit}` : "",
+          unitless ? "" : (value.fwhm ?? ""),
+          unitless ? "" : (value.asymmetry10 ?? ""),
+          value.rs ?? "",
+          value.kav ?? "",
+          value.mwKDa ?? "",
+          value.outOfRange === undefined ? "" : value.outOfRange,
+          value.measured,
+          value.fraction ?? "",
+        ];
+      }),
     ]);
   }
   function exportSvg() {
@@ -1021,6 +1593,9 @@ export function ChromatogramStudioJob({
             voidMarkerMw={voidMarkerMw}
             fit={fit}
             fitColor={fitColor}
+            kavOf={kavAt}
+            secStatus={sec.status}
+            secError={sec.error}
             onVo={setVo}
             onVt={setVt}
             onColumn={chooseColumn}
@@ -1099,8 +1674,8 @@ export function ChromatogramStudioJob({
                 <Button size="sm" variant="ghost" onClick={() => { setZoom(null); setFigure((value) => ({ ...value, yMin: "", yMax: "" })); }}>
                   Reset zoom
                 </Button>
-                <Button size="sm" variant="outline" onClick={autoFind}>
-                  <Search /> Find peaks
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => void autoFind()}>
+                  {busy ? <LoaderCircle className="spin" /> : <Search />} Find peaks
                 </Button>
               </div>
             )}
@@ -1113,6 +1688,7 @@ export function ChromatogramStudioJob({
               fractions={fractions}
               standards={standards}
               fit={fit}
+              kavOf={kavAt}
               vo={vo}
               vt={vt}
               fitColor={fitColor}
@@ -1177,11 +1753,8 @@ export function ChromatogramStudioJob({
             </Button>
             <AnalysisInspector
               trace={activeTrace}
-              peak={
-                selectedPeak
-                  ? calibratePeak(selectedPeak, fit, vo, vt)
-                  : undefined
-              }
+              peak={calibratedPeaks.find((value) => value.id === selectedPeakId)}
+              analysis={activeAnalysis}
               annotation={selectedAnnotation}
               inspector={inspector}
               onInspector={setInspector}
@@ -1210,11 +1783,8 @@ export function ChromatogramStudioJob({
         ) : tab === "analysis" ? (
           <AnalysisInspector
             trace={activeTrace}
-            peak={
-              selectedPeak
-                ? calibratePeak(selectedPeak, fit, vo, vt)
-                : undefined
-            }
+            peak={calibratedPeaks.find((value) => value.id === selectedPeakId)}
+            analysis={activeAnalysis}
             annotation={selectedAnnotation}
             inspector={inspector}
             onInspector={setInspector}
@@ -1236,13 +1806,14 @@ export function ChromatogramStudioJob({
             <BarChart3 />
             <strong>SEC calibration</strong>
             <p>
-              The plot uses Kav on the y-axis and log₁₀ molecular weight on the
-              x-axis. Kav is always calculated as (Ve − Vo) / (Vt − Vo).
+              The Python engine fits Kav against log₁₀ molecular weight and returns the
+              slope, intercept and R². Every Kav on this screen is the engine&rsquo;s.
             </p>
             <code>Kav = (Ve − Vo) / (Vt − Vo)</code>
             <p>
-              Peak MW is obtained by inverting the fitted Kav-versus-log Mr
-              line.
+              Peak molecular weight comes from inverting that fit, and only inside the
+              measured Ve and fitted log-Mw range of the standards. Outside it the engine
+              reports no mass rather than extrapolating one.
             </p>
           </div>
         ) : tab === "data" ? (
@@ -1250,9 +1821,13 @@ export function ChromatogramStudioJob({
             <SlidersHorizontal />
             <strong>Non-destructive processing</strong>
             <p>
-              Raw points remain stored. Smoothing, baseline correction,
-              normalization, exclusions, offsets, and regional transforms are
-              applied only to the displayed/processed trace.
+              Imported samples are never altered. Smoothing, baseline correction and the
+              excluded regions are sent to the Python engine, which returns the processed
+              signal every reported number is measured from.
+            </p>
+            <p>
+              Y scale, y offset, regional rescaling and normalization only change how that
+              signal is drawn, so a rescaled trace is never used for mass recovery.
             </p>
           </div>
         ) : (
@@ -1366,6 +1941,50 @@ function DataWorkspace({
                 }
               />
             </label>
+            <h4>Axis units</h4>
+            <p className="inspector-note">
+              The engine refuses to guess an axis and performs no implicit conversion, so
+              every measurement it returns is stated in these units.
+            </p>
+            <div className="processing-grid">
+              <label>
+                X axis
+                <select
+                  value={activeTrace.xUnit}
+                  onChange={(event) =>
+                    onUpdate(activeTrace.id, { xUnit: event.target.value as AxisX })
+                  }
+                >
+                  <option value="mL">Volume (mL)</option>
+                  <option value="min">Time (min)</option>
+                </select>
+              </label>
+              <label>
+                Y axis
+                <select
+                  value={activeTrace.yUnit}
+                  onChange={(event) =>
+                    onUpdate(activeTrace.id, { yUnit: event.target.value as AxisY })
+                  }
+                >
+                  <option value="mAU">Absorbance (mAU)</option>
+                  <option value="mg/mL">Concentration (mg/mL)</option>
+                </select>
+              </label>
+            </div>
+            {activeTrace.xUnit === "min" && (
+              <div className="warning-note">
+                <CircleAlert /> SEC calibration needs an mL axis. Convert using the
+                measured flow rate before asking for Kav or molecular weights.
+              </div>
+            )}
+            <h4>Measured signal</h4>
+            <p className="inspector-note">
+              The x shift, the excluded regions, smoothing and baseline correction are part
+              of the engine request, so the measured signal and the drawn signal share one
+              axis. Y scale, y offset, regional rescaling and normalisation are display
+              only and never reach a reported number.
+            </p>
             <div className="processing-grid">
               <label>
                 X shift
@@ -1407,15 +2026,16 @@ function DataWorkspace({
                 />
               </label>
               <label>
-                Smoothing
+                Smoothing window (samples)
                 <input
                   type="number"
                   min="1"
+                  max="1001"
                   step="2"
                   value={activeTrace.smoothing}
                   onChange={(event) =>
                     onUpdate(activeTrace.id, {
-                      smoothing: Math.max(1, Number(event.target.value)),
+                      smoothing: Math.min(1001, Math.max(1, Number(event.target.value))),
                     })
                   }
                 />
@@ -1429,8 +2049,9 @@ function DataWorkspace({
                   onUpdate(activeTrace.id, { baseline: event.target.checked })
                 }
               />{" "}
-              Baseline correction
+              Subtract the 5th-percentile baseline
             </label>
+            <h4>Display only</h4>
             <label>
               Normalization
               <select value={activeTrace.normalization} onChange={(event) => onUpdate(activeTrace.id, { normalization: event.target.value as Trace["normalization"] })}>
@@ -1635,9 +2256,13 @@ const SecCurveFigure = forwardRef<SVGSVGElement, {
   fit: SecFit;
   fitColor: string;
   config: SecFigureConfig;
-}>(function SecCurveFigure({ standards, vo, vt, fit, fitColor, config }, ref) {
+  // Engine Kav for an elution volume, undefined while no calibration holds.
+  kavOf: (ve: number) => number | undefined;
+}>(function SecCurveFigure({ standards, vo, vt, fit, fitColor, config, kavOf }, ref) {
   const usable = standards.filter((value) => standardStatus(value, vo, vt).ok);
-  const plotted = standards.filter((value) => value.mwDa > 0 && vt > vo);
+  const plotted = standards.filter(
+    (value) => value.mwDa > 0 && vt > vo && kavOf(value.veMl) !== undefined,
+  );
   const W = config.width, H = config.height;
   const left = 96, right = 34, top = 56, bottom = 82;
   const plotW = W - left - right, plotH = H - top - bottom;
@@ -1645,7 +2270,7 @@ const SecCurveFigure = forwardRef<SVGSVGElement, {
   // 1 kDa–1 MDa window, so the calibration fills the figure whatever the
   // column fractionates.
   const logs = plotted.map((value) => Math.log10(value.mwDa));
-  const kavs = plotted.map((value) => kav(value.veMl, vo, vt));
+  const kavs = plotted.map((value) => kavOf(value.veMl)!);
   const xPad = Math.max(0.1, (Math.max(...logs, 0) - Math.min(...logs, 0)) * 0.06);
   const yPad = Math.max(0.02, (Math.max(...kavs, 0) - Math.min(...kavs, 0)) * 0.08);
   const xScale = niceScale(logs.length ? Math.min(...logs) - xPad : 3, logs.length ? Math.max(...logs) + xPad : 6);
@@ -1658,7 +2283,8 @@ const SecCurveFigure = forwardRef<SVGSVGElement, {
   const sy = (value: number) => top + plotH - ((value - yMin) / Math.max(1e-12, yMax - yMin)) * plotH;
   const xTicks = xScale.ticks, yTicks = yScale.ticks;
   const clipId = `sec-clip-${Math.abs(Math.round((xMin + yMax) * 1e6))}`;
-  const residuals = fit ? usable.map((value) => kav(value.veMl, vo, vt) - (fit.slope * Math.log10(value.mwDa) + fit.intercept)) : [];
+  // Dispersion of the engine's own Kav values about the engine's own fit line.
+  const residuals = fit ? usable.flatMap((value) => { const observed = kavOf(value.veMl); return observed === undefined ? [] : [observed - (fit.slope * Math.log10(value.mwDa) + fit.intercept)]; }) : [];
   const spread = residuals.length ? Math.sqrt(residuals.reduce((sum, value) => sum + value * value, 0) / residuals.length) : 0;
   return <svg
     ref={ref}
@@ -1698,7 +2324,7 @@ const SecCurveFigure = forwardRef<SVGSVGElement, {
     <text transform={`translate(${left - 62} ${top + plotH / 2}) rotate(-90)`} textAnchor="middle" fontSize={config.labelSize} fontWeight="600" fill={config.foreground}>{config.yLabel}</text>
     {plotted.map((value) => {
       const inFit = standardStatus(value, vo, vt).ok;
-      const x = sx(Math.log10(value.mwDa)), y = sy(kav(value.veMl, vo, vt));
+      const x = sx(Math.log10(value.mwDa)), y = sy(kavOf(value.veMl)!);
       return <g key={value.id}>
         <circle cx={x} cy={y} r={config.pointSize} fill={inFit ? value.color : config.background} stroke={value.color} strokeWidth="2" opacity={inFit ? 1 : .75} />
         {config.showNames && <text x={x} y={y - config.pointSize - 7} textAnchor="middle" fontSize={config.tickSize} fill={config.foreground}>{value.protein}</text>}
@@ -1721,6 +2347,9 @@ function StandardWorkspace({
   voidMarkerMw,
   fit,
   fitColor,
+  kavOf,
+  secStatus,
+  secError,
   secFigure,
   onVo,
   onVt,
@@ -1741,6 +2370,9 @@ function StandardWorkspace({
   voidMarkerMw: number;
   fit: SecFit;
   fitColor: string;
+  kavOf: (ve: number) => number | undefined;
+  secStatus: SecState["status"];
+  secError: string;
   secFigure: SecFigureConfig;
   onVo: (v: number) => void;
   onVt: (v: number) => void;
@@ -1764,7 +2396,6 @@ function StandardWorkspace({
   // after the first paint rather than during render.
   useEffect(() => { setLibrary(readCurveLibrary()); }, []);
   const voInvalid = !(vt > vo) || vo <= 0;
-  const usable = standards.filter((value) => standardStatus(value, vo, vt).ok);
 
   function currentCurve(name: string): StandardCurve {
     return { id: crypto.randomUUID(), name, column, vo, vt, note: "", savedAt: new Date().toISOString(), standards };
@@ -1928,7 +2559,7 @@ function StandardWorkspace({
                   <input type="number" step=".01" value={value.veMl} onChange={(event) => onUpdate(value.id, { veMl: Number(event.target.value) })} />
                   <span>{value.mwDa > 0 ? Math.log10(value.mwDa).toFixed(4) : "—"}</span>
                   <span>{vo > 0 ? (value.veMl / vo).toFixed(4) : "—"}</span>
-                  <span>{vt > vo ? kav(value.veMl, vo, vt).toFixed(4) : "—"}</span>
+                  <span>{kavOf(value.veMl)?.toFixed(4) ?? "—"}</span>
                   <span className={status.ok ? "standard-ok" : "standard-why"}>{status.note}</span>
                   <input type="color" value={value.color} onChange={(event) => onUpdate(value.id, { color: event.target.value })} />
                   <button onClick={() => onDelete(value.id)}>
@@ -1943,17 +2574,33 @@ function StandardWorkspace({
           </Button>
         </section>
         <section className="sec-plot">
-          <SecCurveFigure ref={figureRef} standards={standards} vo={vo} vt={vt} fit={fit} fitColor={fitColor} config={secFigure} />
+          <SecCurveFigure ref={figureRef} standards={standards} vo={vo} vt={vt} fit={fit} fitColor={fitColor} config={secFigure} kavOf={kavOf} />
           {fit ? (
             <div>
               <strong>
                 Kav = {fit.slope.toFixed(4)} Log Mr {fit.intercept >= 0 ? "+" : "−"} {Math.abs(fit.intercept).toFixed(4)}
               </strong>
-              <span>R² = {fit.r2.toFixed(5)} from {usable.length} standards</span>
+              <span>
+                R² = {fit.r2.toFixed(5)} from {fit.standardCount} standards, fitted by the
+                Python engine
+              </span>
+              <span>
+                Invertible between {(10 ** fit.logMwDaRange[0] / 1000).toFixed(2)} and{" "}
+                {(10 ** fit.logMwDaRange[1] / 1000).toFixed(2)} kDa, Ve{" "}
+                {fit.veMlRange[0]}–{fit.veMlRange[1]} mL
+              </span>
+            </div>
+          ) : secStatus === "pending" ? (
+            <div className="warning-note">
+              <LoaderCircle className="spin" /> Calibrating on the Python engine…
+            </div>
+          ) : secStatus === "error" ? (
+            <div className="warning-note">
+              <CircleAlert /> The engine rejected this calibration: {secError}
             </div>
           ) : (
             <div className="warning-note">
-              <CircleAlert /> Include at least two standards that elute between Vo and Vt.
+              <CircleAlert /> Add at least two standards that elute between Vo and Vt.
             </div>
           )}
           <div className="sec-figure-controls">
@@ -2085,6 +2732,7 @@ const MassHistogramSvg = forwardRef<SVGSVGElement, { bins: { start: number; end:
 function AnalysisInspector({
   trace,
   peak,
+  analysis,
   annotation,
   inspector,
   onInspector,
@@ -2098,7 +2746,8 @@ function AnalysisInspector({
   onFractions,
 }: {
   trace?: Trace;
-  peak?: Peak;
+  peak?: MeasuredPeak;
+  analysis?: TraceAnalysis;
   annotation?: AnnotationItem;
   inspector: string;
   onInspector: (v: "trace" | "peak" | "annotation" | "axis" | "figure") => void;
@@ -2118,6 +2767,12 @@ function AnalysisInspector({
     v: (Range & { id: string; name: string; color: string; opacity: number })[],
   ) => void;
 }) {
+  // Prefer the units the engine echoed with the result; fall back to the axes
+  // the trace was configured with so a readout is never unlabelled.
+  const xUnit = analysis?.units?.x ?? trace?.xUnit ?? "mL";
+  const yUnit = analysis?.units?.y ?? trace?.yUnit ?? "mAU";
+  const areaUnit = analysis?.units?.area ?? `${yUnit}*${xUnit}`;
+  const recovery = analysis?.massBalance;
   return (
     <>
       <div className="inspector-tabs">
@@ -2288,26 +2943,85 @@ function AnalysisInspector({
             />{" "}
             Show box and connector lines
           </label>
-          <div className="peak-readout">
-            <span>
-              Ve <b>{peak.apexX.toFixed(3)} mL</b>
-            </span>
-            <span>
-              Response <b>{peak.response.toFixed(3)}</b>
-            </span>
-            <span>
-              Area <b>{peak.area.toFixed(3)}</b>
-            </span>
-            <span>
-              Integrated <b>{peak.start.toFixed(3)} – {peak.end.toFixed(3)} mL</b>
-            </span>
-            <span>
-              MW{" "}
-              <b>
-                {peak.mwKDa ? `${peak.mwKDa.toFixed(2)} kDa` : "Outside Vo–Vt"}
-              </b>
-            </span>
-          </div>
+          <h4>Engine measurements</h4>
+          {!peak.measured && (
+            <div className="warning-note">
+              <CircleAlert />
+              {analysis?.status === "error"
+                ? `Not measured: the Python engine returned "${analysis.error}". Nothing below is a measurement.`
+                : analysis?.notes.find((note) => note.startsWith(peak.name)) ??
+                  "Waiting for the Python engine to measure this range."}
+            </div>
+          )}
+          {peak.measured && (
+            <>
+              <div className="peak-readout">
+                <span>
+                  {xUnit === "mL" ? "Ve at apex" : "Apex"}
+                  <strong>{formatMeasure(peak.apexX, xUnit)}</strong>
+                </span>
+                <span>
+                  Integrated
+                  <strong>
+                    {formatMeasure(peak.measuredStart, "")} – {formatMeasure(peak.measuredEnd, xUnit)}
+                  </strong>
+                </span>
+                <span>
+                  Response at apex
+                  <strong>{formatMeasure(peak.response, yUnit)}</strong>
+                </span>
+                <span>
+                  Height above baseline
+                  <strong>{formatMeasure(peak.height, yUnit)}</strong>
+                </span>
+                <span>
+                  Area
+                  <strong>{formatMeasure(peak.area, areaUnit)}</strong>
+                </span>
+                <span>
+                  FWHM
+                  <strong>{formatMeasure(peak.fwhm, xUnit)}</strong>
+                </span>
+                <span>
+                  Asymmetry at 10% height
+                  <strong>{formatMeasure(peak.asymmetry10, "", 2)}</strong>
+                </span>
+                <span>
+                  Rs from previous peak
+                  <strong>{formatMeasure(peak.rs, "", 2)}</strong>
+                </span>
+                <span>
+                  Kav
+                  <strong>{formatMeasure(peak.kav, "", 4)}</strong>
+                </span>
+                <span>
+                  Molecular weight
+                  <strong>
+                    {peak.mwKDa !== undefined
+                      ? `${peak.mwKDa.toFixed(2)} kDa`
+                      : peak.outOfRange
+                        ? "Outside the calibrated range"
+                        : xUnit === "mL"
+                          ? "No SEC calibration"
+                          : "Needs an mL axis"}
+                  </strong>
+                </span>
+              </div>
+              {peak.outOfRange && (
+                <p className="inspector-note">
+                  This apex falls outside the measured Ve and fitted log-Mw range of the
+                  standards, so the engine reports no mass rather than extrapolating one.
+                </p>
+              )}
+              {analysis?.methods && (
+                <p className="inspector-note">
+                  Peak baseline: {analysis.methods.peakBaseline}. Rs ={" "}
+                  {analysis.methods.resolution}. As = {analysis.methods.asymmetry}. These are
+                  apparent peak measurements, not a deconvolution of overlapping species.
+                </p>
+              )}
+            </>
+          )}
           <Button
             variant="ghost"
             className="danger-text"
@@ -2319,6 +3033,118 @@ function AnalysisInspector({
       ) : trace ? (
         <div className="object-inspector">
           <h3>{trace.name}</h3>
+          <h4>Python engine</h4>
+          {analysis?.status === "error" ? (
+            <div className="warning-note">
+              <CircleAlert /> {analysis.error} Nothing on this trace is measured; the
+              imported samples are drawn unprocessed.
+            </div>
+          ) : analysis?.status === "pending" ? (
+            <p className="inspector-note">
+              <LoaderCircle className="spin" /> Measuring {trace.name} on the Python
+              engine…
+            </p>
+          ) : (
+            <p className="inspector-note">
+              Baseline, smoothing, peak areas, widths and recovery are measured by the
+              Python engine on the {trace.xUnit} / {trace.yUnit} axes.
+              {analysis?.baselineOffsets.length
+                ? ` Baseline removed: ${analysis.baselineOffsets.map((offset) => offset.toFixed(4)).join(", ")} ${trace.yUnit}.`
+                : ""}
+            </p>
+          )}
+          {analysis?.notes.map((note) => (
+            <div className="warning-note" key={note}>
+              <CircleAlert /> {note}
+            </div>
+          ))}
+          {presentationActive(trace) && (
+            <div className="warning-note">
+              <CircleAlert /> This trace is rescaled or normalised for display. Reported
+              areas, heights and recovery come from the unscaled signal in {trace.yUnit}.
+            </div>
+          )}
+          <h4>Mass recovery</h4>
+          <label>
+            Loaded protein (mg)
+            <input
+              type="number"
+              min="0"
+              step=".01"
+              placeholder="Leave blank to skip recovery"
+              value={trace.loadedMg ?? ""}
+              onChange={(event) =>
+                onTrace({ loadedMg: event.target.value === "" ? null : Number(event.target.value) })
+              }
+            />
+          </label>
+          {trace.yUnit === "mAU" && (
+            <label>
+              Measured response factor (mAU per mg/mL)
+              <input
+                type="number"
+                min="0"
+                step=".01"
+                value={trace.responseFactorMAUPerMgMl ?? ""}
+                onChange={(event) =>
+                  onTrace({
+                    responseFactorMAUPerMgMl:
+                      event.target.value === "" ? null : Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+          )}
+          {trace.xUnit === "min" && (
+            <label>
+              Measured flow rate (mL/min)
+              <input
+                type="number"
+                min="0"
+                step=".01"
+                value={trace.flowMlPerMin ?? ""}
+                onChange={(event) =>
+                  onTrace({
+                    flowMlPerMin: event.target.value === "" ? null : Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+          )}
+          {recovery && (
+            <div className="peak-readout">
+              <span>
+                Integrated peak area
+                <strong>{formatMeasure(recovery.integratedArea, areaUnit)}</strong>
+              </span>
+              <span>
+                Recovered
+                <strong>{formatMeasure(recovery.recoveredMg, "mg")}</strong>
+              </span>
+              <span>
+                Recovery
+                <strong>
+                  {recovery.recoveryPercent === null
+                    ? "Not requested"
+                    : `${recovery.recoveryPercent.toFixed(1)} %`}
+                </strong>
+              </span>
+              <span>
+                Unaccounted
+                <strong>{formatMeasure(recovery.unaccountedMg, "mg")}</strong>
+              </span>
+            </div>
+          )}
+          {recovery?.status === "calculated" && (
+            <p className="inspector-note">
+              Recovery of the integrated peaks against {recovery.loadedMg} mg loaded. It is
+              not proof that all loaded material was collected.
+              {recovery.exceedsLoaded
+                ? " The recovered mass exceeds the load, which points at the response factor or the integration ranges."
+                : ""}
+            </p>
+          )}
+          <hr />
           <label>
             Line color
             <input
@@ -3236,6 +4062,7 @@ function forwardRefPlot() {
       fractions,
       standards,
       fit,
+      kavOf,
       vo,
       vt,
       fitColor,
@@ -3258,7 +4085,7 @@ function forwardRefPlot() {
     }: {
       traces: Trace[];
       processed: Record<string, Point[]>;
-      peaks: Peak[];
+      peaks: MeasuredPeak[];
       annotations: AnnotationItem[];
       fractions: (Range & {
         id: string;
@@ -3268,6 +4095,7 @@ function forwardRefPlot() {
       })[];
       standards: Standard[];
       fit: SecFit;
+      kavOf: (ve: number) => number | undefined;
       vo: number;
       vt: number;
       fitColor: string;
@@ -3608,7 +4436,7 @@ function forwardRefPlot() {
                 const panelPeaks = peaks.filter((peak) => peak.traceId === trace.id);
                 const boxes = panelPeaks
                   .map((peak) => {
-                    const lines = peakLines(peak);
+                    const lines = peakLines(peak, trace);
                     return {
                       id: peak.id,
                       cx: sx(peak.calloutX + alignShift),
@@ -3643,7 +4471,7 @@ function forwardRefPlot() {
                   const box = layout.get(peak.id);
                   const calloutX = box?.cx ?? sx(peak.calloutX + alignShift),
                     calloutY = box?.cy ?? pTop + (peak.calloutY / 100) * panelH;
-                  const lines = peakLines(peak);
+                  const lines = peakLines(peak, trace);
                   const calloutW = box?.width ?? Math.max(96, ...lines.map((line) => line.length * 5.4)) + 16;
                   return (
                     <g
@@ -3805,12 +4633,19 @@ function forwardRefPlot() {
         {/* A compact calibration inset, so a size-exclusion figure can carry
             the curve the reported masses came from. */}
         {figureMode && figure.showSec && fit && (() => {
-          const usable = standards.filter((value) => value.included && value.mwDa > 0 && value.veMl > vo && value.veMl < vt);
+          const usable = standards.filter(
+            (value) =>
+              value.included &&
+              value.mwDa > 0 &&
+              value.veMl > vo &&
+              value.veMl < vt &&
+              kavOf(value.veMl) !== undefined,
+          );
           if (!usable.length) return null;
           const boxW = 212, boxH = 150, boxX = left + plotW - boxW - 14, boxY = top + 14;
           const padLeft = 38, padBottom = 26, padTop = 12, padRight = 10;
           const logs = usable.map((value) => Math.log10(value.mwDa));
-          const kavs = usable.map((value) => kav(value.veMl, vo, vt));
+          const kavs = usable.map((value) => kavOf(value.veMl)!);
           const xScale = niceScale(Math.min(...logs) - 0.1, Math.max(...logs) + 0.1, 3);
           const yScale = niceScale(Math.min(0, ...kavs), Math.max(...kavs) + 0.03, 3);
           const ix = (value: number) => boxX + padLeft + ((value - xScale.min) / Math.max(1e-12, xScale.max - xScale.min)) * (boxW - padLeft - padRight);
@@ -3828,7 +4663,7 @@ function forwardRefPlot() {
               <text x={boxX + padLeft - 6} y={iy(value) + 3} textAnchor="end" fontSize="8" fill={figure.foreground}>{formatTick(value, yScale.ticks)}</text>
             </g>)}
             <line x1={ix(xScale.min)} y1={iy(fit.slope * xScale.min + fit.intercept)} x2={ix(xScale.max)} y2={iy(fit.slope * xScale.max + fit.intercept)} stroke={fitColor} strokeWidth="1.8" clipPath="none" />
-            {usable.map((value) => <circle key={value.id} cx={ix(Math.log10(value.mwDa))} cy={iy(kav(value.veMl, vo, vt))} r="3.2" fill={value.color} />)}
+            {usable.map((value) => <circle key={value.id} cx={ix(Math.log10(value.mwDa))} cy={iy(kavOf(value.veMl)!)} r="3.2" fill={value.color} />)}
             <text x={boxX + boxW / 2} y={boxY + boxH - 3} textAnchor="middle" fontSize="8" fill={figure.foreground}>Log Mr (Da)</text>
             <text transform={`translate(${boxX + 11} ${boxY + (boxH - padBottom) / 2 + padTop}) rotate(-90)`} textAnchor="middle" fontSize="8" fill={figure.foreground}>Kav</text>
             <text x={boxX + padLeft + 4} y={boxY + padTop + 2} fontSize="8" fill={figure.foreground}>R² = {fit.r2.toFixed(3)}</text>
@@ -3863,209 +4698,49 @@ function forwardRefPlot() {
   };
 }
 
-function processTrace(trace: Trace) {
-  let points = trace.points
-    .map((p) => ({
-      x: p.x + trace.xShift,
-      y: p.y * trace.yScale + trace.yOffset,
-    }))
-    .filter(
-      (p) =>
-        !trace.excludedRanges.some(
-          (range) => p.x >= range.start && p.x <= range.end,
-        ),
-    );
+/**
+ * Display transform for one trace: it takes the engine's processed samples and
+ * applies only the presentation controls.
+ *
+ * The axis shift and the excluded regions are already part of the engine
+ * request, so the measured signal and the drawn signal share one x axis. Y
+ * scaling, regional rescaling and normalisation live here alone, which is why
+ * mass recovery is never asked of a rescaled or normalised trace.
+ */
+function presentTrace(trace: Trace, analysis?: TraceAnalysis): Point[] {
+  let points = flattenSegments(analysis?.segments ?? []);
+  if (!points.length) return points;
+  if (trace.yScale !== 1 || trace.yOffset !== 0)
+    points = points.map((p) => ({ ...p, y: p.y * trace.yScale + trace.yOffset }));
   for (const region of trace.regionTransforms)
     points = points.map((p) =>
       p.x >= region.start && p.x <= region.end
         ? { ...p, y: p.y * region.scale + region.offset }
         : p,
     );
-  if (trace.smoothing > 1)
-    points = movingAverage(points, Math.round(trace.smoothing));
-  if (trace.baseline && points.length) {
-    const baseline = quantile(
-      points.map((p) => p.y),
-      0.05,
-    );
-    points = points.map((p) => ({ ...p, y: p.y - baseline }));
-  }
-  if (trace.normalization === "maximum" && points.length) {
-    const max = Math.max(...points.map((p) => Math.abs(p.y)));
+  if (trace.normalization === "maximum") {
+    const max = points.reduce((best, p) => Math.max(best, Math.abs(p.y)), 0);
     if (max) points = points.map((p) => ({ ...p, y: (p.y / max) * 100 }));
   }
-  if (trace.normalization === "area" && points.length) {
+  if (trace.normalization === "area") {
     const area = integratedArea(points);
     if (area) points = points.map((p) => ({ ...p, y: p.y / area }));
   }
   return points;
 }
-// The peak record keeps a stable apex while its left and right baseline bounds expand.
-//
-// The expansion is never allowed to leave `limit`, which defaults to the region
-// the researcher dragged. Without that clamp a shoulder on the flank of a much
-// larger peak swallows the rest of the chromatogram: walking away from the
-// shoulder apex the signal climbs into the neighbour and never returns to the
-// shoulder's own baseline, so the walk runs to the end of the trace.
-function findPeak(points: Point[], range: Range, exact = false, limit: Range = range) {
-  const candidates = points
-    .map((p, i) => ({ ...p, i }))
-    .filter((p) => p.x >= range.start && p.x <= range.end);
-  if (!candidates.length) return null;
-  const apex = candidates.reduce(
-    (best, p) => (p.y > best.y ? p : best),
-    candidates[0],
-  );
-  const limitLeft = Math.min(
-    apex.i,
-    Math.max(0, points.findIndex((p) => p.x >= limit.start)),
-  );
-  const limitRight = Math.max(
-    apex.i,
-    (() => {
-      for (let i = points.length - 1; i >= 0; i--) if (points[i].x <= limit.end) return i;
-      return points.length - 1;
-    })(),
-  );
-  let left = exact ? candidates[0].i : apex.i,
-    right = exact ? candidates.at(-1)!.i : apex.i;
-  if (!exact) {
-    const local = points
-        .slice(Math.max(0, apex.i - 100), Math.min(points.length, apex.i + 101))
-        .map((p) => p.y),
-      noise = Math.max(1e-12, mad(local));
-    // Measured from the edges the walk may actually reach, so auto-detection
-    // (whose limits are the neighbouring valleys) gets a baseline-level
-    // threshold rather than one taken from its few-point detection window.
-    const edge = Math.min(points[limitLeft].y, points[limitRight].y);
-    const threshold = edge + (apex.y - edge) * 0.025;
-    // Three consecutive points, so a single noisy sample cannot end the peak.
-    const confirm = 3;
-    let rising = 0;
-    while (left > limitLeft) {
-      if (
-        points[left].y <= threshold ||
-        points[left - 1].y > points[left].y + noise * 0.25
-      ) {
-        rising++;
-        if (rising >= confirm) { left += confirm - 1; break; }
-      } else rising = 0;
-      left--;
-    }
-    left = Math.min(apex.i, Math.max(limitLeft, left));
-    rising = 0;
-    while (right < limitRight) {
-      if (
-        points[right].y <= threshold ||
-        points[right + 1].y > points[right].y + noise * 0.25
-      ) {
-        rising++;
-        if (rising >= confirm) { right -= confirm - 1; break; }
-      } else rising = 0;
-      right++;
-    }
-    right = Math.max(apex.i, Math.min(limitRight, right));
-  }
-  const region = points.slice(left, right + 1),
-    baselineA = region[0].y,
-    baselineB = region.at(-1)!.y,
-    span = Math.max(1e-12, region.at(-1)!.x - region[0].x);
-  let area = 0;
-  for (let i = 1; i < region.length; i++) {
-    const y0 = Math.max(
-        0,
-        region[i - 1].y -
-          (baselineA +
-            ((baselineB - baselineA) * (region[i - 1].x - region[0].x)) / span),
-      ),
-      y1 = Math.max(
-        0,
-        region[i].y -
-          (baselineA +
-            ((baselineB - baselineA) * (region[i].x - region[0].x)) / span),
-      );
-    area += ((region[i].x - region[i - 1].x) * (y0 + y1)) / 2;
-  }
-  const baselineAtApex =
-    baselineA + ((baselineB - baselineA) * (apex.x - region[0].x)) / span;
-  return {
-    start: region[0].x,
-    end: region.at(-1)!.x,
-    apexX: apex.x,
-    response: apex.y,
-    height: apex.y - baselineAtApex,
-    area,
-  };
+/** A measurement with its unit, or an em dash when the engine reported none. */
+function formatMeasure(value: number | null | undefined, unit: string, digits = 3) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return unit ? `${value.toFixed(digits)} ${unit}` : value.toFixed(digits);
 }
-function findAllPeaks(points: Point[], count: number) {
-  if (points.length < 3) return [];
-  const smooth = movingAverage(points, 7);
-  const threshold = quantile(
-    smooth.map((p) => p.y),
-    0.65,
+/** True when the drawn curve is not the signal the reported numbers came from. */
+function presentationActive(trace: Trace) {
+  return (
+    trace.yScale !== 1 ||
+    trace.yOffset !== 0 ||
+    trace.normalization !== "none" ||
+    trace.regionTransforms.length > 0
   );
-  const candidates = smooth
-    .map((p, i) => ({ ...p, i }))
-    .filter(
-      (p, i) =>
-        i > 0 &&
-        i < smooth.length - 1 &&
-        p.y > threshold &&
-        p.y >= smooth[i - 1].y &&
-        p.y > smooth[i + 1].y,
-    )
-    .sort((a, b) => b.y - a.y);
-  const chosen: typeof candidates = [];
-  for (const value of candidates) {
-    if (
-      chosen.every(
-        (other) => Math.abs(other.i - value.i) > points.length * 0.03,
-      )
-    )
-      chosen.push(value);
-    if (chosen.length >= count) break;
-  }
-  // Each detected peak may grow until it meets its neighbour: the midpoint
-  // between adjacent apices is the valley that separates them.
-  const ordered = [...chosen].sort((a, b) => a.i - b.i);
-  return ordered
-    .map((value, index) =>
-      findPeak(
-        points,
-        {
-          start: points[Math.max(0, value.i - 3)].x,
-          end: points[Math.min(points.length - 1, value.i + 3)].x,
-        },
-        false,
-        {
-          start: index ? (ordered[index - 1].x + value.x) / 2 : points[0].x,
-          end: index < ordered.length - 1 ? (value.x + ordered[index + 1].x) / 2 : points.at(-1)!.x,
-        },
-      ),
-    )
-    .filter(Boolean)
-    .sort((a, b) => a!.apexX - b!.apexX) as NonNullable<
-    ReturnType<typeof findPeak>
-  >[];
-}
-function fitSec(standards: Standard[], vo: number, vt: number): SecFit {
-  const valid = standards.filter(
-    (s) => s.included && s.mwDa > 0 && s.veMl > vo && s.veMl < vt,
-  );
-  if (valid.length < 2 || vt <= vo) return null;
-  const xs = valid.map((s) => Math.log10(s.mwDa)),
-    ys = valid.map((s) => kav(s.veMl, vo, vt)),
-    mx = mean(xs),
-    my = mean(ys),
-    den = xs.reduce((sum, x) => sum + (x - mx) ** 2, 0);
-  if (!den) return null;
-  const slope =
-      xs.reduce((sum, x, i) => sum + (x - mx) * (ys[i] - my), 0) / den,
-    intercept = my - slope * mx,
-    pred = xs.map((x) => slope * x + intercept),
-    ssRes = ys.reduce((sum, y, i) => sum + (y - pred[i]) ** 2, 0),
-    ssTot = ys.reduce((sum, y) => sum + (y - my) ** 2, 0);
-  return { slope, intercept, r2: ssTot ? 1 - ssRes / ssTot : 1 };
 }
 function fitMass(standards: MassStandard[]) {
   const valid = standards.filter((value) => value.included && value.massKDa >= 0 && Number.isFinite(value.signal));
@@ -4091,13 +4766,6 @@ function histogramBins(values: number[], requested: number) {
   const bins = Array.from({ length: count }, (_, index) => ({ start: minimum + index * width, end: minimum + (index + 1) * width, count: 0 }));
   for (const value of values) bins[Math.min(count - 1, Math.max(0, Math.floor((value - minimum) / width)))].count += 1;
   return bins;
-}
-function calibratePeak(peak: Peak, fit: SecFit, vo: number, vt: number): Peak {
-  if (!fit || !fit.slope) return peak;
-  const value = kav(peak.apexX, vo, vt);
-  if (!(peak.apexX > vo && peak.apexX < vt)) return { ...peak, kav: value, mwKDa: undefined };
-  const logMr = (value - fit.intercept) / fit.slope;
-  return { ...peak, kav: value, mwKDa: 10 ** logMr / 1000 };
 }
 function majorTickValues(
   minimum: number,
@@ -4251,14 +4919,19 @@ function pathFor(
     )
     .join(" ");
 }
-function peakLines(peak: Peak) {
+// A callout only ever prints engine measurements, with the unit they are in. An
+// unmeasured peak says so instead of printing a placeholder as a result.
+function peakLines(peak: MeasuredPeak, trace?: Trace) {
+  const x = trace?.xUnit ?? "mL";
+  const y = trace?.yUnit ?? "mAU";
+  if (!peak.measured) return [peak.name, "Not measured", peak.customText].filter(Boolean);
   return [
     peak.name,
-    peak.showVe ? `Ve ${peak.apexX.toFixed(2)} mL` : "",
-    peak.showResponse ? `Response ${peak.response.toFixed(2)}` : "",
-    peak.showArea ? `Area ${peak.area.toFixed(2)}` : "",
+    peak.showVe ? `${x === "mL" ? "Ve" : "Apex"} ${peak.apexX.toFixed(2)} ${x}` : "",
+    peak.showResponse ? `Response ${peak.response.toFixed(2)} ${y}` : "",
+    peak.showArea ? `Area ${peak.area.toFixed(2)} ${y}*${x}` : "",
     peak.showMw
-      ? peak.mwKDa
+      ? peak.mwKDa !== undefined
         ? `MW ${peak.mwKDa.toFixed(1)} kDa`
         : "MW: outside the SEC calibration"
       : "",
@@ -4300,7 +4973,20 @@ function loadTraces(value: unknown): Trace[] {
       scale: Number(r.scale ?? 1),
       offset: Number(r.offset ?? 0),
     })),
+    // Projects written before the axes were explicit were all mL/mAU
+    // chromatograms, which is what the studio defaulted to drawing.
+    xUnit: raw.xUnit === "min" ? "min" : "mL",
+    yUnit: raw.yUnit === "mg/mL" ? "mg/mL" : "mAU",
+    loadedMg: optionalNumber(raw.loadedMg),
+    responseFactorMAUPerMgMl: optionalNumber(raw.responseFactorMAUPerMgMl),
+    flowMlPerMin: optionalNumber(raw.flowMlPerMin),
   }));
+}
+/** A blank field stays blank: it is not the same claim as a measured zero. */
+function optionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 function loadPeaks(value: unknown): Peak[] {
   return array(value).map((raw, index) => ({
@@ -4433,17 +5119,6 @@ function parseTrace(raw: string) {
   }
   return rows.sort((a, b) => a.x - b.x);
 }
-function movingAverage(points: Point[], window: number) {
-  const radius = Math.max(0, Math.floor(window / 2));
-  return points.map((p, i) => ({
-    ...p,
-    y: mean(
-      points
-        .slice(Math.max(0, i - radius), Math.min(points.length, i + radius + 1))
-        .map((v) => v.y),
-    ),
-  }));
-}
 function integratedArea(points: Point[]) {
   let area = 0;
   for (let index = 1; index < points.length; index += 1) area += Math.abs((points[index].x - points[index - 1].x) * (points[index].y + points[index - 1].y) / 2);
@@ -4451,25 +5126,6 @@ function integratedArea(points: Point[]) {
 }
 function mean(values: number[]) {
   return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-}
-function quantile(values: number[], fraction: number) {
-  const sorted = [...values].sort((a, b) => a - b),
-    position = (sorted.length - 1) * fraction,
-    low = Math.floor(position),
-    high = Math.ceil(position);
-  return sorted[low] * (high - position) + sorted[high] * (position - low);
-}
-function mad(values: number[]) {
-  const m = quantile(values, 0.5);
-  return (
-    quantile(
-      values.map((v) => Math.abs(v - m)),
-      0.5,
-    ) * 1.4826
-  );
-}
-function kav(ve: number, vo: number, vt: number) {
-  return (ve - vo) / Math.max(1e-12, vt - vo);
 }
 function array(value: unknown): JsonObject[] {
   return Array.isArray(value)
