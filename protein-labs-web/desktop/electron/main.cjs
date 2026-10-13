@@ -1,8 +1,9 @@
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const { renderReportPdf, reportFilename } = require("./report-pdf.cjs");
 
 const API_HOST = "127.0.0.1";
 const API_PORT = 8770;
@@ -131,6 +132,39 @@ async function backendReady(timeoutMs = 30000) {
   throw new Error("The local scientific engine did not become ready within 30 seconds.");
 }
 
+/* ------------------------------------------------------------------------
+   Report PDF export
+
+   The writer itself lives in report-pdf.cjs; this is the part that asks the
+   researcher where to put the file.
+   ------------------------------------------------------------------------ */
+
+async function exportReportPdf(sender, request) {
+  const html = typeof request?.html === "string" ? request.html : "";
+  if (!html.trim()) return { ok: false, reason: "The report produced no printable content." };
+
+  const owner = BrowserWindow.fromWebContents(sender) ?? mainWindow;
+  const chosen = await dialog.showSaveDialog(owner, {
+    title: "Save purification report",
+    defaultPath: path.join(app.getPath("documents"), reportFilename(request?.filename)),
+    filters: [{ name: "PDF document", extensions: ["pdf"] }],
+  });
+  if (chosen.canceled || !chosen.filePath) return { ok: false, cancelled: true };
+
+  try {
+    const pdf = await renderReportPdf(html, {
+      header: String(request?.header ?? "").slice(0, 300),
+      footer: String(request?.footer ?? "").slice(0, 300),
+    });
+    fs.writeFileSync(chosen.filePath, pdf);
+    log(`Report exported to ${chosen.filePath} (${pdf.length} bytes)`);
+    return { ok: true, path: chosen.filePath, bytes: pdf.length };
+  } catch (error) {
+    log(`Report PDF export failed: ${error instanceof Error ? error.stack : error}`);
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function createWindow() {
   const logDir = path.join(app.getPath("userData"), "logs");
   fs.mkdirSync(logDir, { recursive: true });
@@ -149,7 +183,12 @@ async function createWindow() {
     icon: path.resolve(__dirname, "../assets/icon.png"),
     show: true,
     autoHideMenuBar: true,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: path.resolve(__dirname, "preload.cjs"),
+    },
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^(?:https?:\/\/|mailto:)/.test(url)) void shell.openExternal(url);
@@ -182,6 +221,14 @@ if (!hasSingleInstanceLock) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
     mainWindow.focus();
+  });
+
+  // Only the workspace window may ask for a report PDF.
+  ipcMain.handle("report:export-pdf", async (event, request) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) {
+      return { ok: false, reason: "Report export is only available from the workspace window." };
+    }
+    return exportReportPdf(event.sender, request);
   });
 
   app.whenReady().then(createWindow).catch((error) => {
