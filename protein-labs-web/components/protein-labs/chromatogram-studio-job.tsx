@@ -191,8 +191,6 @@ type TraceAnalysis = {
   massBalance: EngineMassBalance | null;
   methods: EngineMethods | null;
   baselineOffsets: number[];
-  // Integration ranges the studio could not send, with the reason why.
-  notes: string[];
   // True while the drawn curve is the imported samples rather than an engine
   // result, so the studio can say that no smoothing or baseline was applied.
   raw: boolean;
@@ -207,7 +205,6 @@ const emptyAnalysis: TraceAnalysis = {
   massBalance: null,
   methods: null,
   baselineOffsets: [],
-  notes: [],
   raw: true,
 };
 type SecState = {
@@ -618,7 +615,6 @@ function composeAnalysis(
     massBalance: results.length === 1 ? results[0].massBalance : null,
     methods: results[0]?.methods ?? null,
     baselineOffsets: results.map((result) => result.baselineOffset),
-    notes: request.notes,
   };
 }
 type AnalysisMap = Record<string, TraceAnalysis>;
@@ -638,7 +634,6 @@ async function measureTraces(
             ...(held ?? emptyAnalysis),
             status: "pending" as const,
             error: "",
-            notes: request.notes,
             // Show the imported samples until the first result arrives rather
             // than an empty plot, and say that is what they are.
             segments: keep ? held!.segments : request.segments.map((segment) => segment.points),
@@ -679,7 +674,6 @@ async function measureTraces(
           ...emptyAnalysis,
           status: "error",
           error: errorText(reason),
-          notes: request.notes,
           segments: request.segments.map((segment) => segment.points),
           raw: true,
         },
@@ -845,6 +839,10 @@ export function ChromatogramStudioJob({
 
   const fit = sec.calibration;
   const activeAnalysis = activeTrace ? analyses[activeTrace.id] : undefined;
+  // What the studio could not send and why. Derived from the request, so it
+  // answers the moment a field changes instead of waiting on a round trip.
+  const activeNotes =
+    traceRequests.find((request) => request.traceId === activeTrace?.id)?.notes ?? [];
   // Kav comes from the engine for every volume the studio shows, so the table,
   // the figure and the exports can never disagree with the fit.
   const kavAt = (ve: number) => sec.predictions[String(ve)]?.kav;
@@ -996,21 +994,23 @@ export function ChromatogramStudioJob({
     );
   }
   function addExcluded(range: Range | null = selection) {
-    if (!activeTrace || !range) return;
+    const checked = finiteRange(range);
+    if (!activeTrace || !checked) return;
     updateTrace(activeTrace.id, {
-      excludedRanges: [...activeTrace.excludedRanges, range],
+      excludedRanges: [...activeTrace.excludedRanges, checked],
     });
-    setSelection(range);
+    setSelection(checked);
   }
   function addTransform(range: Range | null = selection) {
-    if (!activeTrace || !range) return;
+    const checked = finiteRange(range);
+    if (!activeTrace || !checked) return;
     updateTrace(activeTrace.id, {
       regionTransforms: [
         ...activeTrace.regionTransforms,
-        { ...range, scale: 1, offset: 0 },
+        { ...checked, scale: 1, offset: 0 },
       ],
     });
-    setSelection(range);
+    setSelection(checked);
   }
 
   function plotX(event: PointerEvent<SVGSVGElement>) {
@@ -1755,6 +1755,7 @@ export function ChromatogramStudioJob({
               trace={activeTrace}
               peak={calibratedPeaks.find((value) => value.id === selectedPeakId)}
               analysis={activeAnalysis}
+              notes={activeNotes}
               annotation={selectedAnnotation}
               inspector={inspector}
               onInspector={setInspector}
@@ -1785,6 +1786,7 @@ export function ChromatogramStudioJob({
             trace={activeTrace}
             peak={calibratedPeaks.find((value) => value.id === selectedPeakId)}
             analysis={activeAnalysis}
+            notes={activeNotes}
             annotation={selectedAnnotation}
             inspector={inspector}
             onInspector={setInspector}
@@ -2069,14 +2071,14 @@ function DataWorkspace({
               <Button
                 variant="outline"
                 disabled={!selection}
-                onClick={onExclude}
+                onClick={() => onExclude()}
               >
                 Exclude points
               </Button>
               <Button
                 variant="outline"
                 disabled={!selection}
-                onClick={onTransform}
+                onClick={() => onTransform()}
               >
                 Add regional rescale
               </Button>
@@ -2733,6 +2735,7 @@ function AnalysisInspector({
   trace,
   peak,
   analysis,
+  notes,
   annotation,
   inspector,
   onInspector,
@@ -2748,6 +2751,7 @@ function AnalysisInspector({
   trace?: Trace;
   peak?: MeasuredPeak;
   analysis?: TraceAnalysis;
+  notes: string[];
   annotation?: AnnotationItem;
   inspector: string;
   onInspector: (v: "trace" | "peak" | "annotation" | "axis" | "figure") => void;
@@ -2949,7 +2953,7 @@ function AnalysisInspector({
               <CircleAlert />
               {analysis?.status === "error"
                 ? `Not measured: the Python engine returned "${analysis.error}". Nothing below is a measurement.`
-                : analysis?.notes.find((note) => note.startsWith(peak.name)) ??
+                : notes.find((note) => note.startsWith(peak.name)) ??
                   "Waiting for the Python engine to measure this range."}
             </div>
           )}
@@ -3053,7 +3057,7 @@ function AnalysisInspector({
                 : ""}
             </p>
           )}
-          {analysis?.notes.map((note) => (
+          {notes.map((note) => (
             <div className="warning-note" key={note}>
               <CircleAlert /> {note}
             </div>
@@ -4915,7 +4919,10 @@ function pathFor(
 ) {
   return points
     .map(
-      (p, i) => `${i ? "L" : "M"}${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`,
+      // A sample flagged `gap` is the first one after an excluded region, so it
+      // starts a new sub-path. Without the break the plot would draw a straight
+      // line across data that was removed, which reads as a measured baseline.
+      (p, i) => `${i && !p.gap ? "L" : "M"}${sx(p.x).toFixed(2)} ${sy(p.y).toFixed(2)}`,
     )
     .join(" ");
 }
@@ -4963,16 +4970,11 @@ function loadTraces(value: unknown): Trace[] {
     fillVisible: raw.fillVisible === true,
     fillColor: String(raw.fillColor ?? raw.color ?? traceColors[index % traceColors.length]),
     fillOpacity: Number(raw.fillOpacity ?? .16),
-    excludedRanges: array(raw.excludedRanges).map((r) => ({
-      start: Number(r.start),
-      end: Number(r.end),
-    })),
-    regionTransforms: array(raw.regionTransforms).map((r) => ({
-      start: Number(r.start),
-      end: Number(r.end),
-      scale: Number(r.scale ?? 1),
-      offset: Number(r.offset ?? 0),
-    })),
+    excludedRanges: array(raw.excludedRanges).flatMap((r) => finiteRange(r) ?? []),
+    regionTransforms: array(raw.regionTransforms).flatMap((r) => {
+      const range = finiteRange(r);
+      return range ? [{ ...range, scale: Number(r.scale ?? 1), offset: Number(r.offset ?? 0) }] : [];
+    }),
     // Projects written before the axes were explicit were all mL/mAU
     // chromatograms, which is what the studio defaulted to drawing.
     xUnit: raw.xUnit === "min" ? "min" : "mL",
@@ -4981,6 +4983,21 @@ function loadTraces(value: unknown): Trace[] {
     responseFactorMAUPerMgMl: optionalNumber(raw.responseFactorMAUPerMgMl),
     flowMlPerMin: optionalNumber(raw.flowMlPerMin),
   }));
+}
+/**
+ * Only a pair of finite numbers may enter the project record.
+ *
+ * The exclude and rescale buttons used to hand their click event straight to
+ * the range argument, which stored a DOM node in the trace and made the saved
+ * project unserialisable. Ranges are checked here so no caller can do that
+ * again, and so a project already carrying one still opens.
+ */
+function finiteRange(value: unknown): Range | null {
+  if (!value || typeof value !== "object") return null;
+  const start = Number((value as Range).start);
+  const end = Number((value as Range).end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start: Math.min(start, end), end: Math.max(start, end) };
 }
 /** A blank field stays blank: it is not the same claim as a measured zero. */
 function optionalNumber(value: unknown) {
