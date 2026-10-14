@@ -4845,7 +4845,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   width: 15px;
   color: #dfaa45;
 }
-.gel-purity {
+.gel-quant-card {
   display: flex;
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
@@ -4853,13 +4853,147 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   background: color-mix(in srgb, var(--primary) 8%, var(--card));
   padding: 11px;
 }
-.gel-purity strong {
+.gel-quant-card strong {
   font: 27px var(--font-mono);
   color: var(--primary);
 }
-.gel-purity span {
+.gel-quant-card span {
   font-size: 11px;
   color: var(--muted-foreground);
+}
+.gel-quant-card small {
+  margin-top: 7px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+/* A withheld measurement reads as a stated refusal, not as a quiet zero. */
+.gel-quant-card.unavailable {
+  border-color: color-mix(in srgb, #dfaa45 55%, var(--border));
+  background: color-mix(in srgb, #dfaa45 10%, var(--card));
+}
+.gel-quant-card.unavailable strong {
+  font-size: 17px;
+  color: #a97a19;
+}
+.gel-quant-card.unavailable ul {
+  margin: 7px 0 0;
+  padding-left: 15px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.gel-stale-note {
+  display: flex;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, #dfaa45 55%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, #dfaa45 10%, var(--card));
+  padding: 10px;
+  margin: 12px 0;
+  font-size: 11px;
+}
+.gel-stale-note svg {
+  width: 15px;
+  flex: none;
+  color: #a97a19;
+}
+.gel-stale-note ul {
+  margin: 5px 0 8px;
+  padding-left: 15px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.gel-band-flag {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.gel-band-flag svg {
+  width: 13px;
+  flex: none;
+}
+.gel-band-flag.refused svg {
+  color: #dfaa45;
+}
+.gel-band-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+}
+.gel-band-table th {
+  text-align: left;
+  color: var(--muted-foreground);
+  font-weight: 700;
+  padding: 4px 3px;
+  border-bottom: 1px solid var(--border);
+}
+.gel-band-table td {
+  padding: 4px 3px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.gel-band-table tr {
+  cursor: pointer;
+}
+.gel-band-table tr.selected td {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.gel-band-table tr.refused td {
+  color: #a97a19;
+}
+.gel-hint {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.gel-method-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+}
+.gel-method-list div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gel-method-list dt {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+.gel-method-list dd {
+  margin: 0;
+  font: 10.5px var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.gel-caveats {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.gel-caveats li {
+  display: flex;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.gel-caveats svg {
+  width: 13px;
+  flex: none;
+  margin-top: 1px;
+}
+.calibration-card.warning {
+  border-left-color: #dfaa45;
 }
 .gel-results-panel > .inline-flex {
   width: 100%;
