@@ -305,6 +305,12 @@ def _lane_bands(
             "quantificationRefused": saturated,
             "saturationReason": saturation_reason,
             "normalizationBasis": NORMALIZATION_BASIS,
+            # Noise-only approximate standard error in integrated signal units.
+            # The profile has already been averaged across the lane and smoothed.
+            "densityUncertainty": None if saturated else (
+                max(0.5, 1.4826 * mad) * (x1 - x0)
+                * math.sqrt((end - start + 1) * (2 * smoothing_radius + 1))
+            ),
         }
         if saturated:
             band["density"] = None
@@ -326,11 +332,8 @@ def _lane_bands(
     total = sum(float(item["density"]) for item in quantified)
     # MAD is measured on a column-averaged, smoothed profile. Scale back by
     # lane width (not sqrt(width)), and approximate smoothing correlation.
-    profile_noise = max(0.5, 1.4826 * mad)
     density_variances = [
-        profile_noise**2 * (x1 - x0)**2
-        * max(1, round((band["yEnd"] - band["yStart"]) * height))
-        * (2 * smoothing_radius + 1)
+        band["densityUncertainty"]**2
         for band in quantified
     ]
     total_variance = sum(density_variances)
@@ -448,11 +451,24 @@ def _apply_molecular_weights(
         "markerAssignment": "provided_masses_top_to_bottom_before_saturation_filter",
         "assumption": "All ladder markers are detected and correctly identified by the caller",
         "fitR2": round(r2, 4),
+        "r2": r2,
         "slope": slope,
         "intercept": intercept,
         "ladderBandCount": len(ladder_bands),
         "calibrationMarkerCount": len(calibration_bands),
         "mobilityRange": [min_m, max_m],
+        "residualConvention": "observed_minus_fitted_kDa",
+        "matchedBands": [
+            {
+                "bandId": band["id"],
+                "relativeMobility": band["centerY"],
+                "massKDa": band["ladderMarkerMassDa"] / 1000,
+                "fittedKDa": 10**(slope * band["centerY"] + intercept) / 1000,
+                "residualKDa": (band["ladderMarkerMassDa"]
+                                - 10**(slope * band["centerY"] + intercept)) / 1000,
+            }
+            for band in calibration_bands
+        ],
     }
     for band in bands:
         if band.get("quantificationRefused"):
@@ -468,6 +484,31 @@ def _apply_molecular_weights(
         band["molecularWeightDa"] = round(10**log_estimate, 1)
         band["molecularWeightStatus"] = "estimated"
     return calibration
+
+
+def _report_flags(band: dict[str, Any]) -> list[dict[str, str]]:
+    flags = []
+    if band["quantificationRefused"]:
+        flags.append({"code": "band_saturated", "level": "warning",
+                      "title": "Band saturated", "message": band["saturationReason"]})
+    if band["normalizationBasis"] == NORMALIZATION_UNAVAILABLE_SATURATION:
+        flags.append({"code": "lane_fraction_unavailable", "level": "warning",
+                      "title": "Lane fraction unavailable",
+                      "message": "A saturated band makes the lane total unknown; lane fractions cannot be reported."})
+    if band["densityUncertainty"] is not None:
+        flags.append({"code": "density_uncertainty_noise_only", "level": "note",
+                      "title": "Noise-only uncertainty",
+                      "message": "Density uncertainty is an approximate one-standard-error noise estimate; background bias, staining response, and lane curvature are excluded. Signal fraction is not validated protein mass purity."})
+    mw_status = band["molecularWeightStatus"]
+    if mw_status == "outside_ladder_range":
+        flags.append({"code": mw_status, "level": "caution",
+                      "title": "Outside ladder range",
+                      "message": "Band mobility lies outside the calibrated ladder range; molecular weight is not extrapolated."})
+    elif mw_status not in {"estimated", "quantification_refused"}:
+        flags.append({"code": "ladder_" + mw_status, "level": "caution",
+                      "title": "Molecular weight unavailable",
+                      "message": "Ladder calibration unavailable: " + mw_status.replace("_", " ") + "."})
+    return flags
 
 
 def analyze_gel(request: dict[str, Any]) -> dict[str, Any]:
@@ -494,7 +535,11 @@ def analyze_gel(request: dict[str, Any]) -> dict[str, Any]:
                     lane.get("label", index),
                 )
     bands: list[dict[str, Any]] = []
-    for lane in lanes:
+    for index, lane in enumerate(lanes):
+        lane.setdefault("label", f"Lane {index + 1}")
+        lane.setdefault("sampleLabel", lane["label"])
+        # Only the caller can bind a lane to a roadmap step; never guess an id.
+        lane.setdefault("stageId", None)
         bands.extend(_lane_bands(signal, lane, sensitivity, background_radius, clipping_mask))
     for lane in lanes:
         lane_bands = [band for band in bands if band["laneId"] == lane["id"]]
@@ -510,6 +555,8 @@ def analyze_gel(request: dict[str, Any]) -> dict[str, Any]:
         ):
             max(quantified, key=lambda item: float(item["density"]))["isTarget"] = True
     ladder_calibration = _apply_molecular_weights(bands, lanes, request)
+    for band in bands:
+        band["flags"] = _report_flags(band)
     preview = BytesIO()
     image.save(preview, format="PNG", optimize=True)
     return {
