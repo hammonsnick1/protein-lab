@@ -12,25 +12,12 @@ import statistics
 
 from PIL import Image, ImageOps
 
-MAX_IMAGE_DIMENSION = 1800
-SATURATION_SIGNAL = 253.5
-SATURATION_PIXEL_FRACTION = 0.02
+SATURATION_SIGNAL = 255.0
 BACKGROUND_METHOD = "rolling_ball"
 DEFAULT_BACKGROUND_RADIUS = 28
 LINEAR_RANGE_MAX = 254.0
-NORMALIZATION_BASIS = "percent_of_lane_integral"
-DEFAULT_LADDER_MASSES_KDA = [
-    250,
-    150,
-    100,
-    75,
-    50,
-    37,
-    25,
-    20,
-    15,
-    10,
-]
+NORMALIZATION_BASIS = "fraction_of_detected_band_integrals"
+NORMALIZATION_UNAVAILABLE_SATURATION = "lane_fraction_unavailable_due_to_saturation"
 
 
 def _stable_id(prefix: str, *parts: object) -> str:
@@ -54,16 +41,28 @@ def _smooth(values: list[float], radius: int) -> list[float]:
 
 
 def _rolling_ball(profile: list[float], radius: int) -> list[float]:
+    """Fit circular caps below the profile and reconstruct their upper envelope.
+
+    Radius uses pixels horizontally and 8-bit signal units vertically. The
+    erosion lowers each center until its entire cap fits; dilation reconstructs
+    the background. Truncated support avoids inventing off-image signal.
+    Unlike a minimum filter, this opening preserves interior linear ramps.
+    """
     if not profile:
         return []
     radius = max(1, radius)
-    window = radius * 2 + 1
-    eroded: list[float] = []
-    for index in range(len(profile)):
-        start = max(0, index - radius)
-        end = min(len(profile), index + radius + 1)
-        eroded.append(min(profile[start:end]))
-    return _smooth(eroded, max(1, radius // 3))
+    cap = [(dx, math.sqrt(radius * radius - dx * dx))
+           for dx in range(-radius, radius + 1)]
+    length = len(profile)
+    centers = [
+        min(profile[i + dx] - height for dx, height in cap if 0 <= i + dx < length)
+        for i in range(length)
+    ]
+    return [
+        min(profile[i], max(centers[i - dx] + height
+                            for dx, height in cap if 0 <= i - dx < length))
+        for i in range(length)
+    ]
 
 
 def _percentile(values: list[float], fraction: float) -> float:
@@ -96,7 +95,10 @@ def _load_image(request: dict[str, Any]) -> tuple[Image.Image, str, dict[str, An
         image.load()
     except Exception as error:
         raise ValueError("The selected file is not a readable gel image") from error
-    image = ImageOps.exif_transpose(image).convert("L")
+    if image.mode not in {"L", "RGB"}:
+        raise ValueError("Quantification requires an 8-bit grayscale or RGB image; "
+                         "higher bit depths, palette images, and alpha channels are unsupported")
+    image = ImageOps.exif_transpose(image)
     if image.width < 40 or image.height < 40:
         raise ValueError("The gel image is too small to analyze")
     original_width, original_height = image.size
@@ -104,25 +106,18 @@ def _load_image(request: dict[str, Any]) -> tuple[Image.Image, str, dict[str, An
         "downscaled": False,
         "originalWidth": original_width,
         "originalHeight": original_height,
-        "maxDimensionLimit": MAX_IMAGE_DIMENSION,
+        "maxDimensionLimit": None,
         "scaleFactor": 1.0,
         "resampling": None,
+        "sourceMode": image.mode,
+        "measurementConversion": "Pillow_RGB_to_L" if image.mode == "RGB" else None,
     }
-    if max(image.size) > MAX_IMAGE_DIMENSION:
-        scale = MAX_IMAGE_DIMENSION / max(image.size)
-        image = image.resize(
-            (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
-            Image.Resampling.LANCZOS,
-        )
-        processing["downscaled"] = True
-        processing["scaleFactor"] = scale
-        processing["resampling"] = "LANCZOS"
     return image, source, processing
 
 
-def _signal_matrix(image: Image.Image) -> tuple[list[list[float]], str]:
+def _signal_matrix(image: Image.Image) -> tuple[list[list[float]], str, list[list[bool]]]:
     width, height = image.size
-    pixels = list(image.tobytes())
+    pixels = list(image.convert("L").tobytes())
     rows = [
         [float(value) for value in pixels[row * width : (row + 1) * width]]
         for row in range(height)
@@ -132,9 +127,16 @@ def _signal_matrix(image: Image.Image) -> tuple[list[list[float]], str]:
     dark_contrast = sum(max(0.0, median - value) for value in flat)
     light_contrast = sum(max(0.0, value - median) for value in flat)
     dark_bands = dark_contrast >= light_contrast
+    # Channel clipping must be checked before luminance conversion hides it.
+    endpoint = 0 if dark_bands else 255
+    channels = len(image.getbands())
+    source_pixels = image.tobytes()
+    clipped = [endpoint in source_pixels[i:i + channels]
+               for i in range(0, len(source_pixels), channels)]
+    clipping_mask = [clipped[y * width:(y + 1) * width] for y in range(height)]
     if dark_bands:
-        return [[255.0 - value for value in row] for row in rows], "dark"
-    return rows, "light"
+        return [[255.0 - value for value in row] for row in rows], "dark", clipping_mask
+    return rows, "light", clipping_mask
 
 
 def _regions_above(profile: list[float], threshold: float, minimum: int) -> list[tuple[int, int]]:
@@ -198,20 +200,20 @@ def _auto_lanes(signal: list[list[float]], sensitivity: float) -> list[dict[str,
 
 
 def _band_saturation(
-    signal: list[list[float]], x0: int, x1: int, y0: int, y1: int
+    clipping_mask: list[list[bool]], x0: int, x1: int, y0: int, y1: int
 ) -> tuple[bool, str | None]:
-    pixels: list[float] = []
+    pixels: list[bool] = []
     for y in range(y0, y1 + 1):
         for x in range(x0, x1):
-            pixels.append(signal[y][x])
+            pixels.append(clipping_mask[y][x])
     if not pixels:
         return False, None
-    saturated = sum(1 for value in pixels if value >= SATURATION_SIGNAL)
+    saturated = sum(pixels)
     fraction = saturated / len(pixels)
-    if fraction >= SATURATION_PIXEL_FRACTION:
+    if saturated:
         return True, (
-            f"Band pixels are saturated ({fraction:.1%} at or above "
-            f"{SATURATION_SIGNAL:.0f}); intensity is not in the linear range"
+            f"Band pixels are saturated ({fraction:.1%} with a source channel at "
+            "the signal-side endpoint); intensity is not in the linear range"
         )
     return False, None
 
@@ -221,6 +223,7 @@ def _lane_bands(
     lane: dict[str, Any],
     sensitivity: float,
     background_radius: int,
+    clipping_mask: list[list[bool]],
 ) -> list[dict[str, Any]]:
     height = len(signal)
     width = len(signal[0])
@@ -229,7 +232,8 @@ def _lane_bands(
     inset = max(0, (x1 - x0) // 12)
     x0, x1 = min(x1 - 1, x0 + inset), max(x0 + 1, x1 - inset)
     raw = [sum(signal[y][x0:x1]) / max(1, x1 - x0) for y in range(height)]
-    smooth = _smooth(raw, max(1, height // 350))
+    smoothing_radius = max(1, height // 350)
+    smooth = _smooth(raw, smoothing_radius)
     background = _rolling_ball(smooth, background_radius)
     corrected = [max(0.0, value - base) for value, base in zip(smooth, background)]
     usable = corrected[round(height * 0.04) : round(height * 0.97)]
@@ -255,7 +259,7 @@ def _lane_bands(
                     candidates[-1] = index
             else:
                 candidates.append(index)
-    bands: list[dict[str, Any]] = []
+    regions: list[tuple[int, int]] = []
     for apex in candidates:
         cutoff = max(median + mad, corrected[apex] * 0.16)
         start = apex
@@ -265,15 +269,22 @@ def _lane_bands(
         while end < height - 2 and corrected[end] > cutoff:
             end += 1
         start, end = max(0, start), min(height - 1, end)
+        # A circular opening can leave two shoulders on a flat-topped band.
+        # Integrate overlapping support once, rather than counting both peaks.
+        if regions and start <= regions[-1][1]:
+            previous_start, previous_end = regions.pop()
+            regions.append((previous_start, max(previous_end, end)))
+        else:
+            regions.append((start, end))
+    bands: list[dict[str, Any]] = []
+    for start, end in regions:
+        integral = sum(corrected[start : end + 1])
+        center = sum(y * corrected[y] for y in range(start, end + 1)) / integral
         y_start = start / height
         y_end = (end + 1) / height
-        center_y = apex / height
-        saturated, saturation_reason = _band_saturation(signal, x0, x1, start, end)
-        density = sum(corrected[start : end + 1]) * max(1, x1 - x0)
-        band_height = end - start + 1
-        lane_width = max(1, x1 - x0)
-        noise_scale = max(0.5, 1.4826 * mad) * math.sqrt(band_height * lane_width)
-        relative = noise_scale / max(density, 1e-6)
+        center_y = center / height
+        saturated, saturation_reason = _band_saturation(clipping_mask, x0, x1, start, end)
+        density = integral * max(1, x1 - x0)
         band_id = _stable_id(
             "band",
             lane["id"],
@@ -288,7 +299,7 @@ def _lane_bands(
             "yStart": y_start,
             "yEnd": y_end,
             "centerY": center_y,
-            "peakSignal": corrected[apex],
+            "peakSignal": max(corrected[start : end + 1]),
             "autoDetected": True,
             "isTarget": False,
             "quantificationRefused": saturated,
@@ -304,16 +315,32 @@ def _lane_bands(
             band["laneFraction"] = 0.0
             band["laneFractionUncertainty"] = None
         bands.append(band)
+    refused_in_lane = any(item["quantificationRefused"] for item in bands)
     quantified = [item for item in bands if not item["quantificationRefused"]]
+    if refused_in_lane:
+        for band in bands:
+            band["laneFraction"] = None
+            band["laneFractionUncertainty"] = None
+            band["normalizationBasis"] = NORMALIZATION_UNAVAILABLE_SATURATION
+        return bands
     total = sum(float(item["density"]) for item in quantified)
-    for band in quantified:
+    # MAD is measured on a column-averaged, smoothed profile. Scale back by
+    # lane width (not sqrt(width)), and approximate smoothing correlation.
+    profile_noise = max(0.5, 1.4826 * mad)
+    density_variances = [
+        profile_noise**2 * (x1 - x0)**2
+        * max(1, round((band["yEnd"] - band["yStart"]) * height))
+        * (2 * smoothing_radius + 1)
+        for band in quantified
+    ]
+    total_variance = sum(density_variances)
+    for band, variance in zip(quantified, density_variances):
         fraction = float(band["density"]) / total if total else 0.0
         band["laneFraction"] = fraction
-        noise_scale = max(0.5, 1.4826 * mad) * math.sqrt(
-            max(1, round((band["yEnd"] - band["yStart"]) * height)) * max(1, x1 - x0)
-        )
-        relative = noise_scale / max(float(band["density"]), 1e-6)
-        band["laneFractionUncertainty"] = min(0.5, fraction * relative)
+        # Delta method for I_i / sum(I): account for the shared denominator.
+        fraction_variance = ((1 - fraction)**2 * variance
+                             + fraction**2 * (total_variance - variance)) / total**2
+        band["laneFractionUncertainty"] = math.sqrt(max(0.0, fraction_variance))
     return bands
 
 
@@ -334,14 +361,26 @@ def _linear_regression(xs: list[float], ys: list[float]) -> tuple[float, float, 
     return slope, intercept, max(0.0, min(1.0, r2))
 
 
-def _ladder_masses(request: dict[str, Any], band_count: int) -> list[float]:
-    custom = request.get("ladderMassesDa") or request.get("ladderMassesKDa")
-    if isinstance(custom, list) and custom:
-        values = [float(item) for item in custom]
-        if len(values) >= band_count:
-            return values[:band_count]
-        return values
-    return DEFAULT_LADDER_MASSES_KDA[: max(2, min(band_count, len(DEFAULT_LADDER_MASSES_KDA)))]
+def _ladder_mass_list_da(request: dict[str, Any]) -> list[float] | None:
+    """Masses must explicitly match all detected markers, from top to bottom."""
+    keys = [key for key in ("ladderMassesDa", "ladderMassesKDa") if key in request]
+    if not keys:
+        return None
+    if len(keys) != 1:
+        raise ValueError("Supply ladderMassesDa or ladderMassesKDa, not both")
+    key = keys[0]
+    if not isinstance(request[key], list):
+        raise ValueError("Ladder masses must be a list ordered from top to bottom")
+    factor = 1000.0 if key == "ladderMassesKDa" else 1.0
+    try:
+        masses = [float(item) * factor for item in request[key]]
+    except (TypeError, ValueError) as error:
+        raise ValueError("Ladder masses must be finite positive numbers") from error
+    if any(not math.isfinite(mass) or mass <= 0 for mass in masses):
+        raise ValueError("Ladder masses must be finite positive numbers")
+    if any(a <= b for a, b in zip(masses, masses[1:])):
+        raise ValueError("Ladder masses must decrease strictly from top to bottom")
+    return masses
 
 
 def _apply_molecular_weights(
@@ -356,31 +395,63 @@ def _apply_molecular_weights(
             band["molecularWeightStatus"] = "no_ladder_lane"
         return None
     ladder_bands = [
-        band
-        for band in bands
-        if band["laneId"] == ladder_lane["id"] and not band.get("quantificationRefused")
+        band for band in bands if band["laneId"] == ladder_lane["id"]
     ]
+    ladder_bands.sort(key=lambda item: float(item["centerY"]))
     if len(ladder_bands) < 2:
         for band in bands:
             band["molecularWeightDa"] = None
             band["molecularWeightStatus"] = "insufficient_ladder_bands"
         return None
-    ladder_bands.sort(key=lambda item: float(item["centerY"]))
-    masses = _ladder_masses(request, len(ladder_bands))
-    if len(masses) < len(ladder_bands):
-        masses = masses + [masses[-1]] * (len(ladder_bands) - len(masses))
-    mobilities = [float(band["centerY"]) for band in ladder_bands]
-    log_mw = [math.log10(mass * 1000.0) for mass in masses[: len(ladder_bands)]]
+    masses_da = _ladder_mass_list_da(request)
+    failure = None
+    if masses_da is None:
+        failure = "ladder_masses_required"
+    elif len(masses_da) != len(ladder_bands):
+        failure = "ladder_mass_count_mismatch"
+    if failure:
+        for band in bands:
+            band["molecularWeightDa"] = None
+            band["molecularWeightStatus"] = failure
+        return {
+            "method": "log10_da_vs_relative_mobility",
+            "status": failure,
+            "detectedMarkerCount": len(ladder_bands),
+            "providedMarkerCount": len(masses_da) if masses_da is not None else 0,
+        }
+    for band, mass_da in zip(ladder_bands, masses_da):
+        band["ladderMarkerMassDa"] = mass_da
+    calibration_bands = [
+        band
+        for band in ladder_bands
+        if not band.get("quantificationRefused")
+    ]
+    if len(calibration_bands) < 2:
+        for band in bands:
+            band["molecularWeightDa"] = None
+            band["molecularWeightStatus"] = "insufficient_ladder_bands"
+        return None
+    mobilities = [float(band["centerY"]) for band in calibration_bands]
+    log_mw = [math.log10(float(band["ladderMarkerMassDa"])) for band in calibration_bands]
+    if len(set(mobilities)) != len(mobilities):
+        for band in bands:
+            band["molecularWeightDa"] = None
+            band["molecularWeightStatus"] = "ambiguous_ladder_mobility"
+        return {"status": "ambiguous_ladder_mobility"}
     slope, intercept, r2 = _linear_regression(mobilities, log_mw)
     min_m = min(mobilities)
     max_m = max(mobilities)
     calibration = {
         "method": "log10_da_vs_relative_mobility",
+        "status": "calibrated",
         "relativeMobilityAxis": "centerY_fraction_from_top",
+        "markerAssignment": "provided_masses_top_to_bottom_before_saturation_filter",
+        "assumption": "All ladder markers are detected and correctly identified by the caller",
         "fitR2": round(r2, 4),
         "slope": slope,
         "intercept": intercept,
         "ladderBandCount": len(ladder_bands),
+        "calibrationMarkerCount": len(calibration_bands),
         "mobilityRange": [min_m, max_m],
     }
     for band in bands:
@@ -401,7 +472,7 @@ def _apply_molecular_weights(
 
 def analyze_gel(request: dict[str, Any]) -> dict[str, Any]:
     image, source, image_processing = _load_image(request)
-    signal, polarity = _signal_matrix(image)
+    signal, polarity, clipping_mask = _signal_matrix(image)
     sensitivity = float(request.get("sensitivity", 0.52))
     background_radius = int(request.get("backgroundRadiusPx", DEFAULT_BACKGROUND_RADIUS))
     background_radius = max(4, min(120, background_radius))
@@ -424,15 +495,20 @@ def analyze_gel(request: dict[str, Any]) -> dict[str, Any]:
                 )
     bands: list[dict[str, Any]] = []
     for lane in lanes:
-        bands.extend(_lane_bands(signal, lane, sensitivity, background_radius))
+        bands.extend(_lane_bands(signal, lane, sensitivity, background_radius, clipping_mask))
     for lane in lanes:
-        lane_bands = [
+        lane_bands = [band for band in bands if band["laneId"] == lane["id"]]
+        quantified = [
             band
-            for band in bands
-            if band["laneId"] == lane["id"] and not band.get("quantificationRefused")
+            for band in lane_bands
+            if not band.get("quantificationRefused") and band.get("laneFraction") is not None
         ]
-        if lane_bands and not bool(lane.get("isLadder")):
-            max(lane_bands, key=lambda item: float(item["density"]))["isTarget"] = True
+        if (
+            quantified
+            and not bool(lane.get("isLadder"))
+            and not any(band.get("quantificationRefused") for band in lane_bands)
+        ):
+            max(quantified, key=lambda item: float(item["density"]))["isTarget"] = True
     ladder_calibration = _apply_molecular_weights(bands, lanes, request)
     preview = BytesIO()
     image.save(preview, format="PNG", optimize=True)
@@ -447,6 +523,21 @@ def analyze_gel(request: dict[str, Any]) -> dict[str, Any]:
         "quantification": {
             "backgroundMethod": BACKGROUND_METHOD,
             "backgroundRadiusPx": background_radius,
+            "backgroundKernel": "circular_cap_1d_opening",
+            "backgroundIntensityRadius": background_radius,
+            "backgroundBoundary": "truncated_support",
+            "laneGeometry": "straight_rectangles_with_one_twelfth_width_inset",
+            "uncertaintyMethod": "profile_MAD_noise_only_approximate_standard_error",
+            "uncertaintyPropagation": "ratio_delta_method_independent_band_integrals",
+            "profileNoiseFloor": 0.5,
+            "profileSmoothingRadiusPx": max(1, image.height // 350),
+            "caveats": [
+                "Lane fractions describe detected band signal; undetected material is excluded",
+                "Noise uncertainty excludes background bias, staining response, and lane curvature",
+                "Intensity fractions are not a validated protein mass purity measurement",
+                "Detector linearity is assumed, not established from an image",
+                "Background radius must exceed band width; broad bands can be underestimated",
+            ],
             "normalizationBasis": NORMALIZATION_BASIS,
             "linearDynamicRange": {
                 "minSignal": 0.0,
