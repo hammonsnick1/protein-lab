@@ -15,6 +15,8 @@
   },
   "scripts": {
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"lib/*.test.ts\"",
     "desktop:build:web": "vite build --config desktop/vite.config.ts",
     "desktop:run": "npm run desktop:build:web && electron .",
     "desktop:package": "npm run desktop:build:web && electron-builder --linux AppImage"
