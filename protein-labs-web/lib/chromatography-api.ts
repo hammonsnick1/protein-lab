@@ -38,6 +38,21 @@ export type AnalyzeRequest = {
   sec?: SecInput;
   massBalance?: MassBalanceInput;
 };
+// Report diagnostics (additive v1 fields). Engines built before they existed
+// omit them, so every one is optional on the way in.
+export type EngineFlag = {
+  code: string;
+  level: "note" | "caution" | "warning";
+  title: string;
+  message: string;
+};
+// `residual` is RMSE in the input y units. Both statistics are null when the
+// peak has too few samples or no usable FWHM; R² can be negative.
+export type FitQuality = {
+  rSquared: number | null;
+  residual: number | null;
+  model: string;
+};
 export type EnginePeak = {
   start: number;
   end: number;
@@ -47,8 +62,12 @@ export type EnginePeak = {
   area: number;
   fwhm: number | null;
   asymmetry10: number | null;
+  flags?: EngineFlag[];
+  fitQuality?: FitQuality;
   kav?: number;
   mwKDa?: number | null;
+  // One-sigma, calibration-only. Null when it cannot be estimated.
+  mwUncertaintyKDa?: number | null;
   outOfRange?: boolean;
 };
 export type SecCalibration = {
@@ -60,6 +79,11 @@ export type SecCalibration = {
   voMl: number;
   vtMl: number;
   standardCount: number;
+  // Included standards only, in kDa.
+  standardMassRangeKDa?: [number, number];
+  residualVarianceKav?: number | null;
+  meanLogMwDa?: number;
+  sumSquaredLogMwDa?: number;
 };
 export type EngineResolution = {
   leftPeakIndex: number;
@@ -97,7 +121,9 @@ export type SecPrediction = {
   veMl: number;
   kav: number;
   mwKDa: number | null;
+  mwUncertaintyKDa?: number | null;
   outOfRange: boolean;
+  flags?: EngineFlag[];
 };
 export type CalibrateSecResult = {
   schemaVersion: 1;

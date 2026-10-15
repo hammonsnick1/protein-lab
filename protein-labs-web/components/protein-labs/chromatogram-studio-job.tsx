@@ -42,9 +42,11 @@ import type {
   AnalyzeRequest,
   AxisX,
   AxisY,
+  EngineFlag,
   EngineMassBalance,
   EngineMethods,
   EnginePeak,
+  FitQuality,
   ResultUnits,
   SecCalibration,
   SecPrediction,
@@ -55,6 +57,7 @@ import {
   minimumSegmentPoints,
   traceSegments,
 } from "@/lib/chromatography-api";
+import { loadPeakDiagnostics, peakDiagnostics } from "@/lib/chromatogram-diagnostics";
 import { secColumns } from "@/lib/sec-column-catalog";
 
 // `gap` marks the first sample after an excluded region. The plot starts a new
@@ -129,6 +132,10 @@ type Peak = {
   fwhm?: number | null;
   asymmetry10?: number | null;
   outOfRange?: boolean;
+  // Engine report diagnostics, saved beside the numbers they qualify.
+  flags?: EngineFlag[];
+  fitQuality?: FitQuality | null;
+  mwUncertaintyKDa?: number | null;
 };
 // A peak joined to the current engine result. `measured` is false whenever the
 // numbers on screen did not come from this engine run, so the studio can say so
@@ -872,6 +879,7 @@ export function ChromatogramStudioJob({
           kav: prediction?.kav,
           mwKDa: prediction?.mwKDa ?? undefined,
           outOfRange: prediction?.outOfRange,
+          ...peakDiagnostics(measured, prediction),
         };
       }),
     [peaks, analyses, traces, sec],
@@ -5030,9 +5038,11 @@ function loadPeaks(value: unknown): Peak[] {
     showArea: raw.showArea !== false,
     showMw: raw.showMw !== false,
     customText: String(raw.customText ?? ""),
-    mwKDa: raw.mwKDa === undefined ? undefined : Number(raw.mwKDa),
-    kav: raw.kav === undefined ? undefined : Number(raw.kav),
+    // A stored null is an absent value, not zero.
+    mwKDa: raw.mwKDa == null ? undefined : Number(raw.mwKDa),
+    kav: raw.kav == null ? undefined : Number(raw.kav),
     fraction: raw.fraction ? String(raw.fraction) : undefined,
+    ...loadPeakDiagnostics(raw),
   }));
 }
 function loadStandards(value: unknown): Standard[] {
