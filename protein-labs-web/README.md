@@ -20,6 +20,24 @@ The UI connects to the engine at `http://127.0.0.1:8770`. Set
 value is baked into the bundle and added to the page's `connect-src` policy, so
 it must be set for the build, not only at runtime.
 
+## Development checks
+
+With Node.js 22.13 or newer, run `npm ci` in this directory, then:
+
+```sh
+npm run lint
+npm run typecheck
+npm test
+```
+
+Vitest runs `*.test.ts` and `*.test.tsx` files. The initial tests cover the
+shared class-name helper, including Tailwind conflict resolution. Add tests
+beside the code they exercise. Backend checks run separately from
+`protein-labs/backend/`: install `requirements-dev.txt`, then run
+`python -m pytest`.
+
+GitHub Actions runs each of these four checks on every pull request to `main`.
+
 ## Expression vector design
 
 A backbone is always loaded from a named source, and the vector keeps the
