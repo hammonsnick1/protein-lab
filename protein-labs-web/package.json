@@ -15,7 +15,7 @@
   },
   "scripts": {
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "test": "node --test \"lib/**/*.test.ts\"",
+    "test": "node --experimental-strip-types --test \"lib/**/*.test.ts\"",
     "desktop:build:web": "vite build --config desktop/vite.config.ts",
     "desktop:run": "npm run desktop:build:web && electron .",
     "desktop:package": "npm run desktop:build:web && electron-builder --linux AppImage"
