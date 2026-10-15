@@ -2578,7 +2578,7 @@ function StandardWorkspace({
         <section className="sec-plot">
           <SecCurveFigure ref={figureRef} standards={standards} vo={vo} vt={vt} fit={fit} fitColor={fitColor} config={secFigure} kavOf={kavOf} />
           {fit ? (
-            <div>
+            <div className="sec-equation">
               <strong>
                 Kav = {fit.slope.toFixed(4)} Log Mr {fit.intercept >= 0 ? "+" : "−"} {Math.abs(fit.intercept).toFixed(4)}
               </strong>

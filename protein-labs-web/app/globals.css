@@ -5439,7 +5439,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .sec-equation {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 4px;
   border-left: 3px solid var(--primary);
   background: var(--muted);
   padding: 9px;
