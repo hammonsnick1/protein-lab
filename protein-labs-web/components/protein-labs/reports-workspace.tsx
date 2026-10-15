@@ -14,7 +14,7 @@ import { CaveatsBlock, MethodsBlock, PurityBlock, SecBlock, YieldBlock } from "@
 import { desktopBridge } from "@/lib/desktop-bridge";
 import { captureFigure } from "@/lib/report-figures";
 import {
-  buildReportData, emptyYieldEntry, formatMass, formatNumber, loadYieldEntries, yieldStages,
+  assignedMass, buildReportData, emptyYieldEntry, formatMass, formatNumber, formatPurity, loadYieldEntries, secCalibrated, yieldStages,
   type ReportData, type YieldEntry,
 } from "@/lib/report-data";
 import { dedupe, reportDocumentHtml, runningHeader, type PrintBlock, type PrintFigure, type PrintPage } from "@/lib/report-print";
@@ -612,6 +612,7 @@ function AnalysisFigure({ job }: { job: ProjectJob }) {
   };
   const fractions = array(job.config.fractions).filter((value) => inRange(value.start) && inRange(value.end));
   const peaks = array(job.config.peaks).filter((value) => inRange(value.apexX));
+  const calibrated = secCalibrated(job.config);
 
   return <svg className="report-chromatogram" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${job.name}: ${series.map((trace) => trace.name).join(", ")}`}>
     {/* Collected fractions sit behind the trace as light bands with their names. */}
@@ -647,8 +648,10 @@ function AnalysisFigure({ job }: { job: ProjectJob }) {
         elution volume when the calibration could not assign one. */}
     {peaks.map((peak, index) => {
       const x = sx(Number(peak.apexX));
-      const mass = Number(peak.mwKDa);
-      const label = Number.isFinite(mass) && mass > 0 ? formatMass(mass) : `${Number(peak.apexX).toFixed(2)} mL`;
+      // The same gate as the SEC table, so a stale mass never labels a peak
+      // the table reports as unassigned.
+      const mass = assignedMass(peak, calibrated).mwKDa;
+      const label = mass !== null ? formatMass(mass) : `${Number(peak.apexX).toFixed(2)} mL`;
       return <g key={`p${index}`}>
         <line x1={x} x2={x} y1={top + 18} y2={top + 26} stroke="currentColor" strokeWidth=".9"/>
         <text x={x} y={top + 15} textAnchor="middle" fontSize="9" fontWeight="600" {...halo}>{text(peak.name, `Peak ${index + 1}`)}</text>
@@ -968,7 +971,7 @@ function markdownBlock(templateId: string, data: ReportData): string[] {
     return [
       "| Stage | Volume (mL) | Conc. (mg/mL) | Total protein (mg) | Step | Overall | Purity |",
       "| --- | --- | --- | --- | --- | --- | --- |",
-      ...data.yieldRows.map((row) => `| ${row.stage}${row.flags.length ? " ⚠" : ""} | ${formatNumber(row.volumeMl, 1)} | ${formatNumber(row.concentrationMgMl, 2)} | ${formatNumber(row.totalProteinMg, 2)} | ${row.stepRecoveryPercent === null ? "—" : `${row.stepRecoveryPercent.toFixed(0)}%`} | ${row.overallRecoveryPercent === null ? "—" : `${row.overallRecoveryPercent.toFixed(0)}%`} | ${row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}%`} |`),
+      ...data.yieldRows.map((row) => `| ${row.stage}${row.flags.length ? " ⚠" : ""} | ${formatNumber(row.volumeMl, 1)} | ${formatNumber(row.concentrationMgMl, 2)} | ${formatNumber(row.totalProteinMg, 2)} | ${row.stepRecoveryPercent === null ? "—" : `${row.stepRecoveryPercent.toFixed(0)}%`} | ${row.overallRecoveryPercent === null ? "—" : `${row.overallRecoveryPercent.toFixed(0)}%`} | ${formatPurity(row.purityPercent, row.purityBound)} |`),
     ];
   }
   if (templateId === "purity") {
@@ -976,7 +979,7 @@ function markdownBlock(templateId: string, data: ReportData): string[] {
     return [
       "| Lane / stage | Target band | Apparent mass | Bands | Lane purity |",
       "| --- | --- | --- | --- | --- |",
-      ...data.purity.rows.filter((row) => !row.isLadder).map((row) => `| ${row.lane}${row.flags.length ? " ⚠" : ""} | ${row.targetBand || "Not marked"} | ${row.targetMwKDa === null ? "—" : formatMass(row.targetMwKDa)} | ${row.bandCount} | ${row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}%`} |`),
+      ...data.purity.rows.filter((row) => !row.isLadder).map((row) => `| ${row.lane}${row.flags.length ? " ⚠" : ""} | ${row.targetBand || "Not marked"} | ${row.targetMwKDa === null ? "—" : formatMass(row.targetMwKDa)} | ${row.bandCount} | ${formatPurity(row.purityPercent, row.purityBound)} |`),
     ];
   }
   if (templateId === "mass") {

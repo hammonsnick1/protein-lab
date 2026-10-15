@@ -2,7 +2,7 @@
 
 import { TriangleAlert } from "lucide-react";
 import { dedupe } from "@/lib/report-print";
-import { formatMass, formatNumber, type PuritySummary, type ReportData, type ReportFlag, type SecSummary, type YieldEntry, type YieldRow } from "@/lib/report-data";
+import { formatMass, formatNumber, formatPurity, type PuritySummary, type ReportData, type ReportFlag, type SecSummary, type YieldEntry, type YieldRow } from "@/lib/report-data";
 
 /**
  * The parts of the report that are calculated rather than typed.
@@ -89,7 +89,7 @@ export function YieldBlock({
                 inputMode="decimal"
                 aria-label={`${row.stage} purity as a percentage`}
                 value={entry?.purityPercent ?? ""}
-                placeholder={row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}`}
+                placeholder={formatPurity(row.purityPercent, row.purityBound).replace("%", "")}
                 onChange={(event) => onEntryChange(row.id, { purityPercent: event.target.value })}
               />
             </td>
@@ -135,7 +135,7 @@ export function PurityBlock({ purity }: { purity: PuritySummary | null }) {
           <td>{row.targetBand || "Not marked"}</td>
           <td className="num">{row.targetMwKDa === null ? "—" : formatMass(row.targetMwKDa)}</td>
           <td className="num">{row.bandCount}</td>
-          <td className="num">{row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}%`}</td>
+          <td className="num">{formatPurity(row.purityPercent, row.purityBound)}</td>
         </tr>)}
       </tbody>
     </table> : <p className="report-missing">The saved gel has no quantified sample lanes.</p>}

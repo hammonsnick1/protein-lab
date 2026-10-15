@@ -1,4 +1,4 @@
-import { formatMass, formatNumber, type MethodBlock, type ReportData, type ReportFlag } from "@/lib/report-data";
+import { formatMass, formatNumber, formatPurity, type MethodBlock, type ReportData, type ReportFlag } from "@/lib/report-data";
 
 /**
  * The printable purification report.
@@ -150,7 +150,7 @@ function renderYield(data: ReportData) {
     formatNumber(row.totalProteinMg, 2),
     row.stepRecoveryPercent === null ? "—" : `${row.stepRecoveryPercent.toFixed(0)}%`,
     row.overallRecoveryPercent === null ? "—" : `${row.overallRecoveryPercent.toFixed(0)}%`,
-    row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}%`,
+    formatPurity(row.purityPercent, row.purityBound),
   ]);
   const methods = data.yieldRows.filter((row) => row.yieldMethod || row.purityMethod || row.note);
   return `<section class="block"><h3>Yield across the purification</h3>
@@ -172,7 +172,7 @@ function renderPurity(data: ReportData) {
     escapeHtml(row.targetBand || "Not marked"),
     row.targetMwKDa === null ? "—" : formatMass(row.targetMwKDa),
     String(row.bandCount),
-    row.purityPercent === null ? "—" : `${row.purityPercent.toFixed(1)}%`,
+    formatPurity(row.purityPercent, row.purityBound),
   ]);
   return `<section class="block"><h3>Purity by stage</h3>
     ${rows.length ? table(["Lane / stage", "Target band", "Apparent mass", "Bands detected", "Lane purity"], rows, [false, false, true, true, true])
@@ -394,6 +394,8 @@ tr { break-inside: avoid; break-after: auto; }
 th, td { text-align: left; font-size: 8.8pt; padding: 4pt 6pt 4pt 0; border-bottom: .4pt solid var(--hair); vertical-align: top; }
 th { font-size: 7.6pt; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); border-bottom: 1pt solid var(--ink); font-weight: 700; }
 td.num, th.num { text-align: right; padding-right: 0; padding-left: 6pt; }
+/* A right-aligned number has no right padding, so text after it needs a gutter. */
+td.num + td:not(.num), th.num + th:not(.num) { padding-left: 14pt; }
 .table-note { font-size: 8pt; font-style: italic; color: var(--muted); margin: 4pt 0 0; }
 
 .prose { margin: 0 0 12pt; font-size: 10pt; }
