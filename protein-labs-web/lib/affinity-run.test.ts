@@ -8,10 +8,13 @@ import { test } from "node:test";
 import type { AffinityRunRequest, AffinityRunResult, AffinitySetup, AffinityState } from "./affinity-run.ts";
 import {
   affinityOverlay,
+  affinityRunDecision,
   buildAffinityRequest,
+  defaultAffinitySetup,
   emptyAffinityState,
   loadAffinityState,
   loadMethod,
+  newChromatographyProject,
 } from "./affinity-run.ts";
 
 type Fixture = { request: AffinityRunRequest; response: AffinityRunResult };
@@ -130,4 +133,28 @@ test("an existing SEC project opens as SEC with no affinity run", () => {
   const legacy = JSON.parse(JSON.stringify({ schemaVersion: 12, projectName: "Superdex run", traces: [], vo: 8, vt: 24 }));
   assert.equal(loadMethod(legacy.method), "sec");
   assert.deepEqual(loadAffinityState(legacy.affinity), emptyAffinityState);
+});
+
+test("New from an affinity run starts empty and does not re-run the old setup", () => {
+  const { request } = buildAffinityRequest(setup(25), fractions);
+  const before: AffinityState = { setup: setup(25), traceId: "trace-1", request, run: fixture(25).response };
+  assert.equal(affinityRunDecision("affinity", before, request, true), "stored");
+  // New clears the traces, so the old run's trace is gone either way.
+  const fresh = newChromatographyProject();
+  assert.equal(fresh.method, "sec");
+  assert.deepEqual(fresh.affinity, emptyAffinityState);
+  const freshRequest = buildAffinityRequest(fresh.affinity.setup, []).request;
+  assert.equal(affinityRunDecision(fresh.method, fresh.affinity, freshRequest, false), "idle");
+  // Switching the new project to affinity still waits for the researcher's inputs.
+  assert.equal(affinityRunDecision("affinity", fresh.affinity, freshRequest, false), "idle");
+});
+
+test("a changed or missing run is sent to the engine", () => {
+  const { request } = buildAffinityRequest(setup(25), fractions);
+  const stored: AffinityState = { setup: setup(25), traceId: "trace-1", request, run: fixture(25).response };
+  assert.equal(affinityRunDecision("affinity", stored, request, false), "run");
+  const edited = buildAffinityRequest(setup(15), fractions).request;
+  assert.equal(affinityRunDecision("affinity", { ...stored, setup: setup(15) }, edited, true), "run");
+  const typed = { ...defaultAffinitySetup, resinName: "Ni Sepharose 6 FF" };
+  assert.equal(affinityRunDecision("affinity", { ...emptyAffinityState, setup: typed }, buildAffinityRequest(typed, []).request, false), "run");
 });

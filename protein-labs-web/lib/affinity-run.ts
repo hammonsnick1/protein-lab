@@ -194,6 +194,28 @@ export function buildAffinityRequest(setup: AffinitySetup, fractions: StudioFrac
   return { request, skipped };
 }
 
+/** What a new, empty studio project starts from: SEC, with no affinity setup or run. */
+export function newChromatographyProject(): { method: ChromatographyMethod; affinity: AffinityState } {
+  return { method: "sec", affinity: emptyAffinityState };
+}
+
+/**
+ * Whether the studio should ask the engine for an affinity run. An untouched
+ * setup has nothing to run, and a stored run for these exact inputs that is
+ * still on screen is shown as-is instead of being run again.
+ */
+export function affinityRunDecision(
+  method: ChromatographyMethod,
+  state: AffinityState,
+  request: AffinityRunRequest,
+  traceShown: boolean,
+): "idle" | "stored" | "run" {
+  if (method !== "affinity") return "idle";
+  if (JSON.stringify(state.setup) === JSON.stringify(defaultAffinitySetup)) return "idle";
+  if (state.run && traceShown && JSON.stringify(state.request) === JSON.stringify(request)) return "stored";
+  return "run";
+}
+
 /** A project with no method predates affinity runs and is an SEC project. */
 export function loadMethod(value: unknown): ChromatographyMethod {
   return value === "affinity" ? "affinity" : "sec";

@@ -65,10 +65,11 @@ import type {
 } from "@/lib/affinity-run";
 import {
   affinityOverlay,
+  affinityRunDecision,
   buildAffinityRequest,
-  emptyAffinityState,
   loadAffinityState,
   loadMethod,
+  newChromatographyProject,
 } from "@/lib/affinity-run";
 import { secColumns } from "@/lib/sec-column-catalog";
 
@@ -818,11 +819,12 @@ export function ChromatogramStudioJob({
   const affinityRef = useRef({ plan: affinityPlan, affinity, figure });
   affinityRef.current = { plan: affinityPlan, affinity, figure };
   useEffect(() => {
-    if (method !== "affinity") return;
     const { plan, affinity: current } = affinityRef.current;
-    // A reopened project already holds the run for these exact inputs.
-    if (current.run && affinityTraceShown && JSON.stringify(current.request) === JSON.stringify(plan.request)) {
-      setAffinityStatus({ status: "ready", error: "" });
+    const decision = affinityRunDecision(method, current, plan.request, affinityTraceShown);
+    if (decision !== "run") {
+      // Nothing entered yet, or a reopened project already holds the run for
+      // these exact inputs.
+      setAffinityStatus({ status: decision === "stored" ? "ready" : "idle", error: "" });
       return;
     }
     const controller = new AbortController();
@@ -1436,7 +1438,7 @@ export function ChromatogramStudioJob({
   }
   function newProject() {
     if ((traces.length || peaks.length) && !window.confirm("Clear the current Chromatogram Studio workspace? Export or save it first if you want a copy.")) return;
-    setProjectName(`${bundle.protein.name} chromatography`); setTraces([]); setActiveTraceId(""); setPeaks([]); setAffinity((value) => ({ ...emptyAffinityState, setup: value.setup })); setAnnotations([]); setFractions([]); setSelection(null); setZoom(null); setSelectedPeakId(""); setSelectedAnnotationId(""); setTab("data"); setMessage("New empty chromatogram project created.");
+    setProjectName(`${bundle.protein.name} chromatography`); setTraces([]); setActiveTraceId(""); setPeaks([]); const fresh = newChromatographyProject(); setMethod(fresh.method); setAffinity(fresh.affinity); setAffinityStatus({ status: "idle", error: "" }); setAnnotations([]); setFractions([]); setSelection(null); setZoom(null); setSelectedPeakId(""); setSelectedAnnotationId(""); setTab("data"); setMessage("New empty chromatogram project created.");
   }
   async function save() {
     setBusy(true);
