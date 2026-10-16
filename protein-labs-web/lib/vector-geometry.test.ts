@@ -98,6 +98,7 @@ describe("feature categories", () => {
     assert.equal(featureCategory({ type: "CDS", name: "aph(3')-Ia" }), "marker");
     assert.equal(featureCategory({ type: "CDS", name: "KanR" }), "marker");
     assert.equal(featureCategory({ type: "CDS", name: "lacI" }), "cds");
+    assert.equal(featureCategory({ type: "CDS", name: "Klf4-2A-Myc" }), "cds");
     assert.equal(featureCategory({ type: "mat_peptide", name: "6xHis tag" }), "tag");
     assert.equal(featureCategory({ type: "mat_peptide", name: "Thrombin cleavage site" }), "cleavage");
     assert.equal(featureCategory({ type: "rep_origin", name: "rep_origin" }), "origin");
