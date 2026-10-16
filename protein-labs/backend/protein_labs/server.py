@@ -132,6 +132,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/v1/protein-planner/back-translate":
                 self._send(200, self.planner.back_translate_target(body))
                 return
+            if path == "/v1/protein-planner/codon-optimize":
+                self._send(200, self.planner.optimize_target_codons(body))
+                return
             if path == "/v1/protein-planner/vector-sources/search":
                 self._send(200, self.planner.search_vector_sources(body))
                 return
@@ -183,8 +186,21 @@ class ApiHandler(BaseHTTPRequestHandler):
                 ))
                 return
             match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/vectors/(cloning-preview|gel)",
+                path,
+            )
+            if match:
+                protein_id, action = match.groups()
+                value = (
+                    self.planner.simulate_expression_cloning(protein_id, body)
+                    if action == "cloning-preview"
+                    else self.planner.simulate_expression_vector_gel(protein_id, body)
+                )
+                self._send(200, value)
+                return
+            match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors/([^/]+)/"
-                r"(auto-annotate|primers|edit|digest|align|insertion-sites|insert)",
+                r"(auto-annotate|primers|edit|digest|enzyme-sets|align|insertion-sites|insert)",
                 path,
             )
             if match:
@@ -207,6 +223,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                     )
                 elif action == "digest":
                     value = self.planner.digest_expression_vector(
+                        protein_id, vector_id, body
+                    )
+                elif action == "enzyme-sets":
+                    value = self.planner.analyze_expression_vector_enzymes(
                         protein_id, vector_id, body
                     )
                 elif action == "align":
