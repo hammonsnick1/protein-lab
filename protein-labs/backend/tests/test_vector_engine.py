@@ -55,6 +55,34 @@ def test_primer_design_targets_tm_and_excludes_gateway_tails_from_tm():
     assert gateway[0]["heteroDimer"]["risk"] in {"low", "moderate", "high"}
 
 
+def test_primer_design_can_opt_in_to_a_floating_five_prime_end():
+    template = "GGGGGATATATATATATATATATATATATATATATATATATATATATATATATAT"
+    fixed = design_primers(
+        template,
+        0,
+        len(template),
+        target_tm=35,
+        min_length=18,
+        max_length=18,
+        min_gc=0,
+        max_gc=100,
+    )
+    floating = design_primers(
+        template,
+        0,
+        len(template),
+        target_tm=35,
+        min_length=18,
+        max_length=18,
+        min_gc=0,
+        max_gc=100,
+        max_five_prime_shift=5,
+    )
+
+    assert floating[0]["fivePrimeShiftBases"] > 0
+    assert abs(floating[0]["tmDeltaCelsius"]) < abs(fixed[0]["tmDeltaCelsius"])
+
+
 def test_gibson_overlap_lengths_are_enforced():
     template = "ACGT" * 20
     try:
@@ -84,10 +112,14 @@ def test_enzyme_sets_report_cut_meaning_compatibility_and_methylation():
     )
 
     assert "EcoRI" in report["sets"]["uniqueCutters"]
+    assert "EcoRI" in report["sets"]["mcsFlanking"]
     assert "BamHI" in report["sets"]["twoCutters"]
+    assert "BamHI" not in report["sets"]["mcsFlanking"]
     assert set(report["sets"]["absentFromInsert"]) == {"BamHI", "EcoRI", "MboI"}
     mbo = next(item for item in report["enzymes"] if item["enzyme"] == "MboI")
     assert mbo["methylationSensitive"] == ["Dam"]
+    eco = next(item for item in report["enzymes"] if item["enzyme"] == "EcoRI")
+    assert eco["inMcs"] is False
     assert compatible_ends("BamHI", "BglII")["compatible"] is True
     assert compatible_ends("BamHI", "EcoRI")["compatible"] is False
 

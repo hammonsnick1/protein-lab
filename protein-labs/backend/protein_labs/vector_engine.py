@@ -180,26 +180,34 @@ def primer_metrics(
 
 
 def _choose_primer(
-    candidates: Iterable[tuple[str, int]],
+    candidates: Iterable[tuple[str, int, int]],
     *,
     target_tm: float,
     min_gc: float,
     max_gc: float,
     conditions: dict[str, float],
-) -> tuple[str, int, dict[str, Any]]:
+) -> tuple[str, int, int, dict[str, Any]]:
     ranked = []
-    for sequence, length in candidates:
+    for sequence, length, shift in candidates:
         metrics = primer_metrics(sequence, **conditions)
         gc_penalty = 0.0
         if metrics["gcPercent"] < min_gc:
             gc_penalty = min_gc - metrics["gcPercent"]
         elif metrics["gcPercent"] > max_gc:
             gc_penalty = metrics["gcPercent"] - max_gc
-        ranked.append((abs(metrics["tmCelsius"] - target_tm) + gc_penalty * 2, sequence, length, metrics))
+        ranked.append((
+            abs(metrics["tmCelsius"] - target_tm) + gc_penalty * 2,
+            shift,
+            length,
+            sequence,
+            metrics,
+        ))
     if not ranked:
         raise ValueError("No primer candidate fits inside the selected PCR region")
-    _, sequence, length, metrics = min(ranked, key=lambda item: (item[0], item[2]))
-    return sequence, length, metrics
+    _, shift, length, sequence, metrics = min(
+        ranked, key=lambda item: (item[0], item[1], item[2])
+    )
+    return sequence, length, shift, metrics
 
 
 def design_primers(
@@ -219,6 +227,7 @@ def design_primers(
     forward_overhang: str = "",
     reverse_overhang: str = "",
     cloning_method: str = "pcr",
+    max_five_prime_shift: int = 0,
 ) -> list[dict[str, Any]]:
     sequence = _dna(sequence)
     if start < 0 or end <= start or end > len(sequence):
@@ -229,6 +238,8 @@ def design_primers(
         raise ValueError("Primer GC limits must be between 0 and 100 percent")
     if end - start < min_length:
         raise ValueError("The PCR region is shorter than the minimum primer length")
+    if max_five_prime_shift < 0 or max_five_prime_shift > 30:
+        raise ValueError("Maximum 5-prime shift must be between 0 and 30 bases")
 
     method = cloning_method.lower().replace("_", "-")
     if method in {"gibson", "in-fusion", "infusion"}:
@@ -246,17 +257,27 @@ def design_primers(
         "primer_nm": primer_nm,
     }
     maximum = min(max_length, end - start)
-    forward, forward_length, forward_metrics = _choose_primer(
-        ((sequence[start : start + length], length) for length in range(min_length, maximum + 1)),
+    maximum_shift = min(max_five_prime_shift, end - start - min_length)
+    forward, forward_length, forward_shift, forward_metrics = _choose_primer(
+        (
+            (sequence[start + shift : start + shift + length], length, shift)
+            for shift in range(maximum_shift + 1)
+            for length in range(min_length, min(maximum, end - start - shift) + 1)
+        ),
         target_tm=target_tm,
         min_gc=min_gc,
         max_gc=max_gc,
         conditions=conditions,
     )
-    reverse, reverse_length, reverse_metrics = _choose_primer(
+    reverse, reverse_length, reverse_shift, reverse_metrics = _choose_primer(
         (
-            (str(Seq(sequence[end - length : end]).reverse_complement()), length)
-            for length in range(min_length, maximum + 1)
+            (
+                str(Seq(sequence[end - shift - length : end - shift]).reverse_complement()),
+                length,
+                shift,
+            )
+            for shift in range(maximum_shift + 1)
+            for length in range(min_length, min(maximum, end - start - shift) + 1)
         ),
         target_tm=target_tm,
         min_gc=min_gc,
@@ -272,9 +293,10 @@ def design_primers(
             "sequence": forward_overhang + forward,
             "annealingSequence": forward,
             "overhang": forward_overhang,
-            "start": start,
-            "end": start + forward_length,
+            "start": start + forward_shift,
+            "end": start + forward_shift + forward_length,
             "strand": 1,
+            "fivePrimeShiftBases": forward_shift,
             "cloningMethod": method,
             **{**forward_metrics, "totalLength": len(forward_overhang) + forward_length},
         },
@@ -284,9 +306,10 @@ def design_primers(
             "sequence": reverse_overhang + reverse,
             "annealingSequence": reverse,
             "overhang": reverse_overhang,
-            "start": end - reverse_length,
-            "end": end,
+            "start": end - reverse_shift - reverse_length,
+            "end": end - reverse_shift,
             "strand": -1,
+            "fivePrimeShiftBases": reverse_shift,
             "cloningMethod": method,
             **{**reverse_metrics, "totalLength": len(reverse_overhang) + reverse_length},
         },
@@ -344,11 +367,17 @@ def enzyme_analysis(
             "uniqueCutter": len(positions) == 1,
             "twoCutter": len(positions) == 2,
             "absentFromInsert": not insert_positions,
+            "inMcs": bool(
+                mcs_start is not None
+                and mcs_end is not None
+                and len(positions) == 1
+                and mcs_start <= positions[0] - 1 <= mcs_end
+            ),
             "mcsFlanking": bool(
                 mcs_start is not None
                 and mcs_end is not None
-                and any(position <= mcs_start + 1 for position in positions)
-                and any(position >= mcs_end + 1 for position in positions)
+                and len(positions) == 1
+                and mcs_start - 40 <= positions[0] - 1 <= mcs_end + 40
             ),
             "suppliers": supplier_codes,
             "methylationSensitive": METHYLATION_SENSITIVITY.get(str(enzyme), []),
@@ -494,6 +523,7 @@ def simulate_gel(lanes: list[dict[str, Any]], *, ladder: str = "1kb") -> dict[st
             "name": str(lane.get("name") or f"Lane {index + 1}"),
             "kind": "sample",
             "bands": [{"sizeBp": size, "relativeMass": round(size / sum(cleaned), 4)} for size in cleaned],
+            "uncut": lane.get("uncut"),
         })
     return {
         "ladder": ladder,
