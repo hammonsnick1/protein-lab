@@ -89,6 +89,17 @@ def test_detection_survives_linear_drift_and_seeded_noise():
     assert result['peaks'][0]['area'] == pytest.approx(2 * math.sqrt(2 * math.pi), rel=.02)
 
 
+def test_default_detection_rejects_noise_maxima_on_one_peak():
+    expected = 2 * math.sqrt(2 * math.pi)
+    result = analyze_chromatogram(request(gaussian(drift=.3, noise=.002)))
+    assert len(result['peaks']) == 1
+    assert result['peaks'][0]['apexX'] == pytest.approx(10, abs=.1)
+    assert result['peaks'][0]['area'] == pytest.approx(expected, rel=.02)
+
+    noisier = analyze_chromatogram(request(gaussian(drift=.3, noise=.02)))
+    assert len(noisier['peaks']) == 1
+
+
 def test_two_gaussians_have_disjoint_areas():
     points = [{'x': i / 100, 'y': math.exp(-.5 * ((i / 100 - 5) / .3) ** 2) +
                math.exp(-.5 * ((i / 100 - 15) / .3) ** 2)} for i in range(2001)]
@@ -184,7 +195,9 @@ def dispatch(body, path='/v1/chromatogram/analyze'):
     handler.headers = {'Content-Length': str(len(data))}
     handler.rfile = io.BytesIO(data)
     responses = []
-    handler._send = lambda status, value: responses.append((status, value))
+    # Mirror the real response boundary so every captured payload is valid JSON.
+    handler._send = lambda status, value: responses.append(
+        (status, json.loads(json.dumps(value, allow_nan=False))))
     handler.do_POST()
     return responses[0]
 
@@ -204,3 +217,18 @@ def test_calibration_route_without_trace():
     assert result['predictions'][0]['mwKDa'] == 10
     assert result['predictions'][1]['outOfRange']
     assert result['predictions'][1]['mwKDa'] is None
+
+
+def test_calibration_route_rejects_non_finite_derived_values():
+    status, result = dispatch({
+        'voMl': 1e-310,
+        'vtMl': 3e-310,
+        'standards': [
+            {'mwDa': 1000, 'veMl': 2.5e-310},
+            {'mwDa': 100000, 'veMl': 1.5e-310},
+        ],
+        'elutionVolumesMl': [1e308],
+    }, '/v1/chromatogram/calibrate-sec')
+    assert status == 400
+    assert result['type'] == 'ValueError'
+    assert 'overflow' in result['error']
