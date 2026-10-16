@@ -19,7 +19,7 @@ export type EnzymeGroup = "unique" | "two" | "mcs" | "absent" | "all";
 export const ENZYME_GROUPS: { id: EnzymeGroup; label: string; hint: string }[] = [
   { id: "unique", label: "Unique cutters", hint: "Cut the construct exactly once — the sites you can clone into." },
   { id: "two", label: "Two-cutters", hint: "Cut twice — useful to drop out a fragment or check an insert." },
-  { id: "mcs", label: "Flank the MCS", hint: "Have sites on both sides of the cloning region." },
+  { id: "mcs", label: "At the MCS", hint: "Unique cutters in or right beside the multiple cloning site — the usual cloning pair." },
   { id: "absent", label: "Absent from insert", hint: "Do not cut the insert, so they are safe for directional cloning." },
   { id: "all", label: "All analysed", hint: "Every enzyme checked, including those that do not cut." },
 ];
@@ -216,5 +216,5 @@ function PrimerCard({ primer, onFocus }: { primer: DesignedPrimer; onFocus: (ran
 }
 
 function Risk({ screen }: { screen: StructureScreen }) {
-  return <b className={`vrisk ${screen.risk}`} title={`${screen.longestComplementaryRun} nt complementary run, ${screen.threePrimeComplementarity} nt at the 3′ end. ${screen.limitation}`}>{screen.risk}</b>;
+  return <b className={`vrisk risk-${screen.risk}`} title={`${screen.longestComplementaryRun} nt complementary run, ${screen.threePrimeComplementarity} nt at the 3′ end. ${screen.limitation}`}>{screen.risk}</b>;
 }

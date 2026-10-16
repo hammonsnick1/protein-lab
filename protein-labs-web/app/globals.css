@@ -12097,13 +12097,13 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   font-weight: 700;
   text-transform: capitalize;
 }
-.vrisk.low {
+.vrisk.risk-low {
   color: var(--primary);
 }
-.vrisk.moderate {
+.vrisk.risk-moderate {
   color: #b5841c;
 }
-.vrisk.high {
+.vrisk.risk-high {
   color: #c25050;
 }
 
