@@ -42,7 +42,7 @@ function featurePriority(feature: MapFeature, length: number) {
 
 export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps) {
   const length = Math.max(1, vector.sequence.length);
-  const width = 900, height = 640, cx = width / 2, cy = height / 2, radius = 182;
+  const width = 860, height = 500, cx = width / 2, cy = height / 2, radius = 150;
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<number | null>(null);
   const features = useMemo(() => visibleFeatures(vector, showOrfs), [vector, showOrfs]);
@@ -57,7 +57,7 @@ export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps
       }),
       ...vector.cuts.map((site) => ({ key: `e:${site.enzyme}:${site.cut}`, angle: baseAngle(site.cut, length), priority: site.cutCount === 1 ? 2.5 : 1.5, width: site.enzyme.length * 6 })),
     ];
-    return layoutCircularLabels(requests, { cx, cy, radius: radius + 58, top: 16, bottom: height - 12, lineHeight: 13 });
+    return layoutCircularLabels(requests, { cx, cy, radius: radius + 50, top: 12, bottom: height - 8, lineHeight: 14 });
   }, [features, vector.cuts, length, cx, cy]);
   const labels = useMemo(() => new Map(layout.placed.map((label) => [label.key, label])), [layout]);
 
@@ -195,7 +195,7 @@ export function LinearMap({ vector, selection, onSelect, showOrfs, viewport, onV
   const pieces = useMemo(() => features.flatMap((feature) => clipRange(feature, Math.floor(viewport.from), Math.ceil(viewport.to), length).map((piece, index) => ({ feature, piece, key: `${feature.id}:${index}` }))), [features, viewport, length]);
   const tracks = useMemo(() => assignTracks(pieces.map((item) => ({ ...item.piece, item })), length, false), [pieces, length]);
   const trackOf = new Map([...tracks].map(([entry, track]) => [entry.item.key, track]));
-  const trackCount = Math.min(compact ? 3 : 6, Math.max(1, ...[...tracks.values()].map((track) => track + 1)));
+  const trackCount = Math.min(compact ? 2 : 6, Math.max(1, ...[...tracks.values()].map((track) => track + 1)));
 
   const cuts = vector.cuts.filter((site) => site.cut >= viewport.from && site.cut <= viewport.to);
   // Enzyme labels are stacked into rows greedily so they never overlap.
@@ -205,11 +205,11 @@ export function LinearMap({ vector, selection, onSelect, showOrfs, viewport, onV
     const x = xOf(site.cut), textWidth = site.enzyme.length * 6.2 + 6;
     let row = rowEnds.findIndex((end) => end < x - textWidth / 2);
     if (row < 0) { row = rowEnds.length; rowEnds.push(0); }
-    if (row > 3) continue;
+    if (row > (compact ? 1 : 3)) continue;
     rowEnds[row] = x + textWidth / 2;
     enzymeRows.push({ site, row, x });
   }
-  const enzymeBand = Math.min(4, rowEnds.length) * 12 + (cuts.length ? 6 : 0);
+  const enzymeBand = Math.min(compact ? 2 : 4, rowEnds.length) * 12 + (cuts.length ? 6 : 0);
   const rulerY = enzymeBand + 14;
   const trackTop = rulerY + 14;
   const height = trackTop + trackCount * 17 + 8;

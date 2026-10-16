@@ -60,7 +60,8 @@ export function featureCategory(feature: Pick<MapFeature, "type" | "name" | "aut
   if (type === "polya_signal") return "polya";
   if (type === "rbs" || /kozak|\brbs\b|shine/i.test(name)) return "rbs";
   if (type === "protein_bind" || /operator/i.test(name)) return "operator";
-  if (TAG.test(name) && !/\bcds\b/i.test(name)) return "tag";
+  // A CDS named after its fusion partner (e.g. "Klf4-2A-Myc") is still a CDS.
+  if ((TAG.test(name) && type !== "cds" && type !== "gene") || /\btag\b/i.test(name)) return "tag";
   if (MARKER.test(name) && (type === "cds" || type === "gene" || type === "misc_feature")) return "marker";
   if (type === "cds" || type === "gene") return "cds";
   if (type === "mat_peptide" && TAG.test(name)) return "tag";

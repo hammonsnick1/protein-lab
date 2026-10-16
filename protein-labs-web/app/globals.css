@@ -11342,20 +11342,21 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   min-height: 0;
 }
 .vmap-circular {
+  position: relative;
   flex: 1;
-  min-height: 300px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  min-height: 320px;
 }
 .vmap-circular > svg {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  max-height: calc(100vh - 430px);
-  min-height: 300px;
   user-select: none;
 }
 .vmap-note {
+  position: absolute;
+  left: 0;
+  bottom: 0;
   margin: 0;
   color: var(--muted-foreground);
   font-size: 11px;
@@ -11414,7 +11415,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vmap-label {
   fill: var(--foreground);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 560;
 }
 .vmap-feature.selected .vmap-label {
@@ -11432,7 +11433,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vmap-enzyme-label {
   fill: #6a3fc0;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 650;
 }
 .vmap-enzyme.selected .vmap-enzyme-label {
@@ -12319,4 +12320,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   .vmap-toolbar {
     display: none;
   }
+}
+.vmap-linear .vmap-enzyme-label,
+.vseq .vmap-enzyme-label {
+  font-size: 10.5px;
 }
