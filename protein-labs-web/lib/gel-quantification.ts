@@ -14,6 +14,7 @@
 import type {
   GelAnalysis,
   GelBand,
+  GelBandFlag,
   GelImageProcessing,
   GelLadderCalibration,
   GelLane,
@@ -107,13 +108,31 @@ const NORMALIZATION_BASES: NormalizationBasis[] = [
 
 export function readGelLane(value: unknown, index: number): GelLane {
   const raw = record(value);
+  const label = text(raw.label, `Lane ${index + 1}`);
   return {
     id: text(raw.id, `lane-${index + 1}`),
-    label: text(raw.label, `Lane ${index + 1}`),
+    label,
     xStart: clampedNumber(raw.xStart, 0, 0, 1),
     xEnd: clampedNumber(raw.xEnd, 1, 0, 1),
     isLadder: raw.isLadder === true,
+    sampleLabel: text(raw.sampleLabel, label),
+    // A stage binding comes from the caller or nowhere; it is never inferred.
+    stageId: text(raw.stageId) || null,
   };
+}
+
+function readBandFlags(value: unknown): GelBandFlag[] {
+  return list(value)
+    .map((item) => {
+      const raw = record(item);
+      return {
+        code: text(raw.code),
+        level: text(raw.level, "note"),
+        title: text(raw.title),
+        message: text(raw.message),
+      };
+    })
+    .filter((flag) => flag.code.length > 0 && flag.message.length > 0);
 }
 
 /**
@@ -139,6 +158,8 @@ export function readGelBand(value: unknown, index: number): GelBand {
     centerY: clampedNumber(raw.centerY, 0, 0, 1),
     peakSignal: autoDetected ? finiteOrNull(raw.peakSignal) : null,
     density,
+    densityUncertainty: quantified ? finiteOrNull(raw.densityUncertainty) : null,
+    flags: readBandFlags(raw.flags),
     laneFraction: quantified ? finiteOrNull(raw.laneFraction) : null,
     laneFractionUncertainty: quantified ? finiteOrNull(raw.laneFractionUncertainty) : null,
     normalizationBasis: quantified || refused ? basis : null,
@@ -185,6 +206,9 @@ export function readGelQuantification(value: unknown): GelQuantification | null 
     backgroundBoundary: text(raw.backgroundBoundary),
     laneGeometry: text(raw.laneGeometry),
     uncertaintyMethod: text(raw.uncertaintyMethod),
+    uncertaintyPropagation: text(raw.uncertaintyPropagation),
+    profileNoiseFloor: finiteOrNull(raw.profileNoiseFloor),
+    profileSmoothingRadiusPx: finiteOrNull(raw.profileSmoothingRadiusPx),
     caveats: list(raw.caveats).map((caveat) => text(caveat)).filter((caveat) => caveat.length > 0),
     normalizationBasis: text(raw.normalizationBasis),
     linearDynamicRange: readGelLinearRange(raw.linearDynamicRange),
@@ -202,9 +226,23 @@ export function readLadderCalibration(value: unknown): GelLadderCalibration | nu
     relativeMobilityAxis: text(raw.relativeMobilityAxis),
     markerAssignment: text(raw.markerAssignment),
     assumption: text(raw.assumption),
+    r2: finiteOrNull(raw.r2),
     fitR2: finiteOrNull(raw.fitR2),
     slope: finiteOrNull(raw.slope),
     intercept: finiteOrNull(raw.intercept),
+    residualConvention: text(raw.residualConvention),
+    matchedBands: list(raw.matchedBands)
+      .map((item) => {
+        const matched = record(item);
+        return {
+          bandId: text(matched.bandId),
+          relativeMobility: finiteOrNull(matched.relativeMobility),
+          massKDa: finiteOrNull(matched.massKDa),
+          fittedKDa: finiteOrNull(matched.fittedKDa),
+          residualKDa: finiteOrNull(matched.residualKDa),
+        };
+      })
+      .filter((matched) => matched.bandId.length > 0),
     ladderBandCount: finiteOrNull(raw.ladderBandCount),
     calibrationMarkerCount: finiteOrNull(raw.calibrationMarkerCount),
     mobilityRange:
@@ -397,9 +435,14 @@ export function formatSignalFraction(fraction: number, uncertainty: number | nul
     : `${formatPercent(fraction)} ± ${formatPercent(uncertainty)}`;
 }
 
-export function formatDensity(density: number | null): string {
-  return density === null ? "—" : density.toFixed(1);
+/** The density with the engine's noise-only standard error, when it gave one. */
+export function formatDensity(density: number | null, uncertainty: number | null = null): string {
+  if (density === null) return "—";
+  return uncertainty === null ? density.toFixed(1) : `${density.toFixed(1)} ± ${uncertainty.toFixed(1)}`;
 }
+
+export const DENSITY_UNCERTAINTY_CAVEAT =
+  "Noise-only approximate standard error. It is not a purity confidence interval: background bias, staining response and lane curvature are excluded.";
 
 export const SIGNAL_FRACTION_CAVEAT =
   "Fraction of the detected band signal in this lane. It is not a validated protein mass purity: undetected material is excluded and staining response is assumed linear.";
@@ -481,7 +524,9 @@ export function ladderCalibrationSummary(
   }
   if (calibration.status === "calibrated") {
     const range = calibration.mobilityRange;
-    const fit = calibration.fitR2 === null ? "R² not reported" : `R² = ${calibration.fitR2.toFixed(4)}`;
+    // `r2` is the unrounded fit; `fitR2` is the rounded legacy field.
+    const r2 = calibration.r2 ?? calibration.fitR2;
+    const fit = r2 === null ? "R² not reported" : `R² = ${r2.toFixed(4)}`;
     const markers =
       calibration.calibrationMarkerCount === null
         ? ""
@@ -539,23 +584,29 @@ export function gelCsvRows(input: GelCsvInput): string[][] {
   const rows: string[][] = [
     [
       "Lane",
+      "Sample",
+      "Stage ID",
       "Band",
       "Source",
       "Center (fraction from top)",
       "MW (kDa)",
       "MW status",
       "Integrated density",
+      "Density uncertainty (±, noise only)",
       "Lane signal fraction (%)",
       "Fraction uncertainty (±%)",
       "Normalization basis",
       "Quantification refused",
       "Reason",
+      "Flags",
     ],
   ];
   for (const lane of input.lanes) {
     for (const band of bandsInLane(input.bands, lane.id)) {
       rows.push([
         lane.label,
+        lane.sampleLabel,
+        lane.stageId ?? "",
         band.label,
         band.autoDetected ? "engine" : "manual",
         band.centerY.toFixed(4),
@@ -564,11 +615,13 @@ export function gelCsvRows(input: GelCsvInput): string[][] {
           : "",
         input.calibrationIsStale ? "stale_ladder_calibration" : (band.molecularWeightStatus ?? "not_reported"),
         band.density === null ? "" : band.density.toFixed(4),
+        band.densityUncertainty === null ? "" : band.densityUncertainty.toFixed(4),
         band.laneFraction === null ? "" : (band.laneFraction * 100).toFixed(2),
         band.laneFractionUncertainty === null ? "" : (band.laneFractionUncertainty * 100).toFixed(2),
         band.normalizationBasis ?? "",
         band.quantificationRefused ? "yes" : "no",
         bandQuantificationNote(band) ?? band.laneFractionStaleReason ?? "",
+        band.flags.map((flag) => `${flag.level}:${flag.code}`).join(" "),
       ]);
     }
   }
@@ -596,6 +649,19 @@ export function gelCsvRows(input: GelCsvInput): string[][] {
     rows.push(["# Background boundary", quantification.backgroundBoundary]);
     rows.push(["# Lane geometry", quantification.laneGeometry]);
     rows.push(["# Uncertainty", quantification.uncertaintyMethod]);
+    if (quantification.uncertaintyPropagation) {
+      rows.push(["# Uncertainty propagation", quantification.uncertaintyPropagation]);
+    }
+    rows.push(["# Density uncertainty meaning", DENSITY_UNCERTAINTY_CAVEAT]);
+    if (quantification.profileSmoothingRadiusPx !== null) {
+      rows.push([
+        "# Profile smoothing radius (px)",
+        String(quantification.profileSmoothingRadiusPx),
+      ]);
+    }
+    if (quantification.profileNoiseFloor !== null) {
+      rows.push(["# Profile noise floor", String(quantification.profileNoiseFloor)]);
+    }
     rows.push([
       "# Linear dynamic range",
       `${quantification.linearDynamicRange.minSignal ?? ""}–${quantification.linearDynamicRange.maxSignal ?? ""} ${quantification.linearDynamicRange.unit}`,
@@ -613,7 +679,8 @@ export function gelCsvRows(input: GelCsvInput): string[][] {
     rows.push(["# Ladder calibration"]);
     rows.push(["# Status", calibration.status]);
     rows.push(["# Summary", `${summary.headline}. ${summary.detail}`]);
-    if (calibration.fitR2 !== null) rows.push(["# Fit R²", calibration.fitR2.toFixed(4)]);
+    const r2 = calibration.r2 ?? calibration.fitR2;
+    if (r2 !== null) rows.push(["# Fit R²", r2.toFixed(6)]);
     if (calibration.mobilityRange) {
       rows.push([
         "# Valid mobility range",
@@ -621,6 +688,22 @@ export function gelCsvRows(input: GelCsvInput): string[][] {
       ]);
     }
     if (calibration.markerAssignment) rows.push(["# Marker assignment", calibration.markerAssignment]);
+    if (calibration.matchedBands.length) {
+      rows.push([]);
+      rows.push([
+        `# Ladder markers used in the fit (residual convention: ${calibration.residualConvention || "observed_minus_fitted_kDa"})`,
+      ]);
+      rows.push(["# Band ID", "Mobility", "Marker (kDa)", "Fitted (kDa)", "Residual (kDa)"]);
+      for (const matched of calibration.matchedBands) {
+        rows.push([
+          matched.bandId,
+          matched.relativeMobility === null ? "" : matched.relativeMobility.toFixed(4),
+          matched.massKDa === null ? "" : matched.massKDa.toFixed(2),
+          matched.fittedKDa === null ? "" : matched.fittedKDa.toFixed(2),
+          matched.residualKDa === null ? "" : matched.residualKDa.toFixed(2),
+        ]);
+      }
+    }
     if (input.calibrationIsStale) {
       rows.push([
         "# Warning",
@@ -707,8 +790,10 @@ export function gelReportLanes(config: GelJobConfig): GelReportLane[] {
     .map((lane) => {
       const laneBands = bandsInLane(config.bands, lane.id);
       const target = laneBands.find((band) => band.isTarget);
+      // The report reader needs what was loaded, not only where it ran.
+      const sample = lane.sampleLabel.trim();
       return {
-        label: lane.label,
+        label: sample && sample !== lane.label ? `${lane.label} · ${sample}` : lane.label,
         isLadder: lane.isLadder,
         targetLabel: target ? target.label : null,
         verdict: laneQuantification(laneBands),

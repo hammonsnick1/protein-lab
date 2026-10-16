@@ -4916,8 +4916,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   width: 13px;
   flex: none;
 }
-.gel-band-flag.refused svg {
+.gel-band-flag.refused svg,
+.gel-band-flag.warning svg,
+.gel-band-flag.caution svg {
   color: #dfaa45;
+}
+.gel-band-flag b {
+  color: var(--foreground);
+  font-weight: 700;
 }
 .gel-band-table {
   width: 100%;

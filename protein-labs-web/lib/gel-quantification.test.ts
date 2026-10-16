@@ -10,6 +10,7 @@ import {
   finiteOrNull,
   formatSignalFraction,
   gelCsvRows,
+  gelFigureNote,
   invalidateLaneFractions,
   ladderMassesError,
   ladderMassesKDa,
@@ -30,7 +31,9 @@ const saturatedLaneReply = {
   height: 400,
   polarity: "dark",
   previewBase64: "AAA",
-  lanes: [{ id: "lane-a", label: "Lane 1", xStart: 0.1, xEnd: 0.3, isLadder: false }],
+  lanes: [
+    { id: "lane-a", label: "Lane 1", xStart: 0.1, xEnd: 0.3, isLadder: false, sampleLabel: "IMAC eluate", stageId: "step-imac" },
+  ],
   bands: [
     {
       id: "band-clean",
@@ -45,6 +48,15 @@ const saturatedLaneReply = {
       quantificationRefused: false,
       saturationReason: null,
       density: 1820.5,
+      densityUncertainty: 12.4,
+      flags: [
+        {
+          code: "lane_fraction_unavailable",
+          level: "note",
+          title: "Lane fraction withheld",
+          message: "Another band in this lane is saturated.",
+        },
+      ],
       laneFraction: null,
       laneFractionUncertainty: null,
       normalizationBasis: "lane_fraction_unavailable_due_to_saturation",
@@ -64,6 +76,15 @@ const saturatedLaneReply = {
       quantificationRefused: true,
       saturationReason: "Band pixels are saturated (18.2% at or above 255); intensity is not in the linear range",
       density: null,
+      densityUncertainty: null,
+      flags: [
+        {
+          code: "saturated",
+          level: "warning",
+          title: "Saturated band",
+          message: "Band pixels reach the detector ceiling.",
+        },
+      ],
       laneFraction: null,
       laneFractionUncertainty: null,
       normalizationBasis: "lane_fraction_unavailable_due_to_saturation",
@@ -97,7 +118,13 @@ const saturatedLaneReply = {
   ladderCalibration: {
     method: "log10_da_vs_relative_mobility",
     status: "calibrated",
+    r2: 0.99617342,
     fitR2: 0.9962,
+    residualConvention: "observed_minus_fitted_kDa",
+    matchedBands: [
+      { bandId: "ladder-1", relativeMobility: 0.12, massKDa: 250, fittedKDa: 246.1, residualKDa: 3.9 },
+      { bandId: "ladder-2", relativeMobility: 0.2, massKDa: 150, fittedKDa: 153.2, residualKDa: -3.2 },
+    ],
     slope: -2.1,
     intercept: 5.6,
     ladderBandCount: 10,
@@ -253,6 +280,20 @@ describe("saving and reloading", () => {
     assert.equal(loaded.quantification?.caveats.length, 2);
     assert.equal(loaded.quantification?.imageProcessing.originalWidth, 600);
     assert.equal(loaded.ladderCalibration?.fitR2, 0.9962);
+    assert.equal(loaded.ladderCalibration?.r2, 0.99617342);
+    assert.equal(loaded.ladderCalibration?.residualConvention, "observed_minus_fitted_kDa");
+    assert.deepEqual(
+      loaded.ladderCalibration?.matchedBands.map((matched) => matched.residualKDa),
+      [3.9, -3.2],
+    );
+    assert.equal(laneBands[0].densityUncertainty, 12.4);
+    assert.equal(laneBands[1].densityUncertainty, null);
+    assert.deepEqual(
+      laneBands.map((band) => band.flags.map((flag) => flag.code)),
+      [["lane_fraction_unavailable"], ["saturated"]],
+    );
+    assert.equal(loaded.lanes[0].sampleLabel, "IMAC eluate");
+    assert.equal(loaded.lanes[0].stageId, "step-imac");
     assert.deepEqual(loaded.ladderCalibration?.mobilityRange, [0.12, 0.88]);
   });
 
@@ -274,6 +315,15 @@ describe("saving and reloading", () => {
     });
     assert.equal(laneQuantification(bandsInLane(loaded.bands, "lane-a")).kind, "unavailable");
     assert.equal(loaded.bands[0].laneFraction, null);
+  });
+});
+
+describe("report", () => {
+  it("names the sample and keeps the lane unavailable in the figure note", () => {
+    const loaded = readGelJobConfig({ schemaVersion: 3, ...readGelAnalysis(saturatedLaneReply) });
+    const note = String(gelFigureNote(loaded));
+    assert.match(note, /Lane 1 · IMAC eluate: quantification unavailable/);
+    assert.doesNotMatch(note, /Lane 1 · IMAC eluate: .* is \d/);
   });
 });
 
@@ -324,21 +374,34 @@ describe("csv export", () => {
     calibrationIsStale: false,
   });
   const flat = rows.map((row) => row.join("|"));
+  const header = rows[0];
+  const cell = (row: string[], name: string) => {
+    const index = header.indexOf(name);
+    assert.ok(index >= 0, `missing column ${name}`);
+    return row[index];
+  };
+  const bandRow = (label: string, from = rows) => from.find((row) => row[header.indexOf("Band")] === label);
 
   it("leaves a refused density empty and states the reason", () => {
-    const clipped = rows.find((row) => row[1] === "Band 2");
+    const clipped = bandRow("Band 2");
     assert.ok(clipped);
-    assert.equal(clipped[6], "");
-    assert.equal(clipped[7], "");
-    assert.equal(clipped[10], "yes");
-    assert.match(clipped[11], /saturated/);
+    assert.equal(cell(clipped, "Integrated density"), "");
+    assert.equal(cell(clipped, "Density uncertainty (±, noise only)"), "");
+    assert.equal(cell(clipped, "Lane signal fraction (%)"), "");
+    assert.equal(cell(clipped, "Quantification refused"), "yes");
+    assert.match(cell(clipped, "Reason"), /saturated/);
+    assert.equal(cell(clipped, "Flags"), "warning:saturated");
   });
 
   it("keeps the valid density of the clean band in the same lane", () => {
-    const clean = rows.find((row) => row[1] === "Band 1");
+    const clean = bandRow("Band 1");
     assert.ok(clean);
-    assert.equal(clean[6], "1820.5000");
-    assert.equal(clean[7], "");
+    assert.equal(cell(clean, "Integrated density"), "1820.5000");
+    assert.equal(cell(clean, "Density uncertainty (±, noise only)"), "12.4000");
+    // The lane holds a saturated band, so no fraction is derived from this one.
+    assert.equal(cell(clean, "Lane signal fraction (%)"), "");
+    assert.equal(cell(clean, "Sample"), "IMAC eluate");
+    assert.equal(cell(clean, "Stage ID"), "step-imac");
   });
 
   it("records the lane as unavailable and carries the method metadata", () => {
@@ -346,7 +409,9 @@ describe("csv export", () => {
     assert.ok(flat.some((row) => row.startsWith("# Background|rolling_ball")));
     assert.ok(flat.some((row) => row === "# Background radius (px)|28"));
     assert.ok(flat.some((row) => /# Caveat\|.*not a validated protein mass purity/.test(row)));
-    assert.ok(flat.some((row) => row === "# Fit R²|0.9962"));
+    assert.ok(flat.some((row) => row === "# Fit R²|0.996173"));
+    assert.ok(flat.some((row) => row === "ladder-2|0.2000|150.00|153.20|-3.20"));
+    assert.ok(flat.some((row) => /# Density uncertainty meaning\|.*not a purity confidence interval/.test(row)));
     assert.ok(flat.some((row) => /# Image processing\|600×400 px/.test(row)));
   });
 
@@ -358,9 +423,9 @@ describe("csv export", () => {
       ladderCalibration: analysis.ladderCalibration,
       calibrationIsStale: true,
     });
-    const clean = stale.find((row) => row[1] === "Band 1");
+    const clean = bandRow("Band 1", stale);
     assert.ok(clean);
-    assert.equal(clean[4], "");
-    assert.equal(clean[5], "stale_ladder_calibration");
+    assert.equal(cell(clean, "MW (kDa)"), "");
+    assert.equal(cell(clean, "MW status"), "stale_ladder_calibration");
   });
 });
