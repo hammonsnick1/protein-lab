@@ -42,11 +42,9 @@ import type {
   AnalyzeRequest,
   AxisX,
   AxisY,
-  EngineFlag,
   EngineMassBalance,
   EngineMethods,
   EnginePeak,
-  FitQuality,
   ResultUnits,
   SecCalibration,
   SecPrediction,
@@ -57,7 +55,8 @@ import {
   minimumSegmentPoints,
   traceSegments,
 } from "@/lib/chromatography-api";
-import { loadPeakDiagnostics, peakDiagnostics } from "@/lib/chromatogram-diagnostics";
+import type { MeasuredPeak, Peak } from "@/lib/chromatogram-peaks";
+import { loadPeaks, measurePeak, studioJobConfig } from "@/lib/chromatogram-peaks";
 import { secColumns } from "@/lib/sec-column-catalog";
 
 // `gap` marks the first sample after an excluded region. The plot starts a new
@@ -97,50 +96,6 @@ type Trace = {
   responseFactorMAUPerMgMl: number | null;
   flowMlPerMin: number | null;
 };
-type Peak = {
-  id: string;
-  traceId: string;
-  name: string;
-  start: number;
-  end: number;
-  apexX: number;
-  response: number;
-  height: number;
-  area: number;
-  color: string;
-  fillColor: string;
-  fillVisible: boolean;
-  fillOpacity: number;
-  outlineWidth: number;
-  calloutVisible: boolean;
-  calloutBorder: boolean;
-  calloutX: number;
-  calloutY: number;
-  showVe: boolean;
-  showResponse: boolean;
-  showArea: boolean;
-  showMw: boolean;
-  customText: string;
-  mwKDa?: number;
-  kav?: number;
-  fraction?: string;
-  // Engine measurements. `start`/`end` stay the integration range the
-  // researcher asked for; the engine reports the samples it actually used as
-  // `measuredStart`/`measuredEnd`, so re-measuring never drifts the request.
-  measuredStart?: number;
-  measuredEnd?: number;
-  fwhm?: number | null;
-  asymmetry10?: number | null;
-  outOfRange?: boolean;
-  // Engine report diagnostics, saved beside the numbers they qualify.
-  flags?: EngineFlag[];
-  fitQuality?: FitQuality | null;
-  mwUncertaintyKDa?: number | null;
-};
-// A peak joined to the current engine result. `measured` is false whenever the
-// numbers on screen did not come from this engine run, so the studio can say so
-// instead of presenting a stored or stale value as a fresh measurement.
-type MeasuredPeak = Peak & { measured: boolean; rs: number | null };
 type Standard = {
   id: string;
   protein: string;
@@ -860,27 +815,10 @@ export function ChromatogramStudioJob({
       peaks.map((peak) => {
         const analysis = analyses[peak.traceId];
         const measured = analysis?.peaks[peak.id];
-        if (!measured) return { ...peak, measured: false, rs: null };
         const trace = traces.find((value) => value.id === peak.traceId);
         const prediction =
-          trace?.xUnit === "mL" ? sec.predictions[String(measured.apexX)] : undefined;
-        return {
-          ...peak,
-          measured: true,
-          rs: analysis?.rsByPeakId[peak.id] ?? null,
-          measuredStart: measured.start,
-          measuredEnd: measured.end,
-          apexX: measured.apexX,
-          response: measured.response,
-          height: measured.height,
-          area: measured.area,
-          fwhm: measured.fwhm,
-          asymmetry10: measured.asymmetry10,
-          kav: prediction?.kav,
-          mwKDa: prediction?.mwKDa ?? undefined,
-          outOfRange: prediction?.outOfRange,
-          ...peakDiagnostics(measured, prediction),
-        };
+          measured && trace?.xUnit === "mL" ? sec.predictions[String(measured.apexX)] : undefined;
+        return measurePeak(peak, measured, prediction, analysis?.rsByPeakId[peak.id] ?? null);
       }),
     [peaks, analyses, traces, sec],
   );
@@ -1310,28 +1248,27 @@ export function ChromatogramStudioJob({
   async function save() {
     setBusy(true);
     try {
-      const config = {
-        schemaVersion: 12,
-        projectName,
-        traces,
-        activeTraceId,
-        peaks: calibratedPeaks,
-        annotations,
-        fractions,
-        standards,
-        vo,
-        vt,
-        columnName: column,
-        voidMarkerMw,
-        fitColor,
-        calibration: fit,
-        massStandards,
-        massFigure,
-        figure,
-        secFigure,
-        savedAt: new Date().toISOString(),
-        savedByUser: true,
-      };
+      const config = studioJobConfig(
+        {
+          projectName,
+          traces,
+          activeTraceId,
+          annotations,
+          fractions,
+          standards,
+          vo,
+          vt,
+          columnName: column,
+          voidMarkerMw,
+          fitColor,
+          massStandards,
+          massFigure,
+          figure,
+          secFigure,
+        },
+        calibratedPeaks,
+        fit,
+      );
       const latest = await proteinLabsApi.getProtein(bundle.protein.id);
       await ensureProjectJob(
         bundle.protein.id,
@@ -5012,38 +4949,6 @@ function optionalNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-function loadPeaks(value: unknown): Peak[] {
-  return array(value).map((raw, index) => ({
-    id: String(raw.id ?? crypto.randomUUID()),
-    traceId: String(raw.traceId ?? ""),
-    name: String(raw.name ?? `Peak ${index + 1}`),
-    start: Number(raw.start ?? 0),
-    end: Number(raw.end ?? 0),
-    apexX: Number(raw.apexX ?? raw.retentionVolume ?? 0),
-    response: Number(raw.response ?? 0),
-    height: Number(raw.height ?? 0),
-    area: Number(raw.area ?? 0),
-    color: String(raw.color ?? raw.outlineColor ?? "#25bba7"),
-    fillColor: String(raw.fillColor ?? "#25bba7"),
-    fillVisible: raw.fillVisible !== false,
-    fillOpacity: Number(raw.fillOpacity ?? 0.25),
-    outlineWidth: Number(raw.outlineWidth ?? 2),
-    calloutVisible: raw.calloutVisible !== false,
-    calloutBorder: raw.calloutBorder !== false,
-    calloutX: Number(raw.calloutX ?? raw.apexX ?? 0),
-    calloutY: Number(raw.calloutY ?? 12),
-    showVe: raw.showVe !== false,
-    showResponse: raw.showResponse !== false,
-    showArea: raw.showArea !== false,
-    showMw: raw.showMw !== false,
-    customText: String(raw.customText ?? ""),
-    // A stored null is an absent value, not zero.
-    mwKDa: raw.mwKDa == null ? undefined : Number(raw.mwKDa),
-    kav: raw.kav == null ? undefined : Number(raw.kav),
-    fraction: raw.fraction ? String(raw.fraction) : undefined,
-    ...loadPeakDiagnostics(raw),
-  }));
 }
 function loadStandards(value: unknown): Standard[] {
   const loaded = array(value).map((raw, index) => ({
