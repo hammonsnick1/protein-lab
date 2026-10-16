@@ -42,7 +42,7 @@ type Profile = { name: string; googleEmail: string; googleConnected: boolean };
 
 const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleConnected: false };
 
-export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onCreate }: { proteins: ProteinRecord[]; trees: SavedProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onCreate: () => void }) {
+export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onVectors, onCreate }: { proteins: ProteinRecord[]; trees: SavedProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onVectors: () => void; onCreate: () => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
   const [mascotId, setMascotId] = useState("bacteria");
@@ -255,7 +255,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           <div className="timeline-editor"><div className="timeline-date"><strong>{formatCalendarDate(selectedDate)}</strong><small>{selectedEvents.length} planned item{selectedEvents.length === 1 ? "" : "s"}</small></div><div className="timeline-add"><input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addEvent(); }} placeholder="e.g. Run Superdex 200 Increase"/><select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">General lab work</option>}</select><select value={eventStage} onChange={(event) => setEventStage(event.target.value as TimelineStage)}>{timelineStages.map((value) => <option key={value.id} value={value.id}>{value.label}</option>)}</select><button onClick={addEvent}><Plus/></button></div><div className="timeline-items">{selectedEvents.map((event) => <div key={event.id}><i style={{ background: stage(event.stage).color }}/><span><strong>{event.title}</strong><small>{stage(event.stage).label} · {projectName(roots, event.projectId)}</small></span><button onClick={() => removeEvent(event.id)}><X/></button></div>)}{!selectedEvents.length && <p>Select a day and add the next purification milestone.</p>}</div></div>
         </article>
 
-        <VectorDatabaseCard onOpenProject={onOpenProject}/>
+        <VectorDatabaseCard onOpenProject={onOpenProject} onOpenLibrary={onVectors}/>
 
         <article className="dashboard-card dashboard-account-card">
           <CardHeader icon={Sparkles} title="AlphaFold access" subtitle="Use your Google-authenticated system browser"/>
@@ -425,12 +425,11 @@ type LibraryVector = {
 };
 
 /**
- * Every vector saved anywhere in the workspace, with the construct it carries
- * and the projects using it. Vectors are catalogued when they are named and
- * saved in Expression vector design, so this is a workspace-wide view rather
- * than a per-project one.
+ * The standard vectors plus every vector saved anywhere in the workspace, with
+ * the construct it carries and the projects using it. The full faceted search
+ * lives on the vector library page this card opens.
  */
-function VectorDatabaseCard({ onOpenProject }: { onOpenProject: (id: string) => void }) {
+function VectorDatabaseCard({ onOpenProject, onOpenLibrary }: { onOpenProject: (id: string) => void; onOpenLibrary: () => void }) {
   const [vectors, setVectors] = useState<LibraryVector[]>([]);
   const [failed, setFailed] = useState(false);
   const [search, setSearch] = useState("");
@@ -449,9 +448,9 @@ function VectorDatabaseCard({ onOpenProject }: { onOpenProject: (id: string) => 
   return <article className="dashboard-card dashboard-vector-card">
     <CardHeader
       icon={Database}
-      title="Vector database"
-      subtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} across ${linked} project${linked === 1 ? "" : "s"}` : "Saved vectors appear here"}
-    />
+      title="Vector library"
+      subtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} · used in ${linked} project${linked === 1 ? "" : "s"}` : "Saved vectors appear here"}
+    ><Button variant="outline" size="sm" onClick={onOpenLibrary}>Open library <ArrowRight/></Button></CardHeader>
     <div className="vector-card-body">
       {vectors.length > 3 && <label className="vector-card-search"><Search/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search vectors, inserts, or projects"/></label>}
       <div className="vector-card-list">
@@ -461,12 +460,12 @@ function VectorDatabaseCard({ onOpenProject }: { onOpenProject: (id: string) => 
             <small>{vector.lengthBp.toLocaleString()} bp · {vector.featureCount} annotations{vector.insertName ? ` · ${vector.insertName}` : ""}</small>
             <small className="vector-card-uses">{vector.projectCount} project{vector.projectCount === 1 ? "" : "s"}{vector.projects.length ? `: ${vector.projects.map((use) => use.proteinName).join(", ")}` : ""}</small>
           </span>
-          {vector.projects[0] && <Button size="sm" variant="outline" onClick={() => onOpenProject(vector.projects[0].proteinId)}>Open <ArrowRight/></Button>}
+          {vector.projects[0] ? <Button size="sm" variant="outline" onClick={() => onOpenProject(vector.projects[0].proteinId)}>Open <ArrowRight/></Button> : <Button size="sm" variant="ghost" onClick={onOpenLibrary}>Preview <ArrowRight/></Button>}
         </article>)}
         {!shown.length && <div className="vector-card-empty">
           <Database/>
           <span>
-            <strong>{failed ? "The vector database is unavailable" : vectors.length ? "No vector matched that search" : "No vectors saved yet"}</strong>
+            <strong>{failed ? "The vector library is unavailable" : vectors.length ? "No vector matched that search" : "No vectors saved yet"}</strong>
             <small>{failed ? "Start the local engine to read the catalogue." : "Name and save a vector in Expression vector design and it is catalogued here, with the construct inserted into it."}</small>
           </span>
         </div>}
