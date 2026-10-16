@@ -92,6 +92,12 @@ export const proteinLabsApi = {
   deleteVector: (proteinId: string, vectorId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}`, { method: "DELETE" }),
   importVector: (proteinId: string, filename: string, content: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/import`, { filename, content }),
   vectorLibrary: () => request<{ vectors: JsonObject[] }>("/v1/protein-planner/vector-library"),
+  // Catalogue search (HOM-48): `params` comes from librarySearchParams in lib/vector-library.
+  searchVectorLibrary: (params: string) => request<{ vectors: JsonObject[]; total: number; limit: number; offset: number; facets: Record<string, { value: string; count: number }[]> }>(`/v1/protein-planner/vector-library?${params}`),
+  recentLibraryVectors: (limit = 8) => request<{ vectors: JsonObject[] }>(`/v1/protein-planner/vector-library/recent?limit=${limit}`),
+  setLibraryFavorite: (libraryId: string, favorite: boolean) => patch<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { favorite }),
+  exportLibraryVector: (libraryId: string, format: "genbank" | "fasta") => request<{ filename: string; content: string }>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/export?format=${format}`),
+  importLibraryVector: (filename: string, content: string) => post<JsonObject & { duplicate?: boolean }>("/v1/protein-planner/vector-library/import", { filename, content }),
   getLibraryVector: (libraryId: string) => request<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`),
   deleteLibraryVector: (libraryId: string) => request<{ deleted: string }>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { method: "DELETE" }),
   copyLibraryVector: (proteinId: string, libraryId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/library/${encodeURIComponent(libraryId)}`),
