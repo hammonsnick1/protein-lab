@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
 import {
-  assignedMass, bandMass, buildReportData, emptyYieldEntry, formatPeakFit, formatPurity, formatSecMass,
+  assignedMass, bandMass, buildReportData, emptyYieldEntry, formatPeakFit, formatPurity, formatSecMass, secMarkdown, secTableNote,
   type ReportData, type YieldEntry,
 } from "./report-data.ts";
 
@@ -316,6 +316,17 @@ describe("HOM-25: chromatography diagnostics from a saved studio job", () => {
 
     const older = buildReportData(bundle({ "chromatogram-studio": studioJob({}) }), []);
     assert.deepEqual(older.sec?.calibratedRangeKDa, [2, 600]);
+  });
+
+  it("prints the values and the calibration-only note in the markdown export", () => {
+    const data = buildReportData(bundle({ "chromatogram-studio": studioJob({ standardMassRangeKDa: [1, 1000] }) }), []);
+    const markdown = secMarkdown(data.sec).join("\n");
+    assert.match(markdown, /\| Apparent mass ± 1 SD \| Peak fit R² · RMSE \|/);
+    assert.match(markdown, /\| P1 ⚠ \| 16\.00 \| 0\.500 \| 10\.0 kDa ± 1\.50 kDa \| 0\.985 · 4\.137 mAU \|/);
+    assert.match(markdown, /\| P2 ⚠ \| 16\.00 \| 0\.500 \| 10\.0 kDa \| — \|/);
+    assert.ok(markdown.includes(secTableNote), "the SEC note follows the table");
+    assert.match(secTableNote, /calibration scatter only/);
+    assert.match(secTableNote, /not a confidence interval/);
   });
 
   it("drops the uncertainty when the mass itself is withheld", () => {

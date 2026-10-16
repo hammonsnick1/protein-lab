@@ -959,6 +959,23 @@ export function formatPeakFit(fit: SecPeakRow["fitQuality"]) {
   return `${fit.rSquared.toFixed(3)}${residual}`;
 }
 
+/** The SEC block of the markdown export: same columns and note as screen and PDF. */
+export function secMarkdown(sec: SecSummary | null): string[] {
+  if (!sec) return ["_No chromatogram is saved for this project._"];
+  const header = sec.fit
+    ? `Kav = ${sec.fit.slope.toFixed(4)} log₁₀(Mr) + ${sec.fit.intercept.toFixed(4)} · R² ${sec.fit.r2.toFixed(4)} · n = ${sec.fit.standards}`
+    : "No SEC calibration is stored with this chromatogram.";
+  return [
+    `**${sec.columnName || "Column not recorded"}** — ${header}`,
+    "",
+    "| Peak | Vₑ (mL) | Kav | Apparent mass ± 1 SD | Peak fit R² · RMSE | Area |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...sec.peaks.map((peak) => `| ${peak.name}${peak.flags.length ? " ⚠" : ""} | ${formatNumber(peak.veMl, 2)} | ${peak.kav === null ? "—" : peak.kav.toFixed(3)} | ${formatSecMass(peak)} | ${formatPeakFit(peak.fitQuality)} | ${peak.areaPercent === null ? "—" : `${peak.areaPercent.toFixed(1)}%`} |`),
+    "",
+    `_${secTableNote}_`,
+  ];
+}
+
 export const secTableNote =
   "Apparent mass comes from the Kav against log₁₀(Mr) calibration and refers to globular standards; it is an elution behaviour, not a mass measurement. " +
   "± is one standard deviation (1σ) estimated from calibration scatter only: it excludes peak position, standard mass and column volume errors and is not a confidence interval. " +

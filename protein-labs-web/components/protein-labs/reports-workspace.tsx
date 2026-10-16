@@ -14,7 +14,7 @@ import { CaveatsBlock, MethodsBlock, PurityBlock, SecBlock, YieldBlock } from "@
 import { desktopBridge } from "@/lib/desktop-bridge";
 import { captureFigure } from "@/lib/report-figures";
 import {
-  assignedMass, buildReportData, emptyYieldEntry, formatMass, formatNumber, formatPeakFit, formatPurity, formatSecMass, loadYieldEntries, secCalibrated, yieldStages,
+  assignedMass, buildReportData, emptyYieldEntry, formatMass, formatNumber, formatPurity, secMarkdown, loadYieldEntries, secCalibrated, yieldStages,
   type ReportData, type YieldEntry,
 } from "@/lib/report-data";
 import { dedupe, reportDocumentHtml, runningHeader, type PrintBlock, type PrintFigure, type PrintPage } from "@/lib/report-print";
@@ -982,19 +982,7 @@ function markdownBlock(templateId: string, data: ReportData): string[] {
       ...data.purity.rows.filter((row) => !row.isLadder).map((row) => `| ${row.lane}${row.flags.length ? " ⚠" : ""} | ${row.targetBand || "Not marked"} | ${row.targetMwKDa === null ? "—" : formatMass(row.targetMwKDa)} | ${row.bandCount} | ${formatPurity(row.purityPercent, row.purityBound)} |`),
     ];
   }
-  if (templateId === "mass") {
-    if (!data.sec) return ["_No chromatogram is saved for this project._"];
-    const header = data.sec.fit
-      ? `Kav = ${data.sec.fit.slope.toFixed(4)} log₁₀(Mr) + ${data.sec.fit.intercept.toFixed(4)} · R² ${data.sec.fit.r2.toFixed(4)} · n = ${data.sec.fit.standards}`
-      : "No SEC calibration is stored with this chromatogram.";
-    return [
-      `**${data.sec.columnName || "Column not recorded"}** — ${header}`,
-      "",
-      "| Peak | Vₑ (mL) | Kav | Apparent mass ± 1 SD | Peak fit R² · RMSE | Area |",
-      "| --- | --- | --- | --- | --- | --- |",
-      ...data.sec.peaks.map((peak) => `| ${peak.name}${peak.flags.length ? " ⚠" : ""} | ${formatNumber(peak.veMl, 2)} | ${peak.kav === null ? "—" : peak.kav.toFixed(3)} | ${formatSecMass(peak)} | ${formatPeakFit(peak.fitQuality)} | ${peak.areaPercent === null ? "—" : `${peak.areaPercent.toFixed(1)}%`} |`),
-    ];
-  }
+  if (templateId === "mass") return secMarkdown(data.sec);
   if (templateId === "methods") {
     return data.methods.flatMap((block) => [`### ${block.title}`, "", ...block.lines.map((item) => `- **${item.label}:** ${item.value}`), ""]);
   }
