@@ -7,6 +7,7 @@ import {
   angleToBase,
   assignTracks,
   clipRange,
+  cutSitesFromEnzymeRows,
   cutSitesFromRecord,
   dragRange,
   featureCategory,
@@ -188,6 +189,11 @@ describe("enzymes", () => {
     const [site] = cutSitesFromRecord([{ enzyme: "EcoRI", position: 397, recognitionSite: "GAATTC", cutCount: 1 }], 2686);
     assert.equal(site.cut, 396);
     assert.equal(site.cutCount, 1);
+  });
+
+  it("expands enzyme-set rows into one cut site per position", () => {
+    const sites = cutSitesFromEnzymeRows([{ enzyme: "PstI", recognitionSite: "CTGCAG", cutPositions: [10, 2001] }, { enzyme: "PmeI", recognitionSite: "GTTTAAAC", cutPositions: [] }], 2000);
+    assert.deepEqual(sites.map((site) => [site.enzyme, site.cut, site.cutCount]), [["PstI", 9, 2], ["PstI", 0, 2]]);
   });
 
   it("finds the MCS as the densest cluster of unique cutters", () => {
