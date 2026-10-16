@@ -1,6 +1,6 @@
 "use client";
 
-import { PointerEvent, useMemo, useRef, useState } from "react";
+import { CSSProperties, PointerEvent, useMemo, useRef, useState } from "react";
 import {
   CircleAlert,
   Download,
@@ -112,7 +112,10 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
       : "Import an SDS-PAGE or Native PAGE image to begin.",
   );
   const [tone, setTone] = useState<Tone>("info");
+  // The frame that holds the image and its overlays at the image's own aspect
+  // ratio, so a lane or band at 40% sits at 40% of the gel, not of the panel.
   const stage = useRef<HTMLDivElement>(null);
+  const [imageRatio, setImageRatio] = useState<number | null>(null);
   const drag = useRef<number | null>(null);
 
   const masses = useMemo(() => ladderMassesKDa(ladderPreset, customWeights), [ladderPreset, customWeights]);
@@ -208,6 +211,8 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
   }
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
+    // Without an image there is no gel to annotate, and the frame has no size.
+    if (!preview) return;
     if (mode === "lane") {
       drag.current = normalized(event).x;
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -584,54 +589,64 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
                 : "Click lanes and bands to edit"}
           </span>
         </div>
-        <div
-          ref={stage}
-          className={`gel-image-stage mode-${mode}`}
-          onPointerDown={pointerDown}
-          onPointerUp={pointerUp}
-        >
-          {preview ? (
-            <img src={preview} alt="Imported PAGE gel" />
-          ) : (
+        <div className={`gel-image-stage mode-${mode}`} onPointerDown={pointerDown} onPointerUp={pointerUp}>
+          {!preview && (
             <div className="gel-empty">
               <TestTubeDiagonal />
               <strong>Import a gel image</strong>
               <small>TIFF files are converted to a display-safe PNG by the local backend.</small>
             </div>
           )}
-          <div className="gel-guide origin" style={{ top: `${origin * 100}%` }}>
-            <span>Origin</span>
+          <div
+            ref={stage}
+            className="gel-image-frame"
+            hidden={!preview}
+            style={imageRatio ? ({ "--gel-ratio": imageRatio } as CSSProperties) : undefined}
+          >
+            {preview && (
+              <img
+                src={preview}
+                alt="Imported PAGE gel"
+                onLoad={(event) => {
+                  const image = event.currentTarget;
+                  if (image.naturalWidth && image.naturalHeight) setImageRatio(image.naturalWidth / image.naturalHeight);
+                }}
+              />
+            )}
+            <div className="gel-guide origin" style={{ top: `${origin * 100}%` }}>
+              <span>Origin</span>
+            </div>
+            <div className="gel-guide front" style={{ top: `${front * 100}%` }}>
+              <span>Dye front</span>
+            </div>
+            {lanes.map((item) => (
+              <button
+                key={item.id}
+                className={`gel-lane ${item.id === selectedLane ? "selected" : ""} ${item.isLadder ? "ladder" : ""}`}
+                style={{ left: `${item.xStart * 100}%`, width: `${(item.xEnd - item.xStart) * 100}%` }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelectedLane(item.id);
+                  setSelectedBand("");
+                }}
+              >
+                <span>{item.label}</span>
+                {bandsInLane(bands, item.id).map((member) => (
+                  <i
+                    key={member.id}
+                    className={`${member.id === selectedBand ? "selected" : ""} ${member.isTarget ? "target" : ""} ${bandFlag(member)}`}
+                    style={{ top: `${member.centerY * 100}%` }}
+                    title={bandQuantificationNote(member) ?? `${member.label} · density ${formatDensity(member.density)}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedLane(item.id);
+                      setSelectedBand(member.id);
+                    }}
+                  />
+                ))}
+              </button>
+            ))}
           </div>
-          <div className="gel-guide front" style={{ top: `${front * 100}%` }}>
-            <span>Dye front</span>
-          </div>
-          {lanes.map((item) => (
-            <button
-              key={item.id}
-              className={`gel-lane ${item.id === selectedLane ? "selected" : ""} ${item.isLadder ? "ladder" : ""}`}
-              style={{ left: `${item.xStart * 100}%`, width: `${(item.xEnd - item.xStart) * 100}%` }}
-              onClick={(event) => {
-                event.stopPropagation();
-                setSelectedLane(item.id);
-                setSelectedBand("");
-              }}
-            >
-              <span>{item.label}</span>
-              {bandsInLane(bands, item.id).map((member) => (
-                <i
-                  key={member.id}
-                  className={`${member.id === selectedBand ? "selected" : ""} ${member.isTarget ? "target" : ""} ${bandFlag(member)}`}
-                  style={{ top: `${member.centerY * 100}%` }}
-                  title={bandQuantificationNote(member) ?? `${member.label} · density ${formatDensity(member.density)}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setSelectedLane(item.id);
-                    setSelectedBand(member.id);
-                  }}
-                />
-              ))}
-            </button>
-          ))}
         </div>
         <div className="gel-stage-footer">
           <span>{filename || "No image selected"}</span>
