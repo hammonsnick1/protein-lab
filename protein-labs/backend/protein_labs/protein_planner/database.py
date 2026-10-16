@@ -254,6 +254,26 @@ class Database:
                 connection.execute(
                     "ALTER TABLE vector_library ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"
                 )
+            connection.execute(
+                """
+                UPDATE expression_vectors
+                SET library_id = (
+                    SELECT uses.library_id
+                    FROM vector_library_uses AS uses
+                    WHERE uses.protein_id = expression_vectors.protein_id
+                      AND uses.vector_id = expression_vectors.id
+                    ORDER BY uses.last_used_at DESC
+                    LIMIT 1
+                )
+                WHERE library_id IS NULL
+                  AND EXISTS (
+                    SELECT 1
+                    FROM vector_library_uses AS uses
+                    WHERE uses.protein_id = expression_vectors.protein_id
+                      AND uses.vector_id = expression_vectors.id
+                )
+                """
+            )
             self._seed_standard_vectors(connection)
 
     @staticmethod
@@ -271,6 +291,12 @@ class Database:
                     created_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, 1, 0, ?, ?)
                 ON CONFLICT(fingerprint) DO UPDATE SET
+                    name = excluded.name,
+                    sequence = excluded.sequence,
+                    circular = excluded.circular,
+                    features_json = excluded.features_json,
+                    insert_name = excluded.insert_name,
+                    notes = excluded.notes,
                     metadata_json = excluded.metadata_json,
                     is_standard = 1
                 """,
@@ -890,6 +916,14 @@ class Database:
 
     def delete_library_vector(self, library_id: str) -> None:
         with self.connect() as connection:
+            row = connection.execute(
+                "SELECT is_standard FROM vector_library WHERE id = ?",
+                (library_id,),
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Catalogued vector {library_id!r} was not found")
+            if bool(row["is_standard"]):
+                raise ValueError("Bundled standard vectors cannot be deleted")
             connection.execute(
                 "UPDATE expression_vectors SET library_id = NULL WHERE library_id = ?",
                 (library_id,),
