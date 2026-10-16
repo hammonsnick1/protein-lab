@@ -32,6 +32,7 @@ import {
   bandQuantificationNote,
   bandsInLane,
   calibrationStale,
+  DENSITY_UNCERTAINTY_CAVEAT,
   formatDensity,
   formatSignalFraction,
   gelCsvRows,
@@ -227,6 +228,8 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
       centerY: point.y,
       peakSignal: null,
       density: null,
+      densityUncertainty: null,
+      flags: [],
       laneFraction: null,
       laneFractionUncertainty: null,
       normalizationBasis: null,
@@ -255,7 +258,8 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
     drag.current = null;
     if (end - start < 0.015) return;
     const id = `lane-manual-${crypto.randomUUID()}`;
-    setLanes([...lanes, { id, label: `Lane ${lanes.length + 1}`, xStart: start, xEnd: end, isLadder: false }]);
+    const label = `Lane ${lanes.length + 1}`;
+    setLanes([...lanes, { id, label, xStart: start, xEnd: end, isLadder: false, sampleLabel: label, stageId: null }]);
     setSelectedLane(id);
     setSelectedBand("");
     report("Lane added. Re-detect in lanes to measure it.");
@@ -468,6 +472,36 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
               <strong>{calibrationSummary.headline}</strong>
               <span>{calibrationSummary.detail}</span>
             </div>
+            {calibration && calibration.matchedBands.length > 0 && (
+              <>
+                <table className="gel-band-table">
+                  <thead>
+                    <tr>
+                      <th>Marker</th>
+                      <th>Fitted</th>
+                      <th>Residual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {calibration.matchedBands.map((matched) => (
+                      <tr key={matched.bandId}>
+                        <td>{matched.massKDa === null ? "—" : `${matched.massKDa.toFixed(0)} kDa`}</td>
+                        <td>{matched.fittedKDa === null ? "—" : matched.fittedKDa.toFixed(1)}</td>
+                        <td>
+                          {matched.residualKDa === null
+                            ? "—"
+                            : `${matched.residualKDa > 0 ? "+" : ""}${matched.residualKDa.toFixed(1)}`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="gel-hint">
+                  Residual is {calibration.residualConvention || "observed_minus_fitted_kDa"}, in kDa, for the
+                  unsaturated markers that entered the fit.
+                </p>
+              </>
+            )}
           </div>
         )}
 
@@ -640,6 +674,14 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
               Name
               <input value={lane.label} onChange={(event) => updateLane(lane.id, { label: event.target.value })} />
             </label>
+            <label>
+              Sample
+              <input
+                value={lane.sampleLabel}
+                onChange={(event) => updateLane(lane.id, { sampleLabel: event.target.value })}
+              />
+            </label>
+            {lane.stageId && <p className="gel-hint">Bound to purification step {lane.stageId}.</p>}
             <label className="check-field">
               <input
                 type="checkbox"
@@ -676,7 +718,7 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
                 Molecular weight <b>{molecularWeightLabel(band, weightsStale)}</b>
               </span>
               <span>
-                Integrated density <b>{formatDensity(band.density)}</b>
+                Integrated density <b>{formatDensity(band.density, band.densityUncertainty)}</b>
               </span>
               <span>
                 Lane signal fraction{" "}
@@ -692,11 +734,25 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
                 </span>
               )}
             </div>
+            {/* The engine states this caveat as a flag; older saves carry no flags. */}
+            {band.densityUncertainty !== null &&
+              !band.flags.some((flag) => flag.code === "density_uncertainty_noise_only") && (
+                <p className="gel-hint">{DENSITY_UNCERTAINTY_CAVEAT}</p>
+              )}
             {bandQuantificationNote(band) && (
               <p className={`gel-band-flag ${bandQuantification(band) === "refused_saturated" ? "refused" : ""}`}>
                 <CircleAlert /> {bandQuantificationNote(band)}
               </p>
             )}
+            {/* The engine's own machine-readable caveats, shown rather than dropped. */}
+            {band.flags.map((flag) => (
+              <p key={flag.code} className={`gel-band-flag ${flag.level}`}>
+                {flag.level === "note" ? <Info /> : <CircleAlert />}
+                <span>
+                  <b>{flag.title}</b> {flag.message}
+                </span>
+              </p>
+            ))}
             <label className="check-field">
               <input
                 type="checkbox"

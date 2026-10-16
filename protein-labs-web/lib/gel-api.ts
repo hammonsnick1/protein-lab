@@ -15,6 +15,10 @@ export type GelLaneInput = {
   xStart: number;
   xEnd: number;
   isLadder: boolean;
+  // What was loaded in the lane, and the purification step it belongs to. The
+  // engine echoes both and never invents a stage id, so `null` means unbound.
+  sampleLabel: string;
+  stageId: string | null;
 };
 
 export type GelLane = GelLaneInput & { id: string };
@@ -50,6 +54,16 @@ export type MolecularWeightStatus =
   | "ladder_mass_count_mismatch"
   | "ambiguous_ladder_mobility";
 
+// A machine-readable caveat from the engine. `level` is "warning" for a
+// refusal, "caution" for a result it will not extrapolate, "note" for a
+// qualification of a number it did report.
+export type GelBandFlag = {
+  code: string;
+  level: string;
+  title: string;
+  message: string;
+};
+
 export type GelBand = {
   id: string;
   laneId: string;
@@ -60,6 +74,10 @@ export type GelBand = {
   peakSignal: number | null;
   // `null` means the engine did not report a density. It is never 0.
   density: number | null;
+  // Noise-only approximate standard error on the density. Not a purity
+  // confidence interval: background bias and staining response are excluded.
+  densityUncertainty: number | null;
+  flags: GelBandFlag[];
   laneFraction: number | null;
   laneFractionUncertainty: number | null;
   normalizationBasis: NormalizationBasis | null;
@@ -98,10 +116,24 @@ export type GelQuantification = {
   backgroundBoundary: string;
   laneGeometry: string;
   uncertaintyMethod: string;
+  uncertaintyPropagation: string;
+  profileNoiseFloor: number | null;
+  profileSmoothingRadiusPx: number | null;
   caveats: string[];
   normalizationBasis: string;
   linearDynamicRange: GelLinearRange;
   imageProcessing: GelImageProcessing;
+};
+
+// One marker that entered the fit, with the engine's own residual. Masses are
+// kDa here; `slope` and `intercept` below are the log₁₀(Da) fit, so neither is
+// read as a kDa quantity.
+export type LadderMatchedBand = {
+  bandId: string;
+  relativeMobility: number | null;
+  massKDa: number | null;
+  fittedKDa: number | null;
+  residualKDa: number | null;
 };
 
 export type GelLadderCalibration = {
@@ -110,9 +142,13 @@ export type GelLadderCalibration = {
   relativeMobilityAxis: string;
   markerAssignment: string;
   assumption: string;
+  // `r2` is unrounded; `fitR2` is the rounded legacy field.
+  r2: number | null;
   fitR2: number | null;
   slope: number | null;
   intercept: number | null;
+  residualConvention: string;
+  matchedBands: LadderMatchedBand[];
   ladderBandCount: number | null;
   calibrationMarkerCount: number | null;
   mobilityRange: [number, number] | null;
