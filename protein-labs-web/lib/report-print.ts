@@ -1,4 +1,4 @@
-import { formatMass, formatNumber, formatPurity, type MethodBlock, type ReportData, type ReportFlag } from "@/lib/report-data";
+import { formatMass, formatNumber, formatPeakFit, formatPurity, formatSecMass, secTableNote, type MethodBlock, type ReportData, type ReportFlag } from "@/lib/report-data";
 
 /**
  * The printable purification report.
@@ -197,7 +197,8 @@ function renderSec(data: ReportData) {
     escapeHtml(peak.name) + (peak.flags.length ? ` <span class="flag-mark">${flagMark(peak.flags)}</span>` : ""),
     formatNumber(peak.veMl, 2),
     peak.kav === null ? "—" : peak.kav.toFixed(3),
-    peak.mwKDa === null ? "Not assigned" : formatMass(peak.mwKDa),
+    formatSecMass(peak),
+    escapeHtml(formatPeakFit(peak.fitQuality)),
     peak.areaPercent === null ? "—" : `${peak.areaPercent.toFixed(1)}%`,
     escapeHtml(peak.fraction || "—"),
   ]);
@@ -215,9 +216,9 @@ function renderSec(data: ReportData) {
       ${factRow("Fit quality", sec.fit ? `R² ${sec.fit.r2.toFixed(4)} from ${sec.fit.standards} standard${sec.fit.standards === 1 ? "" : "s"}` : "")}
       ${factRow("Calibrated mass range", sec.calibratedRangeKDa ? `${formatMass(sec.calibratedRangeKDa[0])} – ${formatMass(sec.calibratedRangeKDa[1])}` : "")}
     </dl>
-    ${rows.length ? table(["Peak", "Vₑ (mL)", "Kav", "Apparent mass", "Area", "Fraction"], rows, [false, true, true, true, true, false])
+    ${rows.length ? table(["Peak", "Vₑ (mL)", "Kav", "Apparent mass ± 1 SD", "Peak fit R² · RMSE", "Area", "Fraction"], rows, [false, true, true, true, true, true, false])
       : `<p class="missing">No peaks were integrated on the saved chromatogram.</p>`}
-    <p class="table-note">Apparent mass is calculated from the Kav against log₁₀(Mr) calibration and refers to globular standards; it is not a mass measurement.</p>
+    <p class="table-note">${escapeHtml(secTableNote)}</p>
   </section>`;
 }
 

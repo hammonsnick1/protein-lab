@@ -2,7 +2,7 @@
 
 import { TriangleAlert } from "lucide-react";
 import { dedupe } from "@/lib/report-print";
-import { formatMass, formatNumber, formatPurity, type PuritySummary, type ReportData, type ReportFlag, type SecSummary, type YieldEntry, type YieldRow } from "@/lib/report-data";
+import { formatMass, formatNumber, formatPeakFit, formatPurity, formatSecMass, secTableNote, type PuritySummary, type ReportData, type ReportFlag, type SecSummary, type YieldEntry, type YieldRow } from "@/lib/report-data";
 
 /**
  * The parts of the report that are calculated rather than typed.
@@ -198,7 +198,8 @@ export function SecBlock({ sec }: { sec: SecSummary | null }) {
           <th scope="col">Peak</th>
           <th scope="col" className="num">Vₑ (mL)</th>
           <th scope="col" className="num">Kav</th>
-          <th scope="col" className="num">Apparent mass</th>
+          <th scope="col" className="num">Apparent mass ± 1 SD</th>
+          <th scope="col" className="num">Peak fit R² · RMSE</th>
           <th scope="col" className="num">Area</th>
           <th scope="col">Fraction</th>
         </tr>
@@ -208,16 +209,14 @@ export function SecBlock({ sec }: { sec: SecSummary | null }) {
           <th scope="row"><span className="report-stage-name">{peak.name}<FlagMark flags={peak.flags}/></span></th>
           <td className="num">{formatNumber(peak.veMl, 2)}</td>
           <td className="num">{peak.kav === null ? "—" : peak.kav.toFixed(3)}</td>
-          <td className="num">{peak.mwKDa === null ? "Not assigned" : formatMass(peak.mwKDa)}</td>
+          <td className="num">{formatSecMass(peak)}</td>
+          <td className="num">{formatPeakFit(peak.fitQuality)}</td>
           <td className="num">{peak.areaPercent === null ? "—" : `${peak.areaPercent.toFixed(1)}%`}</td>
           <td>{peak.fraction || "—"}</td>
         </tr>)}
       </tbody>
     </table> : <p className="report-missing">No peaks were integrated on the saved chromatogram.</p>}
-    <p className="report-table-note">
-      Apparent mass comes from the Kav against log₁₀(Mr) calibration and refers to globular
-      standards; it is an elution behaviour, not a mass measurement.
-    </p>
+    <p className="report-table-note">{secTableNote}</p>
   </section>;
 }
 

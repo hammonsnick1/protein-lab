@@ -14,7 +14,7 @@ import { CaveatsBlock, MethodsBlock, PurityBlock, SecBlock, YieldBlock } from "@
 import { desktopBridge } from "@/lib/desktop-bridge";
 import { captureFigure } from "@/lib/report-figures";
 import {
-  assignedMass, buildReportData, emptyYieldEntry, formatMass, formatNumber, formatPurity, loadYieldEntries, secCalibrated, yieldStages,
+  assignedMass, buildReportData, emptyYieldEntry, formatMass, formatNumber, formatPeakFit, formatPurity, formatSecMass, loadYieldEntries, secCalibrated, yieldStages,
   type ReportData, type YieldEntry,
 } from "@/lib/report-data";
 import { dedupe, reportDocumentHtml, runningHeader, type PrintBlock, type PrintFigure, type PrintPage } from "@/lib/report-print";
@@ -990,9 +990,9 @@ function markdownBlock(templateId: string, data: ReportData): string[] {
     return [
       `**${data.sec.columnName || "Column not recorded"}** — ${header}`,
       "",
-      "| Peak | Vₑ (mL) | Kav | Apparent mass | Area |",
-      "| --- | --- | --- | --- | --- |",
-      ...data.sec.peaks.map((peak) => `| ${peak.name}${peak.flags.length ? " ⚠" : ""} | ${formatNumber(peak.veMl, 2)} | ${peak.kav === null ? "—" : peak.kav.toFixed(3)} | ${peak.mwKDa === null ? "Not assigned" : formatMass(peak.mwKDa)} | ${peak.areaPercent === null ? "—" : `${peak.areaPercent.toFixed(1)}%`} |`),
+      "| Peak | Vₑ (mL) | Kav | Apparent mass ± 1 SD | Peak fit R² · RMSE | Area |",
+      "| --- | --- | --- | --- | --- | --- |",
+      ...data.sec.peaks.map((peak) => `| ${peak.name}${peak.flags.length ? " ⚠" : ""} | ${formatNumber(peak.veMl, 2)} | ${peak.kav === null ? "—" : peak.kav.toFixed(3)} | ${formatSecMass(peak)} | ${formatPeakFit(peak.fitQuality)} | ${peak.areaPercent === null ? "—" : `${peak.areaPercent.toFixed(1)}%`} |`),
     ];
   }
   if (templateId === "methods") {

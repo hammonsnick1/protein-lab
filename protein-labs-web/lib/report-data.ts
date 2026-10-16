@@ -117,6 +117,13 @@ export type SecPeakRow = {
   mwKDa: number | null;
   /** Why no mass is printed, when the project has one saved but unusable. */
   mwSuppressedReason: string;
+  /**
+   * One-sigma, calibration-only uncertainty from the engine. Null whenever no
+   * mass is printed or the engine could not estimate it (its flag says why).
+   */
+  mwUncertaintyKDa: number | null;
+  /** The engine's Gaussian check on the peak shape; residual is in `unit`. */
+  fitQuality: { rSquared: number | null; residual: number | null; unit: string } | null;
   areaPercent: number | null;
   fraction: string;
   flags: ReportFlag[];
@@ -534,7 +541,15 @@ function buildSec(bundle: ProteinBundle): SecSummary | null {
   const fitValue = fitOf(config.calibration);
   const standards = array(config.standards).filter((value) => value.included !== false && (numeric(value.mwDa) ?? 0) > 0);
   const masses = standards.map((value) => (numeric(value.mwDa) ?? 0) / 1000).filter((value) => value > 0).sort((a, b) => a - b);
-  const calibratedRangeKDa: [number, number] | null = masses.length >= 2 ? [masses[0], masses[masses.length - 1]] : null;
+  // The engine reports the range its included standards cover. Older jobs
+  // saved before it did fall back to the standards stored with the project.
+  const engineRange = asObject(config.calibration).standardMassRangeKDa;
+  const engineLow = Array.isArray(engineRange) ? numeric(engineRange[0]) : null;
+  const engineHigh = Array.isArray(engineRange) ? numeric(engineRange[1]) : null;
+  const calibratedRangeKDa: [number, number] | null =
+    engineLow !== null && engineHigh !== null ? [engineLow, engineHigh]
+      : masses.length >= 2 ? [masses[0], masses[masses.length - 1]] : null;
+  const traceUnits = new Map(array(config.traces).map((trace) => [String(trace.id ?? ""), String(trace.yUnit ?? "")]));
   const peaks = array(config.peaks);
   const areaTotal = peaks.reduce((sum, peak) => sum + Math.abs(numeric(peak.area) ?? 0), 0);
   const flags: ReportFlag[] = [
@@ -593,6 +608,7 @@ function buildSec(bundle: ProteinBundle): SecSummary | null {
         `${formatMass(mwKDa)} against an expected ${formatMass(expected)}. Consider oligomeric state, a non-globular shape, or a calibration error before reporting either number.`));
     }
     peakFlags.push(...engineFlags(peak, `SEC · ${name}`));
+    const quality = asObject(peak.fitQuality);
     return {
       id: String(peak.id ?? index),
       name,
@@ -600,6 +616,10 @@ function buildSec(bundle: ProteinBundle): SecSummary | null {
       kav,
       mwKDa,
       mwSuppressedReason: assigned.reason,
+      mwUncertaintyKDa: mwKDa === null ? null : numeric(peak.mwUncertaintyKDa),
+      fitQuality: peak.fitQuality && typeof peak.fitQuality === "object"
+        ? { rSquared: numeric(quality.rSquared), residual: numeric(quality.residual), unit: traceUnits.get(String(peak.traceId ?? "")) ?? "" }
+        : null,
       areaPercent: areaTotal > 0 ? (Math.abs(numeric(peak.area) ?? 0) / areaTotal) * 100 : null,
       fraction: String(peak.fraction ?? ""),
       flags: peakFlags,
@@ -923,6 +943,26 @@ function trim(value: number) {
 export function formatMass(kDa: number) {
   return kDa >= 100 ? `${kDa.toFixed(0)} kDa` : kDa >= 10 ? `${kDa.toFixed(1)} kDa` : `${kDa.toFixed(2)} kDa`;
 }
+
+/** An apparent mass with its one-sigma calibration uncertainty, when the engine gave one. */
+export function formatSecMass(peak: Pick<SecPeakRow, "mwKDa" | "mwUncertaintyKDa">) {
+  if (peak.mwKDa === null) return "Not assigned";
+  return peak.mwUncertaintyKDa === null
+    ? formatMass(peak.mwKDa)
+    : `${formatMass(peak.mwKDa)} ± ${formatMass(peak.mwUncertaintyKDa)}`;
+}
+
+/** The engine's Gaussian peak check: R² and RMSE in the trace's signal unit. */
+export function formatPeakFit(fit: SecPeakRow["fitQuality"]) {
+  if (!fit || fit.rSquared === null) return "—";
+  const residual = fit.residual === null ? "" : ` · ${formatNumber(fit.residual, 3)}${fit.unit ? ` ${fit.unit}` : ""}`;
+  return `${fit.rSquared.toFixed(3)}${residual}`;
+}
+
+export const secTableNote =
+  "Apparent mass comes from the Kav against log₁₀(Mr) calibration and refers to globular standards; it is an elution behaviour, not a mass measurement. " +
+  "± is one standard deviation (1σ) estimated from calibration scatter only: it excludes peak position, standard mass and column volume errors and is not a confidence interval. " +
+  "Peak fit compares each peak with a Gaussian of the same apex and FWHM (R², then RMSE); a good fit does not establish purity.";
 
 /**
  * A purity as the reader should see it: a bound prints as a bound, and a

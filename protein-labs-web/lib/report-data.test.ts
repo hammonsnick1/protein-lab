@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
 import {
-  assignedMass, bandMass, buildReportData, emptyYieldEntry, formatPurity,
+  assignedMass, bandMass, buildReportData, emptyYieldEntry, formatPeakFit, formatPurity, formatSecMass,
   type ReportData, type YieldEntry,
 } from "./report-data.ts";
 
@@ -270,5 +270,59 @@ describe("finding 4: saturation bounds purity in the right direction", () => {
     }), [entry("s1", { purityPercent: "95" })]);
     near(data.yieldRows[0].purityPercent, 95);
     assert.equal(data.yieldRows[0].purityBound, "measured");
+  });
+});
+
+describe("HOM-25: chromatography diagnostics from a saved studio job", () => {
+  // The saved shape written by Chromatogram Studio's `studioJobConfig` (PR #8),
+  // with values from a real HOM-15 engine run: four standards for P1, two for P2.
+  const model = "gaussian_fixed_apex_fwhm_amplitude_fit";
+  const note = (code: string, level: string) => ({ code, level, title: code, message: `${code} message` });
+  const studioJob = (calibration: JsonObject): JsonObject => ({
+    traces: [{ id: "t1", yUnit: "mAU" }],
+    standards: [{ mwDa: 2000, included: true }, { mwDa: 600000, included: true }],
+    calibration: { slope: -0.25, intercept: 1.5, r2: 0.9998, ...calibration },
+    peaks: [
+      { id: "p1", traceId: "t1", name: "P1", apexX: 16, kav: 0.5, mwKDa: 10, mwUncertaintyKDa: 1.502, area: 3,
+        fitQuality: { rSquared: 0.985, residual: 4.137, model }, flags: [note("calibration_only_mass_uncertainty", "note")] },
+      { id: "p2", traceId: "t1", name: "P2", apexX: 16, kav: 0.5, mwKDa: 10, mwUncertaintyKDa: null, area: 1,
+        fitQuality: { rSquared: null, residual: null, model }, flags: [note("mass_uncertainty_unavailable", "caution")] },
+      { id: "p3", name: "Older peak", apexX: 16, kav: 0.5, mwKDa: 10, area: 1 },
+    ],
+  });
+
+  it("prints mass uncertainty, peak fit and engine flags together, and null as not estimated", () => {
+    const data = buildReportData(bundle({ "chromatogram-studio": studioJob({ standardMassRangeKDa: [1, 1000] }) }), []);
+    const [p1, p2, p3] = data.sec?.peaks ?? [];
+
+    assert.equal(p1.mwUncertaintyKDa, 1.502);
+    assert.deepEqual(p1.fitQuality, { rSquared: 0.985, residual: 4.137, unit: "mAU" });
+    assert.equal(formatSecMass(p1), "10.0 kDa ± 1.50 kDa");
+    assert.equal(formatPeakFit(p1.fitQuality), "0.985 · 4.137 mAU");
+    assert.ok(p1.flags.some((value) => value.title === "calibration_only_mass_uncertainty"));
+
+    assert.equal(p2.mwUncertaintyKDa, null);
+    assert.equal(formatSecMass(p2), "10.0 kDa");
+    assert.equal(formatPeakFit(p2.fitQuality), "—");
+    assert.ok(p2.flags.some((value) => value.title === "mass_uncertainty_unavailable"));
+
+    assert.equal(p3.mwUncertaintyKDa, null);
+    assert.equal(p3.fitQuality, null);
+  });
+
+  it("takes the calibrated mass range from the engine, falling back for older jobs", () => {
+    const engine = buildReportData(bundle({ "chromatogram-studio": studioJob({ standardMassRangeKDa: [1, 1000] }) }), []);
+    assert.deepEqual(engine.sec?.calibratedRangeKDa, [1, 1000]);
+
+    const older = buildReportData(bundle({ "chromatogram-studio": studioJob({}) }), []);
+    assert.deepEqual(older.sec?.calibratedRangeKDa, [2, 600]);
+  });
+
+  it("drops the uncertainty when the mass itself is withheld", () => {
+    const job = studioJob({ standardMassRangeKDa: [1, 1000] });
+    job.calibration = null;
+    const [p1] = buildReportData(bundle({ "chromatogram-studio": job }), []).sec?.peaks ?? [];
+    assert.equal(p1.mwKDa, null);
+    assert.equal(p1.mwUncertaintyKDa, null);
   });
 });
