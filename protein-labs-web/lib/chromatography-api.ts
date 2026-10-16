@@ -1,8 +1,10 @@
 // Client for the Python chromatography engine (v1 of
 // protein-labs/backend/CHROMATOGRAPHY_API.md). Every quantity the studio
 // reports — baseline, smoothing, peak areas, FWHM, asymmetry, resolution, SEC
-// Kav/Mw and mass recovery — comes from these two endpoints. Nothing in this
-// module recalculates a measurement; it only shapes requests and reads results.
+// Kav/Mw, mass recovery and the affinity mass balance — comes from these
+// endpoints. Nothing in this module recalculates a measurement; it only shapes
+// requests and reads results.
+import type { AffinityRunRequest, AffinityRunResult } from "@/lib/affinity-run";
 import { request } from "@/lib/protein-labs-api";
 
 export type ChromPoint = { x: number; y: number };
@@ -117,6 +119,14 @@ export const chromatographyApi = {
     signal?: AbortSignal,
   ) =>
     request<CalibrateSecResult>("/v1/chromatogram/calibrate-sec", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal,
+    }),
+  // The versioned run boundary. The studio sends only affinity runs here; SEC
+  // traces keep their measured-trace path through `analyze`.
+  runAffinity: (body: AffinityRunRequest, signal?: AbortSignal) =>
+    request<AffinityRunResult>("/v1/chromatogram/run", {
       method: "POST",
       body: JSON.stringify(body),
       signal,

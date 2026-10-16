@@ -19,6 +19,7 @@ import {
   Eye,
   EyeOff,
   FileDown,
+  FlaskConical,
   FolderOpen,
   Image as ImageIcon,
   LoaderCircle,
@@ -55,6 +56,20 @@ import {
   minimumSegmentPoints,
   traceSegments,
 } from "@/lib/chromatography-api";
+import type {
+  AffinityOverlay,
+  AffinityRunResult,
+  AffinitySetup,
+  AffinityState,
+  ChromatographyMethod,
+} from "@/lib/affinity-run";
+import {
+  affinityOverlay,
+  buildAffinityRequest,
+  emptyAffinityState,
+  loadAffinityState,
+  loadMethod,
+} from "@/lib/affinity-run";
 import { secColumns } from "@/lib/sec-column-catalog";
 
 // `gap` marks the first sample after an excluded region. The plot starts a new
@@ -281,7 +296,8 @@ type FigureConfig = {
   panelBadgeY: number;
   panelBadgeSize: number;
 };
-type StudioTab = "data" | "analysis" | "standard" | "figure" | "export";
+type StudioTab = "data" | "analysis" | "standard" | "affinity" | "figure" | "export";
+type AffinityStatus = { status: "idle" | "pending" | "ready" | "error"; error: string };
 type Tool = "select" | "peak" | "adjust" | "fraction" | "zoom" | "annotation" | "arrow";
 type Drag = {
   kind: "selection" | "adjust" | "zoom" | "fraction" | "callout" | "annotation";
@@ -567,6 +583,51 @@ function buildTraceRequest(trace: Trace, peaks: Peak[]): TraceRequest {
   };
 }
 
+/**
+ * Put an affinity run's samples on the studio trace that draws it. The samples
+ * are the engine's, in its units; an existing trace keeps its name and style.
+ */
+function upsertAffinityTrace(traces: Trace[], traceId: string, run: AffinityRunResult): Trace[] {
+  const units = {
+    xUnit: (run.units.x === "min" ? "min" : "mL") as AxisX,
+    yUnit: (run.units.y === "mAU" ? "mAU" : "mg/mL") as AxisY,
+  };
+  if (traces.some((trace) => trace.id === traceId))
+    return traces.map((trace) =>
+      trace.id === traceId ? { ...trace, ...units, points: run.points } : trace,
+    );
+  const color = traceColors[traces.length % traceColors.length];
+  return [
+    ...traces,
+    {
+      id: traceId,
+      name: `${run.column.resinName} affinity run`,
+      source: "Python engine affinity model",
+      points: run.points,
+      color,
+      lineWidth: 2,
+      lineStyle: "solid",
+      opacity: 1,
+      visible: true,
+      xShift: 0,
+      yScale: 1,
+      yOffset: 0,
+      smoothing: 1,
+      baseline: false,
+      normalization: "none",
+      fillVisible: false,
+      fillColor: color,
+      fillOpacity: 0.16,
+      excludedRanges: [],
+      regionTransforms: [],
+      ...units,
+      loadedMg: null,
+      responseFactorMAUPerMgMl: null,
+      flowMlPerMin: null,
+    },
+  ];
+}
+
 function flattenSegments(segments: Point[][]): Point[] {
   return segments.flatMap((segment, index) =>
     index === 0 || !segment.length
@@ -740,6 +801,72 @@ export function ChromatogramStudioJob({
   const selectedAnnotation = annotations.find((value) => value.id === selectedAnnotationId);
   const [analyses, setAnalyses] = useState<AnalysisMap>({});
   const [sec, setSec] = useState<SecState>(idleSec);
+  // Projects saved before affinity runs existed carry no method and stay SEC.
+  const [method, setMethod] = useState<ChromatographyMethod>(() => loadMethod(saved.method));
+  const [affinity, setAffinity] = useState<AffinityState>(() => loadAffinityState(saved.affinity));
+  const [affinityStatus, setAffinityStatus] = useState<AffinityStatus>({ status: "idle", error: "" });
+
+  // The affinity run is the engine's model of the method the researcher typed.
+  // It is re-run, debounced, whenever that method changes, and a slower earlier
+  // response is aborted so it can never overwrite the current inputs' run.
+  const affinityPlan = useMemo(
+    () => buildAffinityRequest(affinity.setup, fractions),
+    [affinity.setup, fractions],
+  );
+  const affinityKey = JSON.stringify(affinityPlan.request);
+  const affinityTraceShown = traces.some((trace) => trace.id === affinity.traceId);
+  const affinityRef = useRef({ plan: affinityPlan, affinity, figure });
+  affinityRef.current = { plan: affinityPlan, affinity, figure };
+  useEffect(() => {
+    if (method !== "affinity") return;
+    const { plan, affinity: current } = affinityRef.current;
+    // A reopened project already holds the run for these exact inputs.
+    if (current.run && affinityTraceShown && JSON.stringify(current.request) === JSON.stringify(plan.request)) {
+      setAffinityStatus({ status: "ready", error: "" });
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setAffinityStatus({ status: "pending", error: "" });
+      chromatographyApi
+        .runAffinity(plan.request, controller.signal)
+        .then((run) => {
+          if (controller.signal.aborted) return;
+          const traceId = affinityRef.current.affinity.traceId || crypto.randomUUID();
+          setAffinity((value) => ({ ...value, traceId, request: plan.request, run }));
+          setTraces((values) => upsertAffinityTrace(values, traceId, run));
+          setActiveTraceId((value) => value || traceId);
+          // The default label says mAU; a modelled run is a concentration.
+          if (affinityRef.current.figure.yLabel === defaultFigure.yLabel)
+            setFigure((value) => ({ ...value, yLabel: `Concentration (${run.units.y ?? "mg/mL"})` }));
+          setAffinityStatus({ status: "ready", error: "" });
+        })
+        .catch((reason) => {
+          if (controller.signal.aborted) return;
+          // No local model: the engine's validation message is the answer.
+          setAffinityStatus({ status: "error", error: errorText(reason) });
+        });
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [method, affinityKey, affinityTraceShown]);
+  const overlay = useMemo<AffinityOverlay | null>(
+    () =>
+      method === "affinity" && affinity.run && affinityTraceShown
+        ? affinityOverlay(affinity.run, affinity.traceId)
+        : null,
+    [method, affinity.run, affinity.traceId, affinityTraceShown],
+  );
+  function chooseMethod(next: ChromatographyMethod) {
+    setMethod(next);
+    if (next === "affinity" && tab === "standard") setTab("affinity");
+    if (next === "sec" && tab === "affinity") setTab("standard");
+  }
+  function updateAffinitySetup(patch: Partial<AffinitySetup>) {
+    setAffinity((value) => ({ ...value, setup: { ...value.setup, ...patch } }));
+  }
 
   // One engine request descriptor per trace, rebuilt only when something the
   // engine would measure has changed.
@@ -841,8 +968,15 @@ export function ChromatogramStudioJob({
   const activeAnalysis = activeTrace ? analyses[activeTrace.id] : undefined;
   // What the studio could not send and why. Derived from the request, so it
   // answers the moment a field changes instead of waiting on a round trip.
-  const activeNotes =
+  const requestNotes =
     traceRequests.find((request) => request.traceId === activeTrace?.id)?.notes ?? [];
+  const activeNotes =
+    activeTrace && activeTrace.id === affinity.traceId && (activeTrace.smoothing > 1 || activeTrace.baseline || activeTrace.xShift)
+      ? [
+          ...requestNotes,
+          "This trace is the engine's affinity model. Smoothing, baseline or an x shift change how it is drawn here, but the phase boundaries and the affinity mass balance are the run's own.",
+        ]
+      : requestNotes;
   // Kav comes from the engine for every volume the studio shows, so the table,
   // the figure and the exports can never disagree with the fit.
   const kavAt = (ve: number) => sec.predictions[String(ve)]?.kav;
@@ -1043,7 +1177,8 @@ export function ChromatogramStudioJob({
     );
   }
   function pointerDown(event: PointerEvent<SVGSVGElement>) {
-    if (!activeTrace) return;
+    // The affinity view reads the run; peaks and annotations are drawn in Analysis.
+    if (!activeTrace || tab === "affinity") return;
     setMessage("");
     const x = plotX(event);
     if (tool === "annotation" || tool === "arrow") {
@@ -1259,7 +1394,10 @@ export function ChromatogramStudioJob({
     return {
       format: "protein-labs.chromatogram-project",
       // 12 adds explicit axis units and the mass-balance factors per trace.
-      schemaVersion: 12,
+      // 13 adds the run method and the affinity setup with its engine run.
+      schemaVersion: 13,
+      method,
+      affinity,
       projectName,
       traces,
       activeTraceId,
@@ -1291,19 +1429,22 @@ export function ChromatogramStudioJob({
       setTraces(loadedTraces); setActiveTraceId(String(source.activeTraceId ?? loadedTraces[0].id)); setPeaks(loadPeaks(source.peaks ?? source.measurements)); setAnnotations(loadAnnotations(source.annotations));
       setFractions(array(source.fractions).map((raw, index) => ({ id: String(raw.id ?? crypto.randomUUID()), name: String(raw.name ?? `Fraction ${index + 1}`), start: Number(raw.start), end: Number(raw.end), color: String(raw.color ?? "#f0b94d"), opacity: Number(raw.opacity ?? .18) })));
       setStandards(loadStandards(source.standards)); setVo(Number(source.vo ?? voidEstimate(defaultColumn.vt))); setVt(Number(source.vt ?? defaultColumn.vt)); setColumn(String(source.columnName ?? defaultColumn.name)); setVoidMarkerMw(Number(source.voidMarkerMw ?? 2000000)); setFitColor(String(source.fitColor ?? "#e36a4a"));
+      setMethod(loadMethod(source.method)); setAffinity(loadAffinityState(source.affinity)); if (loadMethod(source.method) === "sec" && tab === "affinity") setTab("standard");
       setMassStandards(loadMassStandards(source.massStandards)); setMassFigure({ ...defaultMassFigure, ...object(source.massFigure) }); setFigure({ ...defaultFigure, ...object(source.figure ?? source.stacked_figure) }); setSecFigure({ ...defaultSecFigure, ...object(source.secFigure) });
       setSelection(null); setZoom(null); setSelectedPeakId(""); setSelectedAnnotationId(""); setMessage(`Opened ${file.name}.`);
     } catch (reason) { setMessage(`Could not open project: ${errorText(reason)}`); }
   }
   function newProject() {
     if ((traces.length || peaks.length) && !window.confirm("Clear the current Chromatogram Studio workspace? Export or save it first if you want a copy.")) return;
-    setProjectName(`${bundle.protein.name} chromatography`); setTraces([]); setActiveTraceId(""); setPeaks([]); setAnnotations([]); setFractions([]); setSelection(null); setZoom(null); setSelectedPeakId(""); setSelectedAnnotationId(""); setTab("data"); setMessage("New empty chromatogram project created.");
+    setProjectName(`${bundle.protein.name} chromatography`); setTraces([]); setActiveTraceId(""); setPeaks([]); setAffinity((value) => ({ ...emptyAffinityState, setup: value.setup })); setAnnotations([]); setFractions([]); setSelection(null); setZoom(null); setSelectedPeakId(""); setSelectedAnnotationId(""); setTab("data"); setMessage("New empty chromatogram project created.");
   }
   async function save() {
     setBusy(true);
     try {
       const config = {
-        schemaVersion: 12,
+        schemaVersion: 13,
+        method,
+        affinity,
         projectName,
         traces,
         activeTraceId,
@@ -1334,7 +1475,9 @@ export function ChromatogramStudioJob({
       );
       await onChanged();
       setMessage(
-        "Chromatogram project saved with traces, peaks, calibration, and figure settings.",
+        method === "affinity"
+          ? "Chromatogram project saved with the affinity method, its engine run, traces and figure settings."
+          : "Chromatogram project saved with traces, peaks, calibration, and figure settings.",
       );
     } catch (reason) {
       setMessage(errorText(reason));
@@ -1526,12 +1669,32 @@ export function ChromatogramStudioJob({
             </small>
           </span>
         </header>
+        <div className="chrom-method" role="radiogroup" aria-label="Run type">
+          {(
+            [
+              ["sec", "SEC"],
+              ["affinity", "Affinity"],
+            ] as [ChromatographyMethod, string][]
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              role="radio"
+              aria-checked={method === id}
+              className={method === id ? "active" : ""}
+              onClick={() => chooseMethod(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <nav>
           {(
             [
               ["data", "Data", Upload],
               ["analysis", "Analysis", SquareDashedMousePointer],
-              ["standard", "Standard curve", BarChart3],
+              method === "affinity"
+                ? ["affinity", "Affinity run", FlaskConical]
+                : ["standard", "Standard curve", BarChart3],
               ["figure", "Figures", Palette],
               ["export", "Export", FileDown],
             ] as [StudioTab, string, typeof Activity][]
@@ -1699,6 +1862,7 @@ export function ChromatogramStudioJob({
               selectedPeakId={selectedPeakId}
               selectedAnnotationId={selectedAnnotationId}
               figureMode={tab === "figure"}
+              affinity={overlay}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={pointerUp}
@@ -1731,6 +1895,9 @@ export function ChromatogramStudioJob({
               }}
               onAxis={() => setInspector("axis")}
             />
+            {tab === "affinity" && (
+              <AffinityReadout run={affinity.run} status={affinityStatus} fractionNames={Object.fromEntries(fractions.map((value) => [value.id, value.name]))} stale={affinityStatus.status === "error" || affinityKey !== JSON.stringify(affinity.request)} />
+            )}
           </>
         )}
         {message && (
@@ -1802,6 +1969,13 @@ export function ChromatogramStudioJob({
             onDeletePeak={deletePeak}
             fractions={fractions}
             onFractions={setFractions}
+          />
+        ) : tab === "affinity" ? (
+          <AffinitySetupPanel
+            setup={affinity.setup}
+            status={affinityStatus}
+            skippedFractions={affinityPlan.skipped}
+            onChange={updateAffinitySetup}
           />
         ) : tab === "standard" ? (
           <div className="inspector-help">
@@ -2730,6 +2904,220 @@ const MassHistogramSvg = forwardRef<SVGSVGElement, { bins: { start: number; end:
   const curve = bins.map((value, index) => `${index ? "L" : "M"}${sx((value.start + value.end) / 2).toFixed(2)} ${sy(value.count).toFixed(2)}`).join(" ");
   return <svg ref={ref} className="mass-publication-figure" viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg"><rect width="800" height="480" fill="#fff"/><circle cx="48" cy="46" r="26" fill="#63a9df"/><text x="48" y="56" textAnchor="middle" fontSize="29" fontWeight="800" fill="#fff">4</text><text x="410" y="48" textAnchor="middle" fontSize="19" fontWeight="700" fill="#17435a">{title}</text><line x1="78" x2="742" y1="404" y2="404" stroke="#17435a" strokeWidth="4"/><line x1="78" x2="78" y1="70" y2="404" stroke="#17435a" strokeWidth="4"/>{bins.map((value, index) => <rect key={index} x={sx(value.start)} y={sy(value.count)} width={Math.max(1, sx(value.end)-sx(value.start)-.6)} height={404-sy(value.count)} fill={color} fillOpacity={opacity} stroke={color} strokeWidth=".8"/>)}{curve && <path d={curve} fill="none" stroke="#245f8c" strokeWidth="3" strokeLinejoin="round"/>}{Array.from({ length: 6 }, (_, index) => xMin + index * (xMax-xMin)/5).map((value) => <g key={value}><line x1={sx(value)} x2={sx(value)} y1="404" y2="411" stroke="#17435a" strokeWidth="2"/><text x={sx(value)} y="432" textAnchor="middle" fontSize="12" fill="#17435a">{value.toFixed(0)}</text></g>)}<text x="410" y="466" textAnchor="middle" fontSize="17" fontWeight="700" fill="#17435a">Mass (kDa)</text><text transform="translate(25 240) rotate(-90)" textAnchor="middle" fontSize="17" fontWeight="700" fill="#17435a">Counts</text></svg>;
 });
+
+// Blank stays blank: the engine, not the form, decides whether a value is valid.
+function numberField(value: string) {
+  return value === "" ? null : Number(value);
+}
+function AffinitySetupPanel({
+  setup,
+  status,
+  skippedFractions,
+  onChange,
+}: {
+  setup: AffinitySetup;
+  status: AffinityStatus;
+  skippedFractions: string[];
+  onChange: (patch: Partial<AffinitySetup>) => void;
+}) {
+  const field = (
+    label: string,
+    value: number | null,
+    apply: (value: number | null) => void,
+    step = ".1",
+  ) => (
+    <label>
+      {label}
+      <input type="number" min="0" step={step} value={value ?? ""} onChange={(event) => apply(numberField(event.target.value))} />
+    </label>
+  );
+  const phases = [
+    ["load", "Load"],
+    ["wash", "Wash"],
+    ["elute", "Elute"],
+  ] as const;
+  return (
+    <div className="object-inspector affinity-setup">
+      <h3>Affinity run</h3>
+      {status.status === "error" ? (
+        <div className="warning-note" role="alert">
+          <CircleAlert /> The engine rejected this method: {status.error}
+        </div>
+      ) : status.status === "pending" ? (
+        <p className="inspector-note">
+          <LoaderCircle className="spin" /> Running the affinity model on the Python engine…
+        </p>
+      ) : (
+        <p className="inspector-note">
+          The Python engine models the run from these inputs. Phases run in order and
+          their volumes add up along the x axis.
+        </p>
+      )}
+      <h4>Column</h4>
+      <label>
+        Resin
+        <input value={setup.resinName} placeholder="e.g. Ni Sepharose 6 FF" onChange={(event) => onChange({ resinName: event.target.value })} />
+      </label>
+      <div className="processing-grid">
+        {field("Column volume (mL)", setup.columnVolumeMl, (columnVolumeMl) => onChange({ columnVolumeMl }))}
+        {field("Binding capacity (mg/mL resin)", setup.dynamicBindingCapacityMgPerMl, (dynamicBindingCapacityMgPerMl) => onChange({ dynamicBindingCapacityMgPerMl }))}
+      </div>
+      {field("Protein loaded (mg)", setup.proteinMassMg, (proteinMassMg) => onChange({ proteinMassMg }))}
+      {phases.map(([type, name], index) => (
+        <fieldset key={type} className="affinity-phase">
+          <legend>
+            {index + 1}. {name}
+          </legend>
+          {field("Volume (mL)", setup[type].volumeMl, (volumeMl) => onChange({ [type]: { ...setup[type], volumeMl } }))}
+          <label>
+            Buffer
+            <input value={setup[type].buffer} placeholder="Composition and pH" onChange={(event) => onChange({ [type]: { ...setup[type], buffer: event.target.value } })} />
+          </label>
+          {type === "elute" && (
+            <div className="processing-grid">
+              {field("Peak position (fraction of elute)", setup.elute.peakPositionFraction, (peakPositionFraction) => onChange({ elute: { ...setup.elute, peakPositionFraction } }), ".05")}
+              {field("Peak width σ (fraction of elute)", setup.elute.peakWidthFraction, (peakWidthFraction) => onChange({ elute: { ...setup.elute, peakWidthFraction } }), ".01")}
+              {field("Elution recovery (fraction 0–1)", setup.elute.recoveryFraction, (recoveryFraction) => onChange({ elute: { ...setup.elute, recoveryFraction } }), ".05")}
+            </div>
+          )}
+        </fieldset>
+      ))}
+      {skippedFractions.length > 0 && (
+        <div className="warning-note">
+          <CircleAlert /> Not sent to the run because they fall outside it: {skippedFractions.join(", ")}.
+        </div>
+      )}
+    </div>
+  );
+}
+
+const phaseMassLabels: Record<string, string> = {
+  loadedMg: "Loaded",
+  boundMg: "Bound",
+  breakthroughMg: "Breakthrough",
+  inputBoundMg: "Bound at start",
+  washLossMg: "Wash loss",
+  remainingBoundMg: "Still bound",
+  elutedMg: "Eluted",
+  retainedMg: "Retained",
+  recoveryPercent: "Recovery",
+};
+function AffinityReadout({
+  run,
+  status,
+  fractionNames,
+  stale,
+}: {
+  run: AffinityRunResult | null;
+  status: AffinityStatus;
+  fractionNames: Record<string, string>;
+  stale: boolean;
+}) {
+  if (!run)
+    return (
+      <section className="affinity-readout">
+        <p className="inspector-note">
+          {status.status === "pending"
+            ? "Running the affinity model…"
+            : status.status === "error"
+              ? "No run yet. Correct the inputs in the panel on the right."
+              : "Enter the column, the load and the three phases on the right to run the model."}
+        </p>
+      </section>
+    );
+  const mass = run.units.mass ?? "mg";
+  const balance = run.massBalance;
+  const unitFor = (key: string) => (key.endsWith("Percent") ? (run.units.recovery ?? "%") : mass);
+  const tiles: [string, number, string][] = [
+    ["Loaded", balance.loadedMg, mass],
+    ["Capacity", balance.capacityMg, mass],
+    ["Bound", balance.boundMg, mass],
+    ["Breakthrough", balance.breakthroughMg, mass],
+    ["Eluted", balance.elutedMg, mass],
+    ["Retained", balance.retainedMg, mass],
+    ["Recovery", balance.recoveryPercent, run.units.recovery ?? "%"],
+    ["Unaccounted", balance.unaccountedMg, mass],
+  ];
+  return (
+    <section className="affinity-readout" aria-label="Affinity mass balance">
+      {stale && (
+        <div className="warning-note">
+          <CircleAlert />
+          {status.status === "pending"
+            ? "Updating: these numbers are from the previous inputs."
+            : "These numbers are from the last inputs the engine accepted, not the ones on the right."}
+        </div>
+      )}
+      <header>
+        <strong>Mass balance</strong>
+        <span>
+          {run.column.resinName} · {formatMeasure(run.column.columnVolumeMl, run.units.columnVolume ?? "mL", 2)} ×{" "}
+          {formatMeasure(run.column.dynamicBindingCapacityMgPerMl, run.units.bindingCapacity ?? "mg/mL", 2)}
+        </span>
+        <span className={balance.closes ? "closes" : "open"}>
+          {balance.closes
+            ? `Closes: ${formatMeasure(balance.accountedMg, mass, 2)} accounted of ${formatMeasure(balance.loadedMg, mass, 2)} loaded`
+            : `Does not close: ${formatMeasure(balance.unaccountedMg, mass, 3)} unaccounted`}
+        </span>
+      </header>
+      <div className="peak-readout affinity-tiles">
+        {tiles.map(([label, value, unit]) => (
+          <span key={label}>
+            {label}
+            <strong>{formatMeasure(value, unit, 2)}</strong>
+          </span>
+        ))}
+      </div>
+      <table className="affinity-phases">
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>Volume ({run.units.x ?? "mL"})</th>
+            <th>Buffer</th>
+            <th>Mass</th>
+          </tr>
+        </thead>
+        <tbody>
+          {run.phases.map((phase) => (
+            <tr key={phase.type}>
+              <td>{phase.type[0].toUpperCase() + phase.type.slice(1)}</td>
+              <td>
+                {phase.startVolumeMl}–{phase.endVolumeMl}
+              </td>
+              <td>{phase.buffer}</td>
+              <td>
+                {Object.entries(phase.mass).map(([key, value]) => (
+                  <span key={key}>
+                    {phaseMassLabels[key] ?? key} {formatMeasure(value, unitFor(key), 2)}
+                  </span>
+                ))}
+              </td>
+            </tr>
+          ))}
+          {run.fractions.map((fraction) => (
+            <tr key={fraction.id}>
+              <td>{fractionNames[fraction.id] ?? fraction.id}</td>
+              <td>
+                {fraction.startVolumeMl}–{fraction.endVolumeMl}
+              </td>
+              <td />
+              <td>
+                <span>{formatMeasure(fraction.massMg, mass, 3)}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="inspector-note">
+        {run.methods.capacity ? `Capacity = ${run.methods.capacity}. ` : ""}
+        {run.methods.binding ? `Bound = ${run.methods.binding}. ` : ""}
+        Trace in {run.units.y ?? "mg/mL"}.
+        {run.methods.baseline ? ` Baseline: ${run.methods.baseline}.` : ""}
+        {run.methods.noise ? ` Noise: ${run.methods.noise}.` : ""}
+      </p>
+    </section>
+  );
+}
 
 function AnalysisInspector({
   trace,
@@ -4077,6 +4465,7 @@ function forwardRefPlot() {
       selectedPeakId,
       selectedAnnotationId,
       figureMode,
+      affinity,
       onPointerDown,
       onPointerMove,
       onPointerUp,
@@ -4110,6 +4499,7 @@ function forwardRefPlot() {
       selectedPeakId: string;
       selectedAnnotationId: string;
       figureMode: boolean;
+      affinity: AffinityOverlay | null;
       onPointerDown: (e: PointerEvent<SVGSVGElement>) => void;
       onPointerMove: (e: PointerEvent<SVGSVGElement>) => void;
       onPointerUp: () => void;
@@ -4537,6 +4927,62 @@ function forwardRefPlot() {
                     </g>
                   );
                 });
+              })()}
+              {affinity?.traceId === trace.id && (() => {
+                // The run's own phase edges and peaks, registered to the drawn
+                // curve. Breakthrough and elution keep separate marks, shapes
+                // and masses so overload reads as flow-through, not elution.
+                const shift = trace.xShift + alignShift;
+                const inView = (x: number) => x >= bounds.xMin && x <= bounds.xMax;
+                const apexY = (x: number) => {
+                  let best = points[0];
+                  for (const point of points)
+                    if (Math.abs(point.x - x) < Math.abs(best.x - x)) best = point;
+                  return best ? sy(best.y) : pTop + panelH;
+                };
+                return (
+                  <g className="affinity-overlay" pointerEvents="none">
+                    {affinity.phases.map((phase, phaseIndex) => {
+                      const start = Math.max(bounds.xMin, phase.start + shift);
+                      const end = Math.min(bounds.xMax, phase.end + shift);
+                      if (!(start < end)) return null;
+                      const mid = (sx(start) + sx(end)) / 2;
+                      return (
+                        <g key={phase.type}>
+                          {phaseIndex % 2 === 1 && (
+                            <rect x={sx(start)} y={pTop} width={sx(end) - sx(start)} height={panelH} fill={figure.foreground} opacity=".04" />
+                          )}
+                          <text x={mid} y={pTop + 14} textAnchor="middle" fontSize="11" fontWeight="700" fill={figure.foreground}>
+                            {phase.label}
+                          </text>
+                          <text x={mid} y={pTop + 28} textAnchor="middle" fontSize="9.5" fill={figure.foreground} opacity=".72">
+                            {phase.buffer.length > 34 ? `${phase.buffer.slice(0, 33)}…` : phase.buffer}
+                            <title>{phase.buffer}</title>
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {affinity.boundaries.filter((x) => inView(x + shift)).map((x) => (
+                      <line key={`phase-edge-${x}`} x1={sx(x + shift)} x2={sx(x + shift)} y1={pTop} y2={pTop + panelH} stroke={figure.foreground} strokeOpacity=".55" strokeDasharray="5 4" />
+                    ))}
+                    {affinity.peaks.filter((peak) => inView(peak.apexX + shift)).map((peak) => {
+                      const breakthrough = peak.kind === "breakthrough";
+                      const color = breakthrough ? "#c2410c" : "#1d4ed8";
+                      const x = sx(peak.apexX + shift), y = apexY(peak.apexX + shift);
+                      return (
+                        <g key={peak.id}>
+                          <line x1={sx(Math.max(bounds.xMin, peak.start + shift))} x2={sx(Math.min(bounds.xMax, peak.end + shift))} y1={pTop + panelH - 3} y2={pTop + panelH - 3} stroke={color} strokeWidth="3" />
+                          {breakthrough
+                            ? <path d={`M${x},${y - 6} L${x + 6},${y} L${x},${y + 6} L${x - 6},${y} Z`} fill={color} />
+                            : <circle cx={x} cy={y} r="5" fill={color} />}
+                          <text x={x} y={y - 12} textAnchor="middle" fontSize="11" fontWeight="700" fill={color}>
+                            {peak.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
               })()}
             </g>
           );
