@@ -1,5 +1,10 @@
 """Regression and known-answer tests for the expression-vector catalogue."""
 
+import hashlib
+import sqlite3
+
+import pytest
+
 from protein_labs.server import parse_vector_library_search
 from protein_labs.protein_planner.database import Database
 from protein_labs.protein_planner.integrations import (
@@ -9,6 +14,7 @@ from protein_labs.protein_planner.integrations import (
     UniProtClient,
 )
 from protein_labs.protein_planner.service import ProteinPlanner
+from protein_labs.protein_planner.standard_vectors import STANDARD_VECTORS
 
 
 def planner(tmp_path):
@@ -23,6 +29,113 @@ def planner(tmp_path):
 
 def project(service, name="Vector project"):
     return service.create_protein({"name": name, "sequence": "ACDE"})["protein"]
+
+
+def write_legacy_database(path):
+    """Create the last pre-catalogue-metadata schema with a real source link."""
+    standard = next(
+        vector for vector in STANDARD_VECTORS if vector["name"] == "pET28a-LIC"
+    )
+    sequence = standard["sequence"]
+    fingerprint = hashlib.sha256(sequence.upper().encode("utf-8")).hexdigest()
+    timestamp = "2025-01-02T03:04:05+00:00"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE proteins (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                sequence TEXT NOT NULL,
+                organism TEXT NOT NULL DEFAULT '',
+                gene_name TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                expression_system TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                external_ids_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE expression_vectors (
+                id TEXT PRIMARY KEY,
+                protein_id TEXT NOT NULL REFERENCES proteins(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                sequence TEXT NOT NULL,
+                circular INTEGER NOT NULL DEFAULT 1,
+                features_json TEXT NOT NULL DEFAULT '[]',
+                primers_json TEXT NOT NULL DEFAULT '[]',
+                enzyme_names_json TEXT NOT NULL DEFAULT '[]',
+                minimum_orf_amino_acids INTEGER NOT NULL DEFAULT 50,
+                history_json TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE vector_library (
+                id TEXT PRIMARY KEY,
+                fingerprint TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                sequence TEXT NOT NULL,
+                circular INTEGER NOT NULL DEFAULT 1,
+                features_json TEXT NOT NULL DEFAULT '[]',
+                insert_name TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE vector_library_uses (
+                library_id TEXT NOT NULL REFERENCES vector_library(id) ON DELETE CASCADE,
+                protein_id TEXT NOT NULL REFERENCES proteins(id) ON DELETE CASCADE,
+                vector_id TEXT NOT NULL,
+                first_used_at TEXT NOT NULL,
+                last_used_at TEXT NOT NULL,
+                PRIMARY KEY (library_id, protein_id)
+            );
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO proteins (
+                id, name, sequence, created_at, updated_at
+            ) VALUES ('legacy-protein', 'Legacy project', 'ACDE', ?, ?)
+            """,
+            (timestamp, timestamp),
+        )
+        connection.execute(
+            """
+            INSERT INTO vector_library (
+                id, fingerprint, name, sequence, circular, features_json,
+                insert_name, notes, created_at, updated_at
+            ) VALUES (
+                'legacy-library', ?, 'Legacy collision', ?, 1, '[]',
+                'stale insert', 'stale notes', ?, ?
+            )
+            """,
+            (fingerprint, sequence, timestamp, timestamp),
+        )
+        connection.execute(
+            """
+            INSERT INTO expression_vectors (
+                id, protein_id, name, sequence, circular, features_json,
+                primers_json, enzyme_names_json, minimum_orf_amino_acids,
+                history_json, created_at, updated_at
+            ) VALUES (
+                'legacy-vector', 'legacy-protein', 'Project copy', ?, 1,
+                '[]', '[]', '[]', 50, '[]', ?, ?
+            )
+            """,
+            (sequence, timestamp, timestamp),
+        )
+        connection.execute(
+            """
+            INSERT INTO vector_library_uses (
+                library_id, protein_id, vector_id, first_used_at, last_used_at
+            ) VALUES (
+                'legacy-library', 'legacy-protein', 'legacy-vector', ?, ?
+            )
+            """,
+            (timestamp, timestamp),
+        )
+    return standard
 
 
 def test_edit_keeps_source_catalogue_link_without_creating_a_version(tmp_path):
@@ -95,6 +208,46 @@ def test_fresh_database_loads_attributed_standard_collection(tmp_path):
     assert "no restrictions" in pet["license"]
 
 
+def test_upgrade_backfills_source_link_and_canonicalizes_seed_collision(tmp_path):
+    database_path = tmp_path / "legacy.sqlite3"
+    standard = write_legacy_database(database_path)
+
+    database = Database(database_path)
+
+    project_copy = database.get_expression_vector("legacy-protein", "legacy-vector")
+    source = database.get_library_vector("legacy-library")
+    assert project_copy["libraryId"] == "legacy-library"
+    assert source["id"] == "legacy-library"  # Preserve referenced identity.
+    assert source["name"] == standard["name"]
+    assert source["sequence"] == standard["sequence"]
+    assert source["features"] == standard["features"]
+    assert source["insertName"] == ""
+    assert source["notes"] == standard["notes"]
+    assert source["isStandard"] is True
+    assert source["projectCount"] == 1
+
+
+def test_standard_delete_is_rejected_and_survives_restart_with_usage(tmp_path):
+    service = planner(tmp_path)
+    standard = next(
+        vector for vector in service.list_library_vectors()
+        if vector["name"] == "pET28a-LIC"
+    )
+    protein = project(service, "Standard-vector project")
+    project_copy = service.copy_library_vector(protein["id"], standard["id"])
+
+    with pytest.raises(ValueError, match="standard vectors cannot be deleted"):
+        service.delete_library_vector(standard["id"])
+
+    reopened = Database(tmp_path / "planner.sqlite3")
+    source = reopened.get_library_vector(standard["id"])
+    assert source["projectCount"] == 1
+    assert source["projects"][0]["vectorId"] == project_copy["id"]
+    assert reopened.get_expression_vector(
+        protein["id"], project_copy["id"]
+    )["libraryId"] == standard["id"]
+
+
 def test_search_filters_facets_favorites_and_recent_usage(tmp_path):
     service = planner(tmp_path)
 
@@ -103,9 +256,14 @@ def test_search_filters_facets_favorites_and_recent_usage(tmp_path):
         filters={"host": ["Escherichia coli"], "nTag": ["6×His"]},
     )
     assert [vector["name"] for vector in result["vectors"]] == ["pET28a-LIC"]
-    assert {item["value"]: item["count"] for item in result["facets"]["nTag"]}[
-        "6×His"
-    ] >= 1
+    assert result["facets"]["nTag"] == [
+        {"value": "6×His", "count": 1},
+        {"value": "8×His", "count": 1},
+        {"value": "FGFP", "count": 1},
+    ]
+    assert result["facets"]["host"] == [
+        {"value": "Escherichia coli", "count": 1}
+    ]
 
     vector_id = result["vectors"][0]["id"]
     favorite = service.set_library_favorite(vector_id, {"favorite": True})
