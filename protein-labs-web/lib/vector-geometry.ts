@@ -449,3 +449,13 @@ export function locateMcs(features: MapFeature[], cuts: CutSite[], length: numbe
   }
   return bestCount >= 3 ? best : null;
 }
+
+/** Cut sites from the engine's enzyme-sets rows, which also use 1-based cut positions. */
+export function cutSitesFromEnzymeRows(rows: { enzyme: string; recognitionSite: string; cutPositions: number[] }[], length: number): CutSite[] {
+  return rows.flatMap((row) => row.cutPositions.map((position) => ({
+    enzyme: row.enzyme,
+    cut: wrap(position - 1, Math.max(1, length)),
+    recognitionSite: row.recognitionSite,
+    cutCount: row.cutPositions.length,
+  })));
+}
