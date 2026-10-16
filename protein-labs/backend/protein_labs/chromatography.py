@@ -26,6 +26,30 @@ def positive(value: Any, name: str) -> float:
     return result
 
 
+def finite(value: float, name: str) -> float:
+    """Reject overflow from arithmetic on otherwise finite inputs."""
+    if not math.isfinite(value):
+        raise ValueError(f"{name} overflowed; rescale input values explicitly")
+    return value
+
+
+def finite_sum(values: Any, name: str) -> float:
+    """Compute an accurate sum while mapping arithmetic overflow to input error."""
+    try:
+        return finite(math.fsum(values), name)
+    except OverflowError as error:
+        raise ValueError(f"{name} overflowed; rescale input values explicitly") from error
+
+
+def json_result(value: dict) -> dict:
+    """Keep non-finite numbers from reaching the JSON response boundary."""
+    try:
+        json.dumps(value, allow_nan=False)
+    except (ValueError, OverflowError) as error:
+        raise ValueError('Numeric overflow; rescale input values explicitly') from error
+    return value
+
+
 def quantile(values: list[float], fraction: float) -> float:
     ordered = sorted(values)
     position = (len(ordered) - 1) * fraction
@@ -53,7 +77,7 @@ def kav(ve: float, vo: float, vt: float) -> float:
     vo, vt = positive(vo, 'voMl'), positive(vt, 'vtMl')
     if vo >= vt:
         raise ValueError('SEC requires 0 < voMl < vtMl (void volume below column volume)')
-    return (number(ve, 'veMl') - vo) / (vt - vo)
+    return finite((number(ve, 'veMl') - vo) / (vt - vo), 'SEC Kav calculation')
 
 
 def fit_sec(config: dict) -> dict:
@@ -77,19 +101,24 @@ def fit_sec(config: dict) -> dict:
         volumes.append(ve)
     if len(xs) < 2:
         raise ValueError('SEC calibration requires at least two included standards')
-    mx, my = mean(xs), mean(ys)
-    denominator = math.fsum((x - mx) ** 2 for x in xs)
+    mx, my = finite(mean(xs), 'SEC mean log molecular weight'), finite(mean(ys), 'SEC mean Kav')
+    denominator = finite_sum(((x - mx) ** 2 for x in xs), 'SEC fit denominator')
     if denominator < 1e-20:
         raise ValueError('SEC standards must have distinct molecular weights')
-    slope = math.fsum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denominator
+    numerator = finite_sum(((x - mx) * (y - my) for x, y in zip(xs, ys)),
+                           'SEC fit numerator')
+    slope = finite(numerator / denominator, 'SEC fit slope')
     if slope >= -1e-12:
         raise ValueError('SEC calibration requires a negative, invertible slope')
-    intercept = my - slope * mx
-    residual = math.fsum((y - slope * x - intercept) ** 2 for x, y in zip(xs, ys))
-    total = math.fsum((y - my) ** 2 for y in ys)
-    return {'slope': slope, 'intercept': intercept, 'r2': 1 - residual / total,
-            'logMwDaRange': [min(xs), max(xs)], 'veMlRange': [min(volumes), max(volumes)],
-            'voMl': vo, 'vtMl': vt, 'standardCount': len(xs)}
+    intercept = finite(my - slope * mx, 'SEC fit intercept')
+    residual = finite_sum(((y - slope * x - intercept) ** 2 for x, y in zip(xs, ys)),
+                          'SEC residual sum of squares')
+    total = finite_sum(((y - my) ** 2 for y in ys), 'SEC total sum of squares')
+    result = {'slope': slope, 'intercept': intercept,
+              'r2': finite(1 - residual / total, 'SEC R squared'),
+              'logMwDaRange': [min(xs), max(xs)], 'veMlRange': [min(volumes), max(volumes)],
+              'voMl': vo, 'vtMl': vt, 'standardCount': len(xs)}
+    return json_result(result)
 
 
 def calibrate_sec(body: dict) -> dict:
@@ -100,18 +129,22 @@ def calibrate_sec(body: dict) -> dict:
     volumes = body.get('elutionVolumesMl', [])
     if not isinstance(volumes, list) or len(volumes) > 200000:
         raise ValueError('elutionVolumesMl must be an array with at most 200000 values')
-    return {'schemaVersion': 1, 'calibration': fit,
-            'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit)) for ve in volumes]}
+    result = {'schemaVersion': 1, 'calibration': fit,
+              'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit))
+                              for ve in volumes]}
+    return json_result(result)
 
 
 def calibrate(ve: float, fit: dict) -> dict:
     value = kav(ve, fit['voMl'], fit['vtMl'])
-    log_mw = (value - fit['intercept']) / fit['slope']
+    log_mw = finite((value - fit['intercept']) / fit['slope'],
+                    'SEC molecular-weight calculation')
     lo, hi = fit['logMwDaRange']
     v_lo, v_hi = fit['veMlRange']
     outside = not (lo - 1e-12 <= log_mw <= hi + 1e-12 and v_lo - 1e-12 <= ve <= v_hi + 1e-12)
-    return {'kav': value, 'mwKDa': None if outside else 10 ** min(hi, max(lo, log_mw)) / 1000,
-            'outOfRange': outside}
+    mw = None if outside else finite(10 ** min(hi, max(lo, log_mw)) / 1000,
+                                     'SEC molecular weight')
+    return {'kav': value, 'mwKDa': mw, 'outOfRange': outside}
 
 
 def measure_peak(points: list[dict], start: float, end: float) -> dict | None:
@@ -159,7 +192,19 @@ def detect_ranges(points: list[dict], count: int) -> list[dict]:
                   and smooth[i]['y'] >= smooth[i - 1]['y'] and smooth[i]['y'] > smooth[i + 1]['y']]
     chosen = []
     for i in sorted(candidates, key=lambda i: smooth[i]['y'], reverse=True):
-        if all(abs(i - other) > max(1, len(points) * .03) for other in chosen):
+        # A second maximum is a separate peak only when its intervening valley
+        # falls materially below the smaller apex. This rejects noise ripples
+        # on a broad peak without assuming a requested/known peak count.
+        separated = True
+        for other in chosen:
+            left, right = sorted((i, other))
+            valley = min(smooth[k]['y'] for k in range(left, right + 1))
+            lower_apex = min(smooth[i]['y'], smooth[other]['y'])
+            required_drop = max(3 * noise, .1 * max(0, lower_apex))
+            if lower_apex - valley < required_drop:
+                separated = False
+                break
+        if separated:
             chosen.append(i)
         if len(chosen) == count:
             break
@@ -257,10 +302,6 @@ def analyze_chromatogram(body: dict) -> dict:
               'methods': {'baseline': baseline, 'peakBaseline': 'linear_endpoints_positive_area',
                           'resolution': '1.18*apex_distance/(fwhm1+fwhm2)',
                           'asymmetry': 'trailing/leading width at 10% height',
-                          'noise': '1.4826*MAD(first differences)/sqrt(2); 3 sigma threshold'}}
-    # Reject numeric overflow at the API boundary instead of returning invalid JSON.
-    try:
-        json.dumps(result, allow_nan=False)
-    except ValueError as error:
-        raise ValueError('Numeric overflow; rescale input values explicitly') from error
-    return result
+                          'noise': ('1.4826*MAD(first differences)/sqrt(2); 3 sigma threshold; '
+                                    'candidate valley drop max(3 sigma, 10% smaller apex)')}}
+    return json_result(result)
