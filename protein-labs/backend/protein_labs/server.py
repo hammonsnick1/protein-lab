@@ -25,7 +25,7 @@ from .protein_planner.integrations import (
 from .protein_planner.protparam import SequenceValidationError
 from .protein_planner.service import ProteinPlanner
 from .gel_analysis import analyze_gel
-from .chromatography import analyze_chromatogram, calibrate_sec
+from .chromatography import analyze_chromatogram, calibrate_sec, create_chromatography_run
 from .vector_sources import VectorSourceError
 
 
@@ -132,6 +132,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/chromatogram/analyze":
                 self._send(200, analyze_chromatogram(body))
+                return
+            if path == "/v1/chromatogram/run":
+                self._send(200, create_chromatography_run(body))
                 return
             if path == "/v1/gel/analyze":
                 self._send(200, analyze_gel(body))

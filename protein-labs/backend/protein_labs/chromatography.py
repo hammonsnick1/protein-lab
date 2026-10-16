@@ -26,6 +26,39 @@ def positive(value: Any, name: str) -> float:
     return result
 
 
+def finite(value: float, name: str) -> float:
+    """Reject overflow from arithmetic on otherwise finite inputs."""
+    if not math.isfinite(value):
+        raise ValueError(f"{name} overflowed; rescale input values explicitly")
+    return value
+
+
+def finite_sum(values: Any, name: str) -> float:
+    """Compute an accurate sum while mapping arithmetic overflow to input error."""
+    try:
+        return finite(math.fsum(values), name)
+    except OverflowError as error:
+        raise ValueError(f"{name} overflowed; rescale input values explicitly") from error
+
+
+def fraction(value: Any, name: str, *, include_zero: bool = True) -> float:
+    result = number(value, name)
+    lower_ok = result >= 0 if include_zero else result > 0
+    if not lower_ok or result > 1:
+        qualifier = "0 <= value <= 1" if include_zero else "0 < value <= 1"
+        raise ValueError(f"{name} must satisfy {qualifier}")
+    return result
+
+
+def json_result(value: dict) -> dict:
+    """Keep non-finite numbers from reaching the JSON response boundary."""
+    try:
+        json.dumps(value, allow_nan=False)
+    except (ValueError, OverflowError) as error:
+        raise ValueError('Numeric overflow; rescale input values explicitly') from error
+    return value
+
+
 def quantile(values: list[float], fraction: float) -> float:
     ordered = sorted(values)
     position = (len(ordered) - 1) * fraction
@@ -53,7 +86,7 @@ def kav(ve: float, vo: float, vt: float) -> float:
     vo, vt = positive(vo, 'voMl'), positive(vt, 'vtMl')
     if vo >= vt:
         raise ValueError('SEC requires 0 < voMl < vtMl (void volume below column volume)')
-    return (number(ve, 'veMl') - vo) / (vt - vo)
+    return finite((number(ve, 'veMl') - vo) / (vt - vo), 'SEC Kav calculation')
 
 
 def fit_sec(config: dict) -> dict:
@@ -77,19 +110,24 @@ def fit_sec(config: dict) -> dict:
         volumes.append(ve)
     if len(xs) < 2:
         raise ValueError('SEC calibration requires at least two included standards')
-    mx, my = mean(xs), mean(ys)
-    denominator = math.fsum((x - mx) ** 2 for x in xs)
+    mx, my = finite(mean(xs), 'SEC mean log molecular weight'), finite(mean(ys), 'SEC mean Kav')
+    denominator = finite_sum(((x - mx) ** 2 for x in xs), 'SEC fit denominator')
     if denominator < 1e-20:
         raise ValueError('SEC standards must have distinct molecular weights')
-    slope = math.fsum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denominator
+    numerator = finite_sum(((x - mx) * (y - my) for x, y in zip(xs, ys)),
+                           'SEC fit numerator')
+    slope = finite(numerator / denominator, 'SEC fit slope')
     if slope >= -1e-12:
         raise ValueError('SEC calibration requires a negative, invertible slope')
-    intercept = my - slope * mx
-    residual = math.fsum((y - slope * x - intercept) ** 2 for x, y in zip(xs, ys))
-    total = math.fsum((y - my) ** 2 for y in ys)
-    return {'slope': slope, 'intercept': intercept, 'r2': 1 - residual / total,
-            'logMwDaRange': [min(xs), max(xs)], 'veMlRange': [min(volumes), max(volumes)],
-            'voMl': vo, 'vtMl': vt, 'standardCount': len(xs)}
+    intercept = finite(my - slope * mx, 'SEC fit intercept')
+    residual = finite_sum(((y - slope * x - intercept) ** 2 for x, y in zip(xs, ys)),
+                          'SEC residual sum of squares')
+    total = finite_sum(((y - my) ** 2 for y in ys), 'SEC total sum of squares')
+    result = {'slope': slope, 'intercept': intercept,
+              'r2': finite(1 - residual / total, 'SEC R squared'),
+              'logMwDaRange': [min(xs), max(xs)], 'veMlRange': [min(volumes), max(volumes)],
+              'voMl': vo, 'vtMl': vt, 'standardCount': len(xs)}
+    return json_result(result)
 
 
 def calibrate_sec(body: dict) -> dict:
@@ -100,18 +138,22 @@ def calibrate_sec(body: dict) -> dict:
     volumes = body.get('elutionVolumesMl', [])
     if not isinstance(volumes, list) or len(volumes) > 200000:
         raise ValueError('elutionVolumesMl must be an array with at most 200000 values')
-    return {'schemaVersion': 1, 'calibration': fit,
-            'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit)) for ve in volumes]}
+    result = {'schemaVersion': 1, 'calibration': fit,
+              'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit))
+                              for ve in volumes]}
+    return json_result(result)
 
 
 def calibrate(ve: float, fit: dict) -> dict:
     value = kav(ve, fit['voMl'], fit['vtMl'])
-    log_mw = (value - fit['intercept']) / fit['slope']
+    log_mw = finite((value - fit['intercept']) / fit['slope'],
+                    'SEC molecular-weight calculation')
     lo, hi = fit['logMwDaRange']
     v_lo, v_hi = fit['veMlRange']
     outside = not (lo - 1e-12 <= log_mw <= hi + 1e-12 and v_lo - 1e-12 <= ve <= v_hi + 1e-12)
-    return {'kav': value, 'mwKDa': None if outside else 10 ** min(hi, max(lo, log_mw)) / 1000,
-            'outOfRange': outside}
+    mw = None if outside else finite(10 ** min(hi, max(lo, log_mw)) / 1000,
+                                     'SEC molecular weight')
+    return {'kav': value, 'mwKDa': mw, 'outOfRange': outside}
 
 
 def measure_peak(points: list[dict], start: float, end: float) -> dict | None:
@@ -159,7 +201,19 @@ def detect_ranges(points: list[dict], count: int) -> list[dict]:
                   and smooth[i]['y'] >= smooth[i - 1]['y'] and smooth[i]['y'] > smooth[i + 1]['y']]
     chosen = []
     for i in sorted(candidates, key=lambda i: smooth[i]['y'], reverse=True):
-        if all(abs(i - other) > max(1, len(points) * .03) for other in chosen):
+        # A second maximum is a separate peak only when its intervening valley
+        # falls materially below the smaller apex. This rejects noise ripples
+        # on a broad peak without assuming a requested/known peak count.
+        separated = True
+        for other in chosen:
+            left, right = sorted((i, other))
+            valley = min(smooth[k]['y'] for k in range(left, right + 1))
+            lower_apex = min(smooth[i]['y'], smooth[other]['y'])
+            required_drop = max(3 * noise, .1 * max(0, lower_apex))
+            if lower_apex - valley < required_drop:
+                separated = False
+                break
+        if separated:
             chosen.append(i)
         if len(chosen) == count:
             break
@@ -257,10 +311,245 @@ def analyze_chromatogram(body: dict) -> dict:
               'methods': {'baseline': baseline, 'peakBaseline': 'linear_endpoints_positive_area',
                           'resolution': '1.18*apex_distance/(fwhm1+fwhm2)',
                           'asymmetry': 'trailing/leading width at 10% height',
-                          'noise': '1.4826*MAD(first differences)/sqrt(2); 3 sigma threshold'}}
-    # Reject numeric overflow at the API boundary instead of returning invalid JSON.
-    try:
-        json.dumps(result, allow_nan=False)
-    except ValueError as error:
-        raise ValueError('Numeric overflow; rescale input values explicitly') from error
+                          'noise': ('1.4826*MAD(first differences)/sqrt(2); 3 sigma threshold; '
+                                    'candidate valley drop max(3 sigma, 10% smaller apex)')}}
+    return json_result(result)
+
+
+def _affinity_phase(phase: Any, expected_type: str) -> dict:
+    if not isinstance(phase, dict) or phase.get('type') != expected_type:
+        raise ValueError(f"Affinity phases must be ordered load, wash, elute; expected {expected_type}")
+    buffer = phase.get('buffer')
+    if not isinstance(buffer, str) or not buffer.strip():
+        raise ValueError(f"{expected_type} buffer must be a non-empty string")
+    result = {'type': expected_type, 'volumeMl': positive(phase.get('volumeMl'),
+              f'{expected_type}.volumeMl'), 'buffer': buffer}
+    if expected_type == 'elute':
+        result.update(
+            peakPositionFraction=fraction(phase.get('peakPositionFraction', .5),
+                                          'elute.peakPositionFraction', include_zero=False),
+            peakWidthFraction=fraction(phase.get('peakWidthFraction', .1),
+                                       'elute.peakWidthFraction', include_zero=False),
+            recoveryFraction=fraction(phase.get('recoveryFraction', 1),
+                                      'elute.recoveryFraction'),
+        )
+        if result['peakPositionFraction'] >= 1:
+            raise ValueError('elute.peakPositionFraction must be below 1')
     return result
+
+
+def _scaled_profile(xs: list[float], shape: Any, target_area: float, name: str) -> list[float]:
+    raw = [finite(float(shape(x)), name) for x in xs]
+    denominator = area([{'x': x, 'y': y} for x, y in zip(xs, raw)])
+    if target_area == 0:
+        return [0.0] * len(xs)
+    if denominator <= 0:
+        raise ValueError(f'{name} could not be represented at the requested sampling density')
+    scale = finite(target_area / denominator, name)
+    return [finite(y * scale, name) for y in raw]
+
+
+def _compact_breakthrough(x: float, start: float, end: float) -> float:
+    if not start < x < end:
+        return 0.0
+    position = (x - start) / (end - start)
+    return math.sin(math.pi * position) ** 2
+
+
+def _bounded_gaussian(x: float, start: float, center: float, end: float,
+                      sigma: float) -> float:
+    """Gaussian-like peak with an exact zero at both phase boundaries."""
+    if not start < x < end:
+        return 0.0
+    gaussian = math.exp(-.5 * ((x - center) / sigma) ** 2)
+    boundary = math.exp(-.5 * (((start if x <= center else end) - center) / sigma) ** 2)
+    denominator = 1 - boundary
+    if denominator <= 1e-15:
+        # The Gaussian becomes indistinguishable from 1 when its centre is
+        # extremely close to a boundary. A triangular side is the stable limit.
+        return ((x - start) / (center - start) if x <= center else
+                (end - x) / (end - center))
+    return max(0.0, (gaussian - boundary) / denominator)
+
+
+def _integrate_interval(points: list[dict], start: float, end: float) -> float:
+    selected = [p for p in points if start <= p['x'] <= end]
+    return area(selected) if len(selected) > 1 else 0.0
+
+
+def model_affinity_run(body: dict) -> dict:
+    """Create a deterministic, mass-conserving affinity chromatography run."""
+    if not isinstance(body, dict):
+        raise ValueError('Request must be an object')
+    if body.get('schemaVersion', 1) != 1:
+        raise ValueError('Unsupported schemaVersion; expected 1')
+    if body.get('method') != 'affinity':
+        raise ValueError('method must be affinity')
+
+    column = body.get('column')
+    if not isinstance(column, dict):
+        raise ValueError('column must be an object')
+    resin_name = column.get('resinName')
+    if not isinstance(resin_name, str) or not resin_name.strip():
+        raise ValueError('column.resinName must be a non-empty string')
+    column_volume = positive(column.get('columnVolumeMl'), 'column.columnVolumeMl')
+    binding_capacity = positive(column.get('dynamicBindingCapacityMgPerMl'),
+                                'column.dynamicBindingCapacityMgPerMl')
+    capacity = finite(column_volume * binding_capacity, 'affinity column capacity')
+
+    load = body.get('load')
+    if not isinstance(load, dict):
+        raise ValueError('load must be an object')
+    loaded = positive(load.get('proteinMassMg'), 'load.proteinMassMg')
+
+    raw_phases = body.get('phases')
+    if not isinstance(raw_phases, list) or len(raw_phases) != 3:
+        raise ValueError('phases must contain exactly load, wash, elute')
+    phases = [_affinity_phase(phase, expected) for phase, expected in
+              zip(raw_phases, ('load', 'wash', 'elute'))]
+    cursor = 0.0
+    for phase in phases:
+        phase['startVolumeMl'] = cursor
+        cursor = finite(cursor + phase['volumeMl'], 'affinity total volume')
+        phase['endVolumeMl'] = cursor
+
+    sampling = body.get('sampling', {})
+    if not isinstance(sampling, dict):
+        raise ValueError('sampling must be an object')
+    points_per_ml = sampling.get('pointsPerMl', 20)
+    if (isinstance(points_per_ml, bool) or not isinstance(points_per_ml, int)
+            or not 1 <= points_per_ml <= 1000):
+        raise ValueError('sampling.pointsPerMl must be an integer from 1 to 1000')
+    sample_count = math.ceil(finite(cursor * points_per_ml, 'affinity sample count'))
+    if sample_count > 199990:
+        raise ValueError('Requested affinity trace exceeds 200000 samples')
+
+    bound = min(loaded, capacity)
+    breakthrough = finite(loaded - bound, 'affinity breakthrough mass')
+    elute = phases[2]
+    eluted = finite(bound * elute['recoveryFraction'], 'affinity eluted mass')
+    retained = finite(bound - eluted, 'affinity retained mass')
+    load_phase = phases[0]
+    breakthrough_start = (load_phase['endVolumeMl'] if breakthrough == 0 else
+                          load_phase['startVolumeMl'] + load_phase['volumeMl'] *
+                          (capacity / loaded))
+    elution_center = elute['startVolumeMl'] + elute['volumeMl'] * elute['peakPositionFraction']
+    elution_sigma = elute['volumeMl'] * elute['peakWidthFraction']
+
+    raw_fractions = body.get('fractions', [])
+    if not isinstance(raw_fractions, list) or len(raw_fractions) > 1000:
+        raise ValueError('fractions must be an array with at most 1000 entries')
+    fractions = []
+    for value in raw_fractions:
+        if not isinstance(value, dict):
+            raise ValueError('Each fraction must be an object')
+        fraction_id = value.get('id')
+        if not isinstance(fraction_id, str) or not fraction_id.strip():
+            raise ValueError('fraction.id must be a non-empty string')
+        start = number(value.get('startVolumeMl'), 'fraction.startVolumeMl')
+        end = number(value.get('endVolumeMl'), 'fraction.endVolumeMl')
+        if not 0 <= start < end <= cursor:
+            raise ValueError('Fraction bounds must lie within the run and have start < end')
+        fractions.append({'id': fraction_id, 'startVolumeMl': start, 'endVolumeMl': end})
+
+    xs = {cursor * i / sample_count for i in range(sample_count + 1)}
+    xs.update(phase[key] for phase in phases for key in ('startVolumeMl', 'endVolumeMl'))
+    xs.add(elution_center)
+    if breakthrough:
+        xs.add(breakthrough_start)
+        xs.add((breakthrough_start + load_phase['endVolumeMl']) / 2)
+    for value in fractions:
+        xs.update((value['startVolumeMl'], value['endVolumeMl']))
+    xs = sorted(xs)
+    if len(xs) > 200000:
+        raise ValueError('Requested affinity trace exceeds 200000 samples')
+
+    breakthrough_values = _scaled_profile(
+        xs, lambda x: _compact_breakthrough(x, breakthrough_start,
+                                             load_phase['endVolumeMl']),
+        breakthrough, 'affinity breakthrough profile')
+    elution_values = _scaled_profile(
+        xs, lambda x: _bounded_gaussian(x, elute['startVolumeMl'], elution_center,
+                                        elute['endVolumeMl'], elution_sigma),
+        eluted, 'affinity elution profile')
+    points = [{'x': x, 'y': finite(a + b, 'affinity trace concentration')}
+              for x, a, b in zip(xs, breakthrough_values, elution_values)]
+
+    breakthrough_height = max(breakthrough_values)
+    breakthrough_apex = xs[breakthrough_values.index(breakthrough_height)]
+    elution_height = max(elution_values)
+    elution_apex = xs[elution_values.index(elution_height)]
+    peaks = []
+    if breakthrough:
+        peaks.append({'id': 'breakthrough', 'kind': 'breakthrough', 'phase': 'load',
+                      'start': breakthrough_start, 'end': load_phase['endVolumeMl'],
+                      'apexX': breakthrough_apex, 'response': breakthrough_height,
+                      'height': breakthrough_height, 'area': breakthrough,
+                      'massMg': breakthrough, 'fwhm': None, 'asymmetry10': None})
+    if eluted:
+        measured = measure_peak(points, elute['startVolumeMl'], elute['endVolumeMl'])
+        peaks.append({'id': 'elution', 'kind': 'elution', 'phase': 'elute',
+                      'start': elute['startVolumeMl'], 'end': elute['endVolumeMl'],
+                      'apexX': elution_apex, 'response': elution_height,
+                      'height': elution_height, 'area': eluted, 'massMg': eluted,
+                      'fwhm': None if measured is None else measured['fwhm'],
+                      'asymmetry10': None if measured is None else measured['asymmetry10']})
+
+    phases[0]['mass'] = {'loadedMg': loaded, 'boundMg': bound,
+                         'breakthroughMg': breakthrough}
+    phases[1]['mass'] = {'inputBoundMg': bound, 'washLossMg': 0.0,
+                         'remainingBoundMg': bound}
+    recovery_percent = finite(100 * (eluted / loaded), 'affinity recovery percent')
+    phases[2]['mass'] = {'inputBoundMg': bound, 'elutedMg': eluted,
+                         'retainedMg': retained,
+                         'recoveryPercent': recovery_percent}
+    for value in fractions:
+        value['massMg'] = _integrate_interval(points, value['startVolumeMl'],
+                                              value['endVolumeMl'])
+
+    accounted = finite_sum((breakthrough, eluted, retained), 'affinity accounted mass')
+    unaccounted = finite(loaded - accounted, 'affinity unaccounted mass')
+    trace_area = area(points)
+    result = {
+        'schemaVersion': 1,
+        'method': 'affinity',
+        'units': {'x': 'mL', 'y': 'mg/mL', 'area': 'mg', 'mass': 'mg',
+                  'columnVolume': 'mL', 'bindingCapacity': 'mg/mL', 'recovery': '%'},
+        'column': {'resinName': resin_name, 'columnVolumeMl': column_volume,
+                   'dynamicBindingCapacityMgPerMl': binding_capacity,
+                   'capacityMg': capacity},
+        'phases': phases,
+        'points': points,
+        'peaks': peaks,
+        'fractions': fractions,
+        'massBalance': {
+            'status': 'calculated', 'loadedMg': loaded, 'capacityMg': capacity,
+            'boundMg': bound, 'breakthroughMg': breakthrough, 'washLossMg': 0.0,
+            'elutedMg': eluted, 'retainedMg': retained, 'recoveredMg': eluted,
+            'recoveryPercent': recovery_percent, 'accountedMg': accounted,
+            'unaccountedMg': unaccounted, 'closes': abs(unaccounted) <= 1e-12,
+            'traceAreaMg': trace_area,
+        },
+        'methods': {
+            'capacity': 'columnVolumeMl*dynamicBindingCapacityMgPerMl',
+            'binding': 'min(loadedMg,capacityMg)',
+            'breakthrough': 'loadedMg-boundMg; compact load-phase profile with conserved area',
+            'elution': 'bounded Gaussian profile scaled to elutedMg',
+            'baseline': 'zero; deterministic model',
+            'noise': 'none; deterministic model',
+        },
+    }
+    return json_result(result)
+
+
+def create_chromatography_run(body: dict) -> dict:
+    """Stable run endpoint; omitted methods remain SEC for existing clients."""
+    if not isinstance(body, dict):
+        raise ValueError('Request must be an object')
+    method = body.get('method', 'sec')
+    if method == 'affinity':
+        return model_affinity_run(body)
+    if method != 'sec':
+        raise ValueError('method must be sec or affinity')
+    result = analyze_chromatogram(body)
+    return json_result({'method': 'sec', **result})

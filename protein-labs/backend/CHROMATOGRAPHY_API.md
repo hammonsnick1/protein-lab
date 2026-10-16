@@ -1,9 +1,76 @@
 # Chromatography API v1
 
+`POST /v1/chromatogram/run` creates a versioned SEC or affinity run.
 `POST /v1/chromatogram/analyze` returns scientific measurements for one trace.
 `POST /v1/chromatogram/calibrate-sec` calibrates standards without a trace.
-Both use JSON and return HTTP 400 with `{error, type}` for invalid input.
+All use JSON and return HTTP 400 with `{error, type}` for invalid input.
 No additional dependencies are required.
+
+## Run types
+
+`POST /v1/chromatogram/run` accepts `method: "sec" | "affinity"`. An omitted
+method remains `sec`, so existing SEC request objects can move to this endpoint
+without migration. SEC returns the analyze response below with `method: "sec"`.
+
+An affinity request declares one ordered load/wash/elute method:
+
+```json
+{
+  "schemaVersion": 1,
+  "method": "affinity",
+  "column": {
+    "resinName": "Example affinity resin",
+    "columnVolumeMl": 2,
+    "dynamicBindingCapacityMgPerMl": 10
+  },
+  "load": {"proteinMassMg": 25},
+  "phases": [
+    {"type": "load", "volumeMl": 10, "buffer": "20 mM phosphate, pH 7.4"},
+    {"type": "wash", "volumeMl": 5, "buffer": "20 mM phosphate, 20 mM imidazole"},
+    {
+      "type": "elute",
+      "volumeMl": 10,
+      "buffer": "20 mM phosphate, 300 mM imidazole",
+      "peakPositionFraction": 0.25,
+      "peakWidthFraction": 0.1,
+      "recoveryFraction": 0.8
+    }
+  ],
+  "fractions": [{"id": "E1", "startVolumeMl": 16, "endVolumeMl": 20}],
+  "sampling": {"pointsPerMl": 20}
+}
+```
+
+All volume fields are mL, all mass fields are mg, dynamic binding capacity is
+mg/mL resin, and recovery inputs are fractions from 0 to 1. Phase volume is
+cumulative: the example boundaries are load 0–10 mL, wash 10–15 mL and elute
+15–25 mL. `peakPositionFraction` locates the apex within the elute phase, so the
+example apex is 17.5 mL. `peakWidthFraction` is the Gaussian sigma divided by
+elute volume. `pointsPerMl` is an integer from 1 to 1000 and the response is
+limited to 200000 trace samples.
+
+The affinity response is the portable run object. It always includes
+`schemaVersion`, `method`, explicit `units`, `column`, `phases` with calculated
+boundaries and phase mass records, `points`, `peaks`, `fractions` with integrated
+mass, `massBalance`, and `methods`. Save and reopen the object as JSON without
+dropping fields; its disk round trip is tested for equality.
+
+Capacity is exactly
+`columnVolumeMl * dynamicBindingCapacityMgPerMl`. Bound mass is the smaller of
+loaded mass and capacity. Excess load becomes a mass-normalized breakthrough
+peak inside the load phase; it never increases the capacity-limited elution
+peak. Eluted mass is `boundMg * recoveryFraction`; material not eluted is
+reported as `retainedMg`. The balance closes as
+`loadedMg = breakthroughMg + elutedMg + retainedMg`. `recoveryPercent` and
+`recoveredMg` mean eluted product, while `traceAreaMg` includes both
+breakthrough and elution signals.
+
+Affinity traces are deterministic concentrations in mg/mL. The compact
+breakthrough and bounded-Gaussian elution profiles are numerically normalized
+so their trapezoidal areas equal their reported masses. The model adds neither
+baseline nor noise; `methods.baseline` and `methods.noise` state those choices.
+Measured/imported traces should continue through `/analyze`, whose explicit
+drift/noise-resistant detection is described below.
 
 ## Analyze request
 
@@ -68,7 +135,7 @@ Reject Vo ≥ Vt, nonpositive volumes/masses, included standards outside the col
 
 ## Measurement methods and limits
 
-Detection removes endpoint linear drift, applies a seven-sample moving average, and seeks maxima above the larger of the 65th percentile and 3 noise sigma. Noise sigma is `1.4826*MAD(first differences)/sqrt(2)` under independent additive noise. Candidate separation exceeds 3% of sample count (at least one sample). Adjacent integration regions meet at the observed smoothed valley.
+Detection removes endpoint linear drift, applies a seven-sample moving average, and seeks maxima above the larger of the 65th percentile and 3 noise sigma. Noise sigma is `1.4826*MAD(first differences)/sqrt(2)` under independent additive noise. A candidate is a separate peak only when the intervening valley drops by at least the larger of 3 noise sigma and 10% of the smaller apex. Adjacent integration regions meet at the observed smoothed valley.
 
 Measurements use the processed signal, a straight baseline between each region's endpoints and trapezoidal integration after clamping negative residuals to zero. FWHM and 10%-height crossings use linear interpolation. Rs = `1.18 * delta-apex / (FWHM1 + FWHM2)`; As = trailing/leading width at 10% height. These are apparent peak measurements, not a deconvolution of overlapping species. Truncated/overlapping peaks and noisy endpoints can bias area and widths. Positive clipping biases noise area upward; measured noisy-fixture error is 1.32% (2% test tolerance), versus <1e-10 relative error for the noiseless Gaussian.
 
@@ -84,4 +151,18 @@ The backend PR does not change React or `.chromproj` persistence. Frontend owner
 4. Use server Kav values for standards/peaks, server fit fields for plots and server outOfRange for absent Mw. Show units and the stated method with Rs/As/recovery. Preserve existing project import/export, and test an old `.chromproj` through save/reopen before claiming compatibility.
 5. Compare ordinary SEC against the existing formula (example above, relative tolerance 1e-10). Intentional differences: invalid columns now fail, extrapolated masses are suppressed, quantiles are corrected, noisy detection uses explicit noise/drift handling, and peak integration uses full manual ranges or detected valleys rather than the old 2.5%-height boundary walk.
 
-The HTTP payload is an analysis-result schema, not a replacement portable run/project schema. JSON disk round-trip equality is tested; UI project compatibility remains frontend acceptance work.
+For affinity, add a `method: "sec" | "affinity"` discriminator to the existing
+project object and default missing values to `sec`. Submit the affinity fields
+shown above to `/v1/chromatogram/run`. Plot response `points` without changing
+their units; draw each `phases[].startVolumeMl/endVolumeMl` as boundaries; show
+the phase buffer and phase `mass` beside the trace. The load-phase
+`kind:"breakthrough"` peak must remain distinct from the `kind:"elution"` peak.
+Use `massBalance` verbatim for loaded, capacity, bound, breakthrough, eluted,
+retained and recovery displays. Persist the complete run response—including
+column, phases, fractions and methods—through the existing project save/export
+path rather than adding an affinity-only file format.
+
+The older `/analyze` payload remains an analysis-result schema, not a portable
+project schema. `/run` is the versioned chromatography run boundary. JSON disk
+round-trip equality is tested here; UI project compatibility remains frontend
+acceptance work.
