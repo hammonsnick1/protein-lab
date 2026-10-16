@@ -16,6 +16,8 @@ import sqlite3
 from typing import Any, Iterator
 import uuid
 
+from .standard_vectors import STANDARD_VECTORS
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -156,6 +158,7 @@ class Database:
                     enzyme_names_json TEXT NOT NULL DEFAULT '[]',
                     minimum_orf_amino_acids INTEGER NOT NULL DEFAULT 50,
                     history_json TEXT NOT NULL DEFAULT '[]',
+                    library_id TEXT REFERENCES vector_library(id) ON DELETE SET NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -172,6 +175,9 @@ class Database:
                     features_json TEXT NOT NULL DEFAULT '[]',
                     insert_name TEXT NOT NULL DEFAULT '',
                     notes TEXT NOT NULL DEFAULT '',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    is_standard INTEGER NOT NULL DEFAULT 0,
+                    favorite INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -226,6 +232,61 @@ class Database:
                 connection.execute(
                     "ALTER TABLE expression_vectors ADD COLUMN minimum_orf_amino_acids INTEGER NOT NULL DEFAULT 50"
                 )
+            if "library_id" not in vector_columns:
+                connection.execute(
+                    "ALTER TABLE expression_vectors ADD COLUMN library_id TEXT"
+                )
+            library_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(vector_library)"
+                ).fetchall()
+            }
+            if "metadata_json" not in library_columns:
+                connection.execute(
+                    "ALTER TABLE vector_library ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
+                )
+            if "is_standard" not in library_columns:
+                connection.execute(
+                    "ALTER TABLE vector_library ADD COLUMN is_standard INTEGER NOT NULL DEFAULT 0"
+                )
+            if "favorite" not in library_columns:
+                connection.execute(
+                    "ALTER TABLE vector_library ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0"
+                )
+            self._seed_standard_vectors(connection)
+
+    @staticmethod
+    def _seed_standard_vectors(connection: sqlite3.Connection) -> None:
+        """Idempotently install the attributed starter catalogue."""
+        timestamp = utc_now()
+        for vector in STANDARD_VECTORS:
+            sequence = str(vector["sequence"]).upper()
+            fingerprint = hashlib.sha256(sequence.encode("utf-8")).hexdigest()
+            connection.execute(
+                """
+                INSERT INTO vector_library (
+                    id, fingerprint, name, sequence, circular, features_json,
+                    insert_name, notes, metadata_json, is_standard, favorite,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, 1, 0, ?, ?)
+                ON CONFLICT(fingerprint) DO UPDATE SET
+                    metadata_json = excluded.metadata_json,
+                    is_standard = 1
+                """,
+                (
+                    str(vector["id"]),
+                    fingerprint,
+                    str(vector["name"]),
+                    sequence,
+                    1 if vector.get("circular", True) else 0,
+                    json.dumps(vector.get("features") or [], allow_nan=False),
+                    str(vector.get("notes") or ""),
+                    json.dumps(vector.get("metadata") or {}, allow_nan=False),
+                    timestamp,
+                    timestamp,
+                ),
+            )
 
     def create_protein(self, fields: dict[str, Any], sequence: str) -> dict[str, Any]:
         protein_id = str(uuid.uuid4())
@@ -537,8 +598,8 @@ class Database:
                 INSERT INTO expression_vectors (
                     id, protein_id, name, sequence, circular, features_json,
                     primers_json, enzyme_names_json, minimum_orf_amino_acids,
-                    history_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    history_json, library_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     sequence = excluded.sequence,
@@ -548,6 +609,7 @@ class Database:
                     enzyme_names_json = excluded.enzyme_names_json,
                     minimum_orf_amino_acids = excluded.minimum_orf_amino_acids,
                     history_json = excluded.history_json,
+                    library_id = COALESCE(excluded.library_id, expression_vectors.library_id),
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -561,6 +623,7 @@ class Database:
                     json.dumps(vector.get("enzymeNames") or [], allow_nan=False),
                     int(vector.get("minimumOrfAminoAcids") or 50),
                     json.dumps(vector.get("history") or [], allow_nan=False),
+                    vector.get("libraryId"),
                     created_at,
                     timestamp,
                 ),
@@ -571,13 +634,16 @@ class Database:
     # Shared vector library
     # ------------------------------------------------------------------
     def record_vector_use(
-        self, protein_id: str, vector: dict[str, Any]
+        self,
+        protein_id: str,
+        vector: dict[str, Any],
+        source_library_id: str | None = None,
     ) -> dict[str, Any]:
-        """Add or refresh a vector in the catalogue and note this project's use.
+        """Link a project copy to one stable catalogue entry and record its use.
 
-        Naming and saving a vector in a project is what puts it in the
-        catalogue, so every project that reaches for the same construct adds
-        itself to that entry rather than creating a second one.
+        Once a project vector has a source entry, later sequence edits and
+        renames must remain project-local. The legacy-use lookup migrates old
+        databases without republishing an edited sequence.
         """
         sequence = str(vector.get("sequence") or "")
         if not sequence:
@@ -591,18 +657,41 @@ class Database:
                 break
         timestamp = utc_now()
         with self.connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM vector_library WHERE fingerprint = ?",
-                (fingerprint,),
-            ).fetchone()
+            library_id = source_library_id or vector.get("libraryId")
+            if not library_id and vector.get("id"):
+                legacy_use = connection.execute(
+                    """
+                    SELECT library_id FROM vector_library_uses
+                    WHERE protein_id = ? AND vector_id = ?
+                    """,
+                    (protein_id, str(vector["id"])),
+                ).fetchone()
+                if legacy_use is not None:
+                    library_id = legacy_use["library_id"]
+            row = None
+            if library_id:
+                row = connection.execute(
+                    "SELECT * FROM vector_library WHERE id = ?",
+                    (str(library_id),),
+                ).fetchone()
+                if row is None:
+                    raise LookupError(
+                        f"Catalogued vector {library_id!r} was not found"
+                    )
+            else:
+                row = connection.execute(
+                    "SELECT * FROM vector_library WHERE fingerprint = ?",
+                    (fingerprint,),
+                ).fetchone()
             if row is None:
                 library_id = str(uuid.uuid4())
                 connection.execute(
                     """
                     INSERT INTO vector_library (
                         id, fingerprint, name, sequence, circular,
-                        features_json, insert_name, notes, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, '', ?, ?)
+                        features_json, insert_name, notes, metadata_json,
+                        is_standard, favorite, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, '', '{}', 0, 0, ?, ?)
                     """,
                     (
                         library_id,
@@ -618,22 +707,14 @@ class Database:
                 )
             else:
                 library_id = row["id"]
-                connection.execute(
-                    """
-                    UPDATE vector_library
-                    SET name = ?, circular = ?, features_json = ?,
-                        insert_name = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        str(vector.get("name") or row["name"]),
-                        1 if vector.get("circular", True) else 0,
-                        json.dumps(features, allow_nan=False),
-                        insert_name or row["insert_name"],
-                        timestamp,
-                        library_id,
-                    ),
-                )
+            vector_id = str(vector.get("id") or "")
+            connection.execute(
+                """
+                UPDATE expression_vectors SET library_id = ?
+                WHERE id = ? AND protein_id = ?
+                """,
+                (library_id, vector_id, protein_id),
+            )
             connection.execute(
                 """
                 INSERT INTO vector_library_uses (
@@ -646,7 +727,7 @@ class Database:
                 (
                     library_id,
                     protein_id,
-                    str(vector.get("id") or ""),
+                    vector_id,
                     timestamp,
                     timestamp,
                 ),
@@ -660,6 +741,144 @@ class Database:
             ).fetchall()
             return [self._library_vector(connection, row, full=False) for row in rows]
 
+    def search_library_vectors(
+        self,
+        *,
+        query: str = "",
+        filters: dict[str, list[str]] | None = None,
+        favorite: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Search catalogue summaries and compute disjunctive facet counts."""
+        normalized_filters = {
+            key: [value.strip() for value in values if value.strip()]
+            for key, values in (filters or {}).items()
+            if values
+        }
+        folded_filters = {
+            key: [value.casefold() for value in values]
+            for key, values in normalized_filters.items()
+        }
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM vector_library ORDER BY favorite DESC, name COLLATE NOCASE"
+            ).fetchall()
+            records = [
+                self._library_vector(connection, row, full=False) for row in rows
+            ]
+
+        query_value = query.strip().casefold()
+
+        def matches(
+            record: dict[str, Any], ignored_facet: str | None = None
+        ) -> bool:
+            if favorite is not None and record["favorite"] is not favorite:
+                return False
+            if query_value:
+                searchable = " ".join(
+                    str(value)
+                    for key, value in record.items()
+                    if key != "projects"
+                ).casefold()
+                if query_value not in searchable:
+                    return False
+            for facet, selected in folded_filters.items():
+                if facet == ignored_facet:
+                    continue
+                if selected and not set(selected).intersection(
+                    self._facet_values(record, facet)
+                ):
+                    return False
+            return True
+
+        matched = [record for record in records if matches(record)]
+        facets: dict[str, list[dict[str, Any]]] = {}
+        for facet in self.VECTOR_LIBRARY_FACETS:
+            counts: dict[str, int] = {}
+            labels: dict[str, str] = {}
+            for record in records:
+                if not matches(record, ignored_facet=facet):
+                    continue
+                for label in self._facet_labels(record, facet):
+                    folded = label.casefold()
+                    labels.setdefault(folded, label)
+                    counts[folded] = counts.get(folded, 0) + 1
+            facets[facet] = [
+                {"value": labels[value], "count": count}
+                for value, count in sorted(
+                    counts.items(),
+                    key=lambda item: (-item[1], labels[item[0]].casefold()),
+                )
+            ]
+        return {
+            "vectors": matched[offset : offset + limit],
+            "total": len(matched),
+            "limit": limit,
+            "offset": offset,
+            "query": query.strip(),
+            "filters": normalized_filters,
+            "facets": facets,
+        }
+
+    VECTOR_LIBRARY_FACETS = {
+        "host": "host",
+        "promoter": "promoter",
+        "inducer": "inducer",
+        "nTag": "nTags",
+        "cTag": "cTags",
+        "proteaseSite": "proteaseSites",
+        "selectionMarker": "selectionMarker",
+        "origin": "origin",
+        "copyNumber": "copyNumber",
+        "supplier": "supplier",
+    }
+
+    @classmethod
+    def _facet_labels(cls, record: dict[str, Any], facet: str) -> list[str]:
+        key = cls.VECTOR_LIBRARY_FACETS.get(facet)
+        if key is None:
+            return []
+        value = record.get(key)
+        raw_values = value if isinstance(value, list) else [value]
+        return [str(item).strip() for item in raw_values if str(item or "").strip()]
+
+    @classmethod
+    def _facet_values(cls, record: dict[str, Any], facet: str) -> set[str]:
+        return {value.casefold() for value in cls._facet_labels(record, facet)}
+
+    def list_recent_library_vectors(self, limit: int = 10) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT l.*, MAX(u.last_used_at) AS recent_used_at
+                FROM vector_library l
+                JOIN vector_library_uses u ON u.library_id = l.id
+                GROUP BY l.id
+                ORDER BY recent_used_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            records = [
+                self._library_vector(connection, row, full=False) for row in rows
+            ]
+        for record, row in zip(records, rows, strict=True):
+            record["lastUsedAt"] = row["recent_used_at"]
+        return records
+
+    def set_library_favorite(
+        self, library_id: str, favorite: bool
+    ) -> dict[str, Any]:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE vector_library SET favorite = ? WHERE id = ?",
+                (1 if favorite else 0, library_id),
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Catalogued vector {library_id!r} was not found")
+        return self.get_library_vector(library_id)
+
     def get_library_vector(self, library_id: str) -> dict[str, Any]:
         with self.connect() as connection:
             row = connection.execute(
@@ -671,6 +890,10 @@ class Database:
 
     def delete_library_vector(self, library_id: str) -> None:
         with self.connect() as connection:
+            connection.execute(
+                "UPDATE expression_vectors SET library_id = NULL WHERE library_id = ?",
+                (library_id,),
+            )
             cursor = connection.execute(
                 "DELETE FROM vector_library WHERE id = ?", (library_id,)
             )
@@ -692,14 +915,35 @@ class Database:
             (row["id"],),
         ).fetchall()
         features = json.loads(row["features_json"])
+        metadata = _loads(row["metadata_json"], {})
+        metadata_defaults = {
+            "host": [],
+            "promoter": [],
+            "inducer": [],
+            "nTags": [],
+            "cTags": [],
+            "proteaseSites": [],
+            "selectionMarker": "",
+            "origin": "",
+            "copyNumber": "",
+            "supplier": "",
+            "sourceUrl": "",
+            "license": "",
+            "licenseUrl": "",
+        }
+        metadata_defaults.update(metadata)
         record: dict[str, Any] = {
             "id": row["id"],
             "name": row["name"],
             "lengthBp": len(row["sequence"]),
+            "sizeBp": len(row["sequence"]),
             "circular": bool(row["circular"]),
             "featureCount": len(features),
             "insertName": row["insert_name"],
             "notes": row["notes"],
+            **metadata_defaults,
+            "isStandard": bool(row["is_standard"]),
+            "favorite": bool(row["favorite"]),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
             "projects": [
@@ -721,12 +965,57 @@ class Database:
 
     def delete_expression_vector(self, protein_id: str, vector_id: str) -> None:
         with self.connect() as connection:
+            current = connection.execute(
+                """
+                SELECT library_id FROM expression_vectors
+                WHERE protein_id = ? AND id = ?
+                """,
+                (protein_id, vector_id),
+            ).fetchone()
+            if current is None:
+                raise LookupError(f"Expression vector {vector_id!r} was not found")
             cursor = connection.execute(
                 "DELETE FROM expression_vectors WHERE protein_id = ? AND id = ?",
                 (protein_id, vector_id),
             )
             if cursor.rowcount == 0:
                 raise LookupError(f"Expression vector {vector_id!r} was not found")
+            connection.execute(
+                """
+                DELETE FROM vector_library_uses
+                WHERE protein_id = ? AND vector_id = ?
+                """,
+                (protein_id, vector_id),
+            )
+            if current["library_id"]:
+                replacement = connection.execute(
+                    """
+                    SELECT id FROM expression_vectors
+                    WHERE protein_id = ? AND library_id = ?
+                    ORDER BY updated_at DESC LIMIT 1
+                    """,
+                    (protein_id, current["library_id"]),
+                ).fetchone()
+                if replacement is not None:
+                    timestamp = utc_now()
+                    connection.execute(
+                        """
+                        INSERT INTO vector_library_uses (
+                            library_id, protein_id, vector_id,
+                            first_used_at, last_used_at
+                        ) VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(library_id, protein_id) DO UPDATE SET
+                            vector_id = excluded.vector_id,
+                            last_used_at = excluded.last_used_at
+                        """,
+                        (
+                            current["library_id"],
+                            protein_id,
+                            replacement["id"],
+                            timestamp,
+                            timestamp,
+                        ),
+                    )
 
     def get_project_job(self, job_id: str) -> dict[str, Any]:
         with self.connect() as connection:
@@ -1066,6 +1355,7 @@ class Database:
             "enzymeNames": _loads(row["enzyme_names_json"], []),
             "minimumOrfAminoAcids": row["minimum_orf_amino_acids"],
             "history": _loads(row["history_json"], []),
+            "libraryId": row["library_id"],
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
