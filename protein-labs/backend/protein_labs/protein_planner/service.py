@@ -718,6 +718,7 @@ class ProteinPlanner:
             forward_overhang=str(fields.get("forwardOverhang") or ""),
             reverse_overhang=str(fields.get("reverseOverhang") or ""),
             cloning_method=str(fields.get("cloningMethod") or "pcr"),
+            max_five_prime_shift=int(fields.get("maxFivePrimeShift", 0)),
         )
         label = str(fields.get("name") or "PCR").strip()
         primers[0]["name"] = f"{label} forward"
@@ -866,13 +867,25 @@ class ProteinPlanner:
             vector_id = str(item.get("vectorId") or "")
             if vector_id:
                 vector = self.database.get_expression_vector(protein_id, vector_id)
-                digest = simulate_restriction_digest(
-                    vector["sequence"],
-                    circular=bool(vector.get("circular", True)),
-                    enzyme_names=[str(name) for name in (item.get("enzymeNames") or [])],
-                )
                 item["name"] = item.get("name") or vector["name"]
-                item["fragments"] = digest["fragments"]
+                enzyme_names = [str(name) for name in (item.get("enzymeNames") or [])]
+                if enzyme_names:
+                    digest = simulate_restriction_digest(
+                        vector["sequence"],
+                        circular=bool(vector.get("circular", True)),
+                        enzyme_names=enzyme_names,
+                    )
+                    item["fragments"] = digest["fragments"]
+                else:
+                    item["bandSizes"] = [len(vector["sequence"])]
+                    item["uncut"] = {
+                        "sizeBp": len(vector["sequence"]),
+                        "forms": ["supercoiled", "nicked/open-circle", "linear"],
+                        "note": (
+                            "Rendered as one size-equivalent band. Uncut plasmids can show "
+                            "multiple topology-dependent apparent mobilities."
+                        ),
+                    }
             prepared.append(item)
         return simulate_gel(prepared, ladder=str(fields.get("ladder") or "1kb"))
 

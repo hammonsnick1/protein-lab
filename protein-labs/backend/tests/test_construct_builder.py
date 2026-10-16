@@ -116,3 +116,24 @@ def test_out_of_frame_insert_is_padded_back_into_frame():
     reference_start = result["report"]["frame"]["referenceStart"]
     insert_start = result["insertFeature"]["start"] + result["report"]["paddingBases"]
     assert (insert_start - reference_start) % 3 == 0
+
+
+def test_fusion_junction_prefers_explicit_cleavage_site_over_predicted_orf():
+    vector = _vector()
+    vector["features"].append({
+        "id": "auto-orf",
+        "name": "ORF 122 aa",
+        "type": "CDS",
+        "start": 1,
+        "end": 39,
+        "strand": 1,
+        "automatic": True,
+    })
+
+    junction = next(
+        site for site in insertion_sites(vector)
+        if site["kind"] == "fusion-junction" and "TEV site" in site["label"]
+    )
+
+    assert junction["frame"]["referenceName"] == "TEV site"
+    assert junction["frame"]["inFrame"] is True

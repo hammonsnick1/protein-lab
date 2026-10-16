@@ -545,6 +545,7 @@ def normalize_primers(primers: Any, sequence_length: int) -> list[dict[str, Any]
             "withinGcLimits": primer.get("withinGcLimits"),
             "selfDimer": primer.get("selfDimer"),
             "heteroDimer": primer.get("heteroDimer"),
+            "fivePrimeShiftBases": int(primer.get("fivePrimeShiftBases", 0)),
             **metrics,
         })
     return cleaned
