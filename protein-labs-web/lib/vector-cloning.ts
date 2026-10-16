@@ -52,7 +52,10 @@ export function previewInsert(
   if (site.frame && !site.frame.inFrame && !padding) warnings.push({ level: "error", message: `${site.frame.offset} nt out of frame with ${site.frame.referenceName}; the fusion will not translate.` });
   if (padding) warnings.push({ level: "info", message: `${padding.length} G base${padding.length === 1 ? "" : "s"} added to restore the frame with ${site.frame?.referenceName}.` });
   if (!site.frame) warnings.push({ level: "info", message: "No upstream reading frame was found to check the junction against." });
-  if (lostFeatures.length) warnings.push({ level: "warning", message: `Replaced backbone feature${lostFeatures.length === 1 ? "" : "s"}: ${lostFeatures.join(", ")}.` });
+  if (lostFeatures.length) {
+    const verb = stop > start ? "Replaces" : "Interrupts";
+    warnings.push({ level: "warning", message: `${verb} backbone feature${lostFeatures.length === 1 ? "" : "s"} ${lostFeatures.join(", ")}; ${lostFeatures.length === 1 ? "its annotation is" : "their annotations are"} dropped.` });
+  }
 
   return {
     sequence: sequence.slice(0, start) + insert + sequence.slice(stop),

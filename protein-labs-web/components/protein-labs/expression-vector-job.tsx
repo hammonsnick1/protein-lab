@@ -59,7 +59,7 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
   const [redo, setRedo] = useState<VectorRecord[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
   // Enzymes, gel and primers.
-  const [enzymeRows, setEnzymeRows] = useState<EnzymeRow[] | null>(null);
+  const [rawEnzymeRows, setEnzymeRows] = useState<EnzymeRow[] | null>(null);
   const [enzymeLoading, setEnzymeLoading] = useState(false);
   const [enzymeError, setEnzymeError] = useState("");
   const [insertChecked, setInsertChecked] = useState(false);
@@ -103,6 +103,11 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
   // ---- The construct as every view sees it -------------------------------------------------
   const features = useMemo<MapFeature[]>(() => draft.features.map(mapFeature), [draft.features]);
   const recordCuts = useMemo(() => cutSitesFromRecord(draft.restrictionSites, length), [draft.restrictionSites, length]);
+  const mcs = useMemo(() => locateMcs(features, recordCuts, length), [features, recordCuts, length]);
+  // "Flanks the MCS" means a unique cutter in or just beside the cloning region,
+  // which is what a cloner looks for. (The engine's flag requires sites on both
+  // sides, which only multi-cutters can satisfy; raised on HOM-49.)
+  const enzymeRows = useMemo(() => rawEnzymeRows?.map((row) => ({ ...row, mcsFlanking: row.uniqueCutter && !!mcs && row.cutPositions.some((position) => position - 1 >= mcs.start - 40 && position - 1 <= mcs.end + 40) })) ?? null, [rawEnzymeRows, mcs]);
   const allCuts = useMemo(() => enzymeRows ? cutSitesFromEnzymeRows(enzymeRows, length) : recordCuts, [enzymeRows, recordCuts, length]);
   const shownCuts = useMemo(() => {
     if (siteMode === "none") return [];
@@ -302,7 +307,7 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
     const saved = await savedRecord();
     if (!saved || !lanes.length) return;
     setGelLoading(true); setGelError("");
-    try { setGel(await proteinLabsApi.simulateGel(bundle.protein.id, ladder, lanes.map((lane) => ({ id: lane.id, name: lane.name, vectorId: saved.id, enzymeNames: lane.enzymeNames })))); }
+    try { setGel(await proteinLabsApi.simulateGel(bundle.protein.id, ladder, lanes.map((lane) => lane.enzymeNames.length ? { id: lane.id, name: lane.name, vectorId: saved.id, enzymeNames: lane.enzymeNames } : { id: lane.id, name: `${lane.name} (full length)`, bandSizes: [saved.sequence.length] }))); }
     catch (reason) { setGelError(`The gel could not be simulated: ${errorText(reason)}`); }
     finally { setGelLoading(false); }
   }
