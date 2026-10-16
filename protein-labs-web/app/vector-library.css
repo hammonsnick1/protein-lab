@@ -1,0 +1,318 @@
+/* Vector library: one search over the catalogue and public collections,
+   facets on the left, results in the middle, a preview card on the right.
+   Used as a full page and, inside Expression vector design, as a dialog. */
+
+.vlib {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.vlib-page {
+  max-width: 1560px;
+  height: calc(100vh - 62px);
+  margin: 0 auto;
+  padding: 22px clamp(18px, 3vw, 40px) 22px;
+}
+.vlib-dialog {
+  width: min(1320px, 100%);
+  height: min(90vh, 920px);
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: 0 18px 60px color-mix(in srgb, #000 35%, transparent);
+}
+
+.vl-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: none; }
+.vl-header h1 { margin: 4px 0 2px; font-size: 24px; letter-spacing: -0.01em; }
+.vlib-dialog .vl-header h1 { font-size: 19px; }
+.vl-header p { margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
+.vl-header-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Search box and per-source status */
+.vl-searchbar { display: flex; flex-direction: column; gap: 9px; flex: none; }
+.vl-query {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: 1px solid var(--input);
+  border-radius: 10px;
+  background: var(--background);
+}
+.vl-query:focus-within { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 22%, transparent); }
+.vl-query > svg { width: 16px; height: 16px; color: var(--muted-foreground); flex: none; }
+.vl-query input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--foreground); font-size: 14px; outline: none; }
+.vl-query button { display: grid; place-items: center; border: 0; background: none; color: var(--muted-foreground); cursor: pointer; }
+.vl-query button svg { width: 14px; height: 14px; }
+.vl-query kbd, .desktop-menu-popover kbd {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font: 10.5px/1.5 ui-monospace, monospace;
+  color: var(--muted-foreground);
+}
+.vl-sources { display: flex; flex-wrap: wrap; gap: 7px; }
+.vl-source {
+  --status: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--status);
+  border-radius: 8px;
+  background: var(--background);
+  font-size: 11.5px;
+}
+.vl-source > button { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.vl-source svg { width: 13px; height: 13px; color: var(--status); }
+.vl-source strong { font-weight: 650; }
+.vl-source small { color: var(--muted-foreground); font-size: 11px; }
+.vl-source select { max-width: 170px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 5px; background: var(--card); color: var(--foreground); font-size: 11px; }
+.vl-source.status-done { --status: #1f8a4c; }
+.vl-source.status-searching, .vl-source.status-slow { --status: #c98a12; }
+.vl-source.status-offline, .vl-source.status-error { --status: #c0392b; }
+.vl-source.status-off { opacity: .55; }
+.vl-source.status-off small { text-decoration: none; }
+
+.vl-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+  font-size: 12.5px;
+}
+.vl-banner.failure { background: color-mix(in srgb, #e5533d 13%, transparent); }
+.vl-banner > svg { width: 15px; height: 15px; flex: none; color: var(--primary); }
+.vl-banner.failure > svg { color: #c0392b; }
+.vl-banner > span { flex: 1; min-width: 0; }
+.vl-banner > button:last-child { display: grid; place-items: center; border: 0; background: none; color: var(--muted-foreground); cursor: pointer; }
+.vl-banner > button:last-child svg { width: 14px; height: 14px; }
+
+/* Three columns; the middle one gives way first on narrow windows. */
+.vl-body {
+  display: grid;
+  grid-template-columns: 228px minmax(380px, 1fr) minmax(330px, 380px);
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+.vl-facets, .vl-results, .vl-preview { min-height: 0; overflow-y: auto; }
+
+.vl-facets { display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+.vl-facets-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
+.vl-facets-head button { border: 0; background: none; color: var(--primary); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.vl-facet { margin: 0; padding: 0; border: 0; min-width: 0; }
+.vl-facet legend { margin-bottom: 4px; padding: 0; font-size: 10.5px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-foreground); }
+.vl-facet-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.vl-facet-option:hover { background: var(--muted); }
+.vl-facet-option input { flex: none; accent-color: var(--primary); }
+.vl-facet-option span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl-facet-option em { flex: none; font-style: normal; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+.vl-facet-option.empty span { color: var(--muted-foreground); }
+.vl-favorites-only svg { width: 13px; height: 13px; color: #d4a017; flex: none; }
+.vl-facet-more { border: 0; padding: 2px 4px; background: none; color: var(--primary); font-size: 11.5px; cursor: pointer; }
+
+.vl-results { display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.vl-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 4px; font-size: 12.5px; }
+.vl-section-head small { color: var(--muted-foreground); font-size: 11.5px; }
+
+.vl-pinned { display: flex; flex-direction: column; gap: 8px; }
+.vl-pinned-strip { display: flex; flex-direction: column; gap: 5px; }
+.vl-pinned-title { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-foreground); }
+.vl-pinned-title svg { width: 12px; height: 12px; }
+.vl-pinned-strip > div { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; }
+.vl-pinned-strip button {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 132px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vl-pinned-strip button.selected { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.vl-pinned-strip strong { font-size: 12px; }
+.vl-pinned-strip small { font-size: 11px; color: var(--muted-foreground); }
+
+.vl-list { display: flex; flex-direction: column; gap: 5px; }
+.vl-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--background);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.vl-row:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.vl-row[aria-selected="true"] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 9%, var(--background)); box-shadow: inset 3px 0 0 var(--primary); }
+.vl-row:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.vl-row-size { display: flex; flex-direction: column; align-items: center; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.vl-row-size small { font-size: 9.5px; font-weight: 600; color: var(--muted-foreground); }
+.vl-row-main { display: flex; flex-direction: column; min-width: 0; }
+.vl-row-main strong { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+.vl-row-main small, .vl-row-meta small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--muted-foreground); }
+.vl-row-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; max-width: 170px; min-width: 0; }
+.vl-row-meta em {
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-style: normal;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.vl-row-meta em.standard { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); color: var(--primary); }
+.vl-star { width: 12px; height: 12px; color: #d4a017; fill: #d4a017; }
+.vl-card .vl-star { width: 17px; height: 17px; fill: none; color: var(--muted-foreground); }
+.vl-card .vl-star.filled { fill: #d4a017; color: #d4a017; }
+
+.vl-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+  color: var(--muted-foreground);
+}
+.vl-empty > svg { width: 18px; height: 18px; flex: none; }
+.vl-empty > span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.vl-empty strong { font-size: 12.5px; color: var(--foreground); }
+.vl-empty small { font-size: 11.5px; line-height: 1.45; }
+.vl-empty.failure { border-style: solid; border-color: color-mix(in srgb, #e5533d 40%, var(--border)); }
+.vl-empty.failure > svg { color: #c0392b; }
+
+.vl-source-note { display: flex; align-items: flex-start; gap: 9px; padding: 8px 11px; border-radius: 8px; background: color-mix(in srgb, #e5533d 9%, transparent); }
+.vl-source-note.status-slow { background: color-mix(in srgb, #c98a12 10%, transparent); }
+.vl-source-note > svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.vl-source-note > span { display: flex; flex-direction: column; min-width: 0; }
+.vl-source-note strong { font-size: 12px; }
+.vl-source-note small { font-size: 11.5px; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.vl-external-group { display: flex; flex-direction: column; gap: 5px; }
+.vl-external-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; }
+.vl-external-head svg { width: 13px; height: 13px; color: var(--muted-foreground); }
+.vl-external-head small { margin-left: auto; font-weight: 400; color: var(--muted-foreground); }
+.vl-row.external .vl-row-meta em { color: var(--foreground); }
+
+/* Preview card */
+.vl-preview { display: flex; flex-direction: column; }
+.vl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.vlib-dialog .vl-card { background: var(--background); }
+.vl-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.vl-card > header > span { display: flex; flex-direction: column; min-width: 0; }
+.vl-card > header strong { font-size: 16px; overflow-wrap: anywhere; }
+.vl-card > header small { font-size: 11.5px; color: var(--muted-foreground); }
+.vl-card-map { display: grid; place-items: center; min-height: 200px; }
+.vl-minimap { width: 220px; height: 220px; }
+.vl-minimap-backbone { fill: none; stroke: var(--foreground); stroke-width: 1.4; opacity: .55; }
+.vl-minimap-tick { stroke: var(--foreground); stroke-width: 1; opacity: .4; }
+.vl-minimap-feature { fill: none; stroke-width: 7; stroke-linecap: butt; }
+.vl-minimap-feature:hover { stroke-width: 9; }
+.vl-minimap-name { fill: var(--foreground); font-size: 13px; font-weight: 700; text-anchor: middle; }
+.vl-minimap-size { fill: var(--muted-foreground); font-size: 11px; text-anchor: middle; font-variant-numeric: tabular-nums; }
+.vl-map-placeholder { display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: 220px; text-align: center; color: var(--muted-foreground); font-size: 11.5px; }
+.vl-map-placeholder svg { width: 22px; height: 22px; }
+
+.vl-key-features { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.vl-key-features li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; }
+.vl-key-features i { width: 10px; height: 10px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent); }
+.vl-key-features span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl-key-features small { font-size: 10.5px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+
+.vl-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 12px; margin: 0; padding-top: 10px; border-top: 1px solid var(--border); }
+.vl-facts div { min-width: 0; }
+.vl-facts dt { font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; color: var(--muted-foreground); }
+.vl-facts dd { margin: 1px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+
+.vl-provenance { display: flex; flex-direction: column; gap: 3px; padding: 9px 10px; border-radius: 8px; background: var(--muted); font-size: 11.5px; }
+.vl-provenance strong { font-size: 10px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; color: var(--muted-foreground); }
+.vl-provenance small { line-height: 1.45; color: var(--muted-foreground); }
+.vl-provenance a { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); overflow-wrap: anywhere; }
+.vl-provenance a svg { width: 11px; height: 11px; flex: none; }
+
+.vl-card > footer { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+.vl-card > footer > div { display: flex; justify-content: flex-end; gap: 7px; }
+.vl-target { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted-foreground); }
+.vl-target select { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--background); color: var(--foreground); font-size: 12px; }
+.vl-target-empty, .vl-card-hint { font-size: 11.5px; color: var(--muted-foreground); }
+.vl-external-description { margin: 0; font-size: 12px; line-height: 1.5; }
+
+.vl-preview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 100%;
+  min-height: 240px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.vl-preview-empty svg { width: 22px; height: 22px; }
+.vl-preview-empty strong { font-size: 13px; color: var(--foreground); }
+.vl-preview-empty small { font-size: 11.5px; }
+
+/* Drag and drop */
+.vl-drop {
+  position: absolute;
+  inset: 8px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--primary);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.vl-drop svg { width: 30px; height: 30px; color: var(--primary); }
+.vl-drop strong { font-size: 16px; }
+.vl-drop small { font-size: 12px; color: var(--muted-foreground); }
+
+.topbar-vector-library svg { width: 15px; height: 15px; }
+
+@media (max-width: 1360px) {
+  .vl-body { grid-template-columns: 200px minmax(320px, 1fr) 330px; }
+}
+
+/* Buttons here sit at the dashboard's compact size, not the page default. */
+.vlib [data-slot="button"], .topbar-vector-library { font-size: 12.5px; }
