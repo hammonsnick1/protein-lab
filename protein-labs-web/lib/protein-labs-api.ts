@@ -47,7 +47,36 @@ export type ProteinBundle = {
   projectNotebook: { title: string; summary: string; sections: JsonObject[]; updatedAt: string } | null;
 };
 
-export type BackendHealth = { service: string; version: number; apps: string[]; database: string };
+// Shapes returned by the vector engine (HOM-49). Coordinates are zero-based, half-open.
+export type StructureScreen = { longestComplementaryRun: number; complementaryMotif: string; threePrimeComplementarity: number; risk: "low" | "moderate" | "high"; method: string; limitation: string };
+export type DesignedPrimer = {
+  id: string; name: string; sequence: string; annealingSequence: string; overhang: string;
+  start: number; end: number; strand: number; cloningMethod: string;
+  length: number; totalLength: number; gcPercent: number; tmCelsius: number; tmMethod: string;
+  conditions: Record<string, number>; hairpin: StructureScreen; selfDimer: StructureScreen; heteroDimer: StructureScreen;
+  targetTmCelsius: number; tmDeltaCelsius: number; withinGcLimits: boolean;
+};
+export type PrimerDesignRequest = {
+  name: string; start: number; end: number; targetTmCelsius: number; minLength: number; maxLength: number;
+  minGcPercent: number; maxGcPercent: number; cloningMethod: string; forwardOverhang: string; reverseOverhang: string;
+};
+export type EnzymeRow = {
+  enzyme: string; recognitionSite: string; cutPositions: number[]; cutCount: number; insertCutCount: number;
+  uniqueCutter: boolean; twoCutter: boolean; absentFromInsert: boolean; mcsFlanking: boolean;
+  suppliers: string[]; methylationSensitive: string[]; end: { polarity: "blunt" | "5-prime" | "3-prime"; sequence: string };
+};
+export type EnzymeSets = { enzymes: EnzymeRow[]; sets: { uniqueCutters: string[]; twoCutters: string[]; mcsFlanking: string[]; absentFromInsert: string[] }; supplierFilter: string | null };
+export type CloningMethod = "restriction-ligation" | "gibson" | "in-fusion" | "gateway-bp" | "gateway-lr";
+export type CloningWarning = { code: string; message: string };
+export type CloningPreview = {
+  method: string;
+  product: { sequence: string; circular: boolean; features: JsonObject[] } | null;
+  junctions: JsonObject[]; warnings: CloningWarning[]; lostFeatures?: string[];
+};
+export type GelLane = { id: string; name: string; kind: "ladder" | "sample"; bands: { sizeBp: number; relativeMass: number }[] };
+export type GelResult = { ladder: string; lanes: GelLane[]; migrationModel: string; sizeUnit: string };
+
+export type BackendHealth ={ service: string; version: number; apps: string[]; database: string };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -99,10 +128,14 @@ export const proteinLabsApi = {
   vectorSourceSets: (source: string) => request<{ sets: JsonObject[] }>(`/v1/protein-planner/vector-sources/sets?source=${encodeURIComponent(source)}`),
   searchVectorSources: (source: string, query: string, set = "", limit = 25) => post<{ results: JsonObject[] }>("/v1/protein-planner/vector-sources/search", { source, query, set, limit }),
   loadVectorFromSource: (proteinId: string, source: string, identifier: string, set = "", name = "") => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/load`, { source, identifier, set, name }),
-  exportVector: (proteinId: string, vectorId: string, format: "genbank" | "fasta") => request<{ filename: string; content: string }>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/export?format=${format}`),
+  exportVector: (proteinId: string, vectorId: string, format: "genbank" | "fasta" | "snapgene") => request<{ filename: string; content: string; encoding?: "text" | "base64" }>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/export?format=${format}`),
   assembleVectors: (proteinId: string, name: string, vectorIds: string[], minimumOverlap: number, circular: boolean) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/assemble`, { name, vectorIds, minimumOverlap, circular }),
   autoAnnotateVector: (proteinId: string, vectorId: string, minimumOrfAminoAcids = 50, includeOrfs = true) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/auto-annotate`, { minimumOrfAminoAcids, includeOrfs }),
   designVectorPrimers: (proteinId: string, vectorId: string, name: string, start: number, end: number, primerLength: number) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/primers`, { name, start, end, primerLength }),
+  designTmPrimers: (proteinId: string, vectorId: string, request: PrimerDesignRequest) => post<JsonObject & { designedPrimers?: DesignedPrimer[] }>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/primers`, request as unknown as JsonObject),
+  vectorEnzymeSets: (proteinId: string, vectorId: string, fields: { enzymeNames?: string[]; insertSequence?: string; insertVectorId?: string; mcs?: { start: number; end: number } | null; supplier?: string }) => post<EnzymeSets>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/enzyme-sets`, fields as JsonObject),
+  cloningPreview: (proteinId: string, fields: { method: CloningMethod; backboneVectorId: string; insertVectorId: string } & JsonObject) => post<CloningPreview>(`/v1/protein-planner/proteins/${proteinId}/vectors/cloning-preview`, fields),
+  simulateGel: (proteinId: string, ladder: "1kb" | "100bp", lanes: { id: string; name: string; vectorId?: string; enzymeNames?: string[]; bandSizes?: number[] }[]) => post<GelResult>(`/v1/protein-planner/proteins/${proteinId}/vectors/gel`, { ladder, lanes }),
   editVectorSequence: (proteinId: string, vectorId: string, operation: string, start: number, end: number, replacement = "") => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/edit`, { operation, start, end, replacement }),
   constructHosts: () => request<{ hosts: JsonObject[] }>("/v1/protein-planner/construct-hosts"),
   backTranslate: (protein: string, host: string, avoidEnzymes: string[] = []) => post<JsonObject>("/v1/protein-planner/back-translate", { protein, host, avoidEnzymes }),
