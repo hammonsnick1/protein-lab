@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { dedupeSites, previewInsert } from "./vector-cloning.ts";
+import { dedupeSites, junctionSegments, previewInsert } from "./vector-cloning.ts";
 
 const backbone = {
   sequence: "AAAAACCCCCGGGGGTTTTT",
@@ -61,5 +61,34 @@ describe("dedupeSites", () => {
       { id: "3", label: "SmaI site", start: 1071, end: 1071, strand: 1, replaceRegion: false },
     ];
     assert.deepEqual(dedupeSites(sites).map((site) => site.id), ["2", "3"]);
+  });
+});
+
+describe("junctionSegments", () => {
+  const site = (strand: number) => ({ start: 10, end: 10, strand, replaceRegion: false, frame: { inFrame: false, offset: 1, padding: 2, referenceName: "6xHis" } });
+
+  it("shows forward padding before the insert, matching the product", () => {
+    const preview = previewInsert(backbone, site(1), "ATGAAATAA", { keepFrame: true, name: "T" });
+    const segments = junctionSegments(preview, 1);
+    assert.deepEqual(segments.map((segment) => segment.kind), ["backbone", "padding", "insert", "backbone"]);
+    assert.equal(segments.map((segment) => segment.text).join(""), preview.sequence);
+    assert.equal(segments[2].text, "ATGAAATAA");
+  });
+
+  it("shows reverse-strand padding after the reverse-complemented insert", () => {
+    const preview = previewInsert(backbone, site(-1), "ATGAAATAA", { keepFrame: true, name: "T" });
+    const segments = junctionSegments(preview, -1);
+    assert.deepEqual(segments.map((segment) => segment.kind), ["backbone", "insert", "padding", "backbone"]);
+    // Every base of the product appears once, in order, with nothing skipped.
+    assert.equal(segments.map((segment) => segment.text).join(""), preview.sequence);
+    assert.equal(segments[1].text, "TTATTTCAT");
+    assert.equal(segments[2].text, "GG");
+  });
+
+  it("elides the middle of a long insert without dropping its ends", () => {
+    const insert = "ATG" + "GCT".repeat(20) + "TAA";
+    const preview = previewInsert(backbone, { ...site(1), frame: null }, insert, { keepFrame: true, name: "T" });
+    const inserts = junctionSegments(preview, 1, 18, 6).filter((segment) => segment.kind === "insert").map((segment) => segment.text);
+    assert.deepEqual(inserts, [insert.slice(0, 6), insert.slice(-6)]);
   });
 });
