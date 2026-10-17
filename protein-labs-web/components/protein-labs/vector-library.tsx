@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CircleAlert, Clock, Database, Download, ExternalLink, FileInput, Globe, LoaderCircle, Search, Star, Upload, WifiOff, X } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Clock, Database, Download, ExternalLink, FileInput, Globe, LoaderCircle, Search, Star, Upload, WifiOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { JsonObject, ProteinRecord } from "@/lib/protein-labs-api";
 import { fileToBase64, proteinLabsApi } from "@/lib/protein-labs-api";
@@ -315,6 +315,7 @@ export function VectorLibrary({
     const rejected = files.filter((file) => !importEncoding(file.name));
     if (rejected.length) { setFailure(`${rejected.map((file) => file.name).join(", ")} is not a sequence file. Drop GenBank (.gb, .gbk), FASTA (.fa, .fasta) or SnapGene (.dna) files.`); return; }
     const imported: string[] = [];
+    const duplicates: string[] = [];
     for (const file of files) {
       setBusy(`import:${file.name}`);
       try {
@@ -326,12 +327,16 @@ export function VectorLibrary({
           return;
         }
         const vector = await proteinLabsApi.importLibraryVector(file.name, content);
-        imported.push(vector.duplicate ? `${String(vector.name)} (already in the library)` : String(vector.name));
+        (vector.duplicate ? duplicates : imported).push(String(vector.name));
         setSelection({ kind: "local", id: String(vector.id) });
       } catch (reason) { setFailure(`${file.name} could not be imported: ${message(reason)}`); }
       finally { setBusy(""); }
     }
-    if (imported.length) { setNotice({ text: `Imported ${imported.join(", ")}.` }); setReload((value) => value + 1); }
+    const parts = [
+      imported.length ? `Imported ${imported.join(", ")}.` : "",
+      duplicates.length ? `${duplicates.join(", ")} ${duplicates.length === 1 ? "is" : "are"} already in the library with the same sequence, so no copy was made.` : "",
+    ].filter(Boolean);
+    if (parts.length) { setNotice({ text: parts.join(" ") }); setReload((value) => value + 1); }
   }
 
   const dropHandlers = {
@@ -387,7 +392,7 @@ export function VectorLibrary({
     </div>
 
     {(notice || failure) && <div className={`vl-banner ${failure ? "failure" : ""}`} role="status">
-      {failure ? <CircleAlert/> : <Star/>}
+      {failure ? <CircleAlert/> : <Check/>}
       <span>{failure || notice?.text}</span>
       {!failure && notice?.proteinId && onOpenProject && <Button size="sm" variant="outline" onClick={() => onOpenProject(notice.proteinId!)}>Open in Expression vector design <ArrowRight/></Button>}
       <button onClick={() => { setFailure(""); setNotice(null); }} aria-label="Dismiss"><X/></button>
@@ -609,7 +614,7 @@ function LocalPreview({ vector, detail, busy, mode, proteins, projectId, targetI
 
     <div className="vl-provenance">
       <strong>Source and licence</strong>
-      {vector.sourceUrl ? <a href={vector.sourceUrl} target="_blank" rel="noreferrer">{shortUrl(vector.sourceUrl)} <ExternalLink/></a> : <small>{vector.isStandard ? "Source not recorded" : "Saved from a project in this workspace"}</small>}
+      {vector.sourceUrl ? <a href={vector.sourceUrl} target="_blank" rel="noreferrer">{shortUrl(vector.sourceUrl)} <ExternalLink/></a> : <small>{vector.isStandard ? "Source not recorded" : vector.projectCount ? "Saved from a project in this workspace" : "Added to this workspace's library"}</small>}
       {vector.license && <small>{vector.license}{vector.licenseUrl && <> <a href={vector.licenseUrl} target="_blank" rel="noreferrer">Terms <ExternalLink/></a></>}</small>}
     </div>
 
