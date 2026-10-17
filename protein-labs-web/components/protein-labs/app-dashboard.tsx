@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, ArrowRight, BarChart3, CalendarDays, ChevronLeft, ChevronRight,
-  Clock3, Dna, ExternalLink, FlaskConical, FolderKanban, GitBranch, Pencil, Plus,
-  Database, FileText, RotateCcw, RotateCw, Search, Send, Sparkles, Trash2, UserPlus, Users, X,
+  Activity, ArrowRight, CalendarDays, ChevronLeft, ChevronRight,
+  Clock3, ExternalLink, FlaskConical, FolderKanban, GitBranch, Pencil, Plus,
+  Database, FileText, Search, Send, Sparkles, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DashboardStats, type BundlesState } from "@/components/protein-labs/dashboard-stats";
+import { FlipTile, TileHeadline } from "@/components/protein-labs/dashboard-flip-tile";
 import type { ProteinBundle, ProteinRecord } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import type { SavedProjectTree } from "@/lib/project-trees";
@@ -41,11 +43,19 @@ type TeamMember = { id: string; name: string; email: string; role: "Member" | "R
 type Profile = { name: string; googleEmail: string; googleConnected: boolean };
 
 const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleConnected: false };
+// The companion stays out of the way until the researcher asks for it.
+const MASCOT_VISIBLE_KEY = "protein-labs-mascot-visible";
+const reportPages = ["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"];
 
 export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onCreate }: { proteins: ProteinRecord[]; trees: SavedProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onCreate: () => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
+  // Which project list the bundles were loaded for, so a newer list reads as loading.
+  const [bundlesLoad, setBundlesLoad] = useState<{ source: ProteinRecord[]; state: BundlesState } | null>(null);
+  const [vectors, setVectors] = useState<LibraryVector[]>([]);
+  const [vectorsState, setVectorsState] = useState<BundlesState>("loading");
   const [mascotId, setMascotId] = useState("bacteria");
+  const [mascotVisible, setMascotVisible] = useState(false);
   const [picker, setPicker] = useState(false);
   const [profile, setProfile] = useState<Profile>(defaultProfile);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -67,8 +77,10 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 60_000); return () => window.clearInterval(timer); }, []);
   useEffect(() => {
     const savedMascot = localStorage.getItem("protein-labs-mascot");
+    const savedVisible = localStorage.getItem(MASCOT_VISIBLE_KEY) === "true";
     queueMicrotask(() => {
       if (savedMascot && mascots.some((item) => item.id === savedMascot)) setMascotId(savedMascot);
+      setMascotVisible(savedVisible);
       setProfile(readStored("protein-labs-profile", defaultProfile));
       setMembers(readStored<TeamMember[]>("protein-labs-team", []));
       setEvents(readStored<TimelineEvent[]>("protein-labs-purification-timeline", []));
@@ -76,15 +88,28 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   }, []);
   useEffect(() => {
     let active = true;
-    Promise.all(proteins.map((protein) => proteinLabsApi.getProtein(protein.id))).then((values) => { if (active) setBundles(values); }).catch(() => undefined);
+    // Projects that fail to load are left out; the stats column says the
+    // job counts are incomplete rather than showing them as zero.
+    Promise.allSettled(proteins.map((protein) => proteinLabsApi.getProtein(protein.id))).then((results) => {
+      if (!active) return;
+      setBundles(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
+      setBundlesLoad({ source: proteins, state: results.some((result) => result.status === "rejected") ? "error" : "ready" });
+    });
     return () => { active = false; };
   }, [proteins]);
+  useEffect(() => {
+    let active = true;
+    proteinLabsApi.vectorLibrary()
+      .then((value) => { if (active) { setVectors(value.vectors as unknown as LibraryVector[]); setVectorsState("ready"); } })
+      .catch(() => { if (active) setVectorsState("error"); });
+    return () => { active = false; };
+  }, []);
 
   const mascot = mascots.find((item) => item.id === mascotId) ?? mascots[0];
+  const bundlesState: BundlesState = bundlesLoad?.source === proteins ? bundlesLoad.state : "loading";
   const roots = proteins;
   const treeStats = projectTreeStats(trees);
   const activeProjectId = selectedProject || roots[0]?.id || "";
-  const purifiedRoots = useMemo(() => new Set(bundles.filter((bundle) => bundle.projectJobs.some((job) => job.status === "complete" && ["purification-workflow", "chromatogram-studio", "gel-analysis"].includes(job.appType))).map((bundle) => bundle.protein.id)).size, [bundles]);
   const completedJobs = bundles.flatMap((bundle) => bundle.projectJobs).filter((job) => job.status === "complete").length;
   const totalJobs = bundles.reduce((sum, bundle) => sum + bundle.projectJobs.length, 0);
   const projectIdsInTrees = new Set(trees.flatMap((tree) => [tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]));
@@ -107,10 +132,13 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
       recent: [...jobs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4),
     };
   }, [bundles]);
-  const residuesPlanned = proteins.reduce((sum, protein) => sum + protein.sequence.length, 0);
+  const latestProjects = useMemo(() => [...proteins].sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? "")), [proteins]);
+  const activeProject = roots.find((protein) => protein.id === activeProjectId);
+  const vectorProjects = new Set(vectors.flatMap((vector) => vector.projects.map((use) => use.proteinId))).size;
   const cells = useMemo(() => calendarCells(calendarMonth), [calendarMonth]);
   const selectedEvents = events.filter((event) => event.date === selectedDate).sort((a, b) => a.title.localeCompare(b.title));
 
+  function showMascot(value: boolean) { setMascotVisible(value); if (!value) setPicker(false); localStorage.setItem(MASCOT_VISIBLE_KEY, String(value)); }
   function chooseMascot(id: string) { setMascotId(id); localStorage.setItem("protein-labs-mascot", id); setPicker(false); }
   function openProfile() { setProfileName(profile.name); setGoogleEmail(profile.googleEmail); setProfileOpen(true); }
   function saveProfile() {
@@ -158,62 +186,80 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
     setNotice(`${filename} was downloaded, copied, and an email draft for ${member.name} was opened. Attach the downloaded file before sending.`);
   }
 
+  const projectSelect = (label: string, empty = "No projects yet") => <label className="dashboard-project-select">{label}<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">{empty}</option>}</select></label>;
+
   return <main className="suite-dashboard">
     <div className="dashboard-shell-grid">
-    <DashboardMascot
-      mascotId={mascotId}
-      pickerOpen={picker}
-      onTogglePicker={() => setPicker((value) => !value)}
-      onChoose={chooseMascot}
-      cheers={companionCheers(roots.length, completedJobs, totalJobs, upcoming.length)}
-      stats={{
-        purified: purifiedRoots,
-        completedJobs,
-        openJobs: Math.max(0, totalJobs - completedJobs),
-        totalJobs,
-        projects: proteins.length,
-        residues: residuesPlanned,
-        hours: workspaceHours,
-        upcoming: upcoming.length,
-        nextItem: upcoming[0] ? `${upcoming[0].title} · ${formatCalendarDate(upcoming[0].date)}` : "",
-        trees: treeStats.trees,
-        branches: treeStats.branches,
-        linked: projectIdsInTrees.size,
-        collaborators: members.length,
-      }}
-    />
+    <DashboardStats proteins={proteins} bundles={bundles} state={bundlesState} hours={workspaceHours}>
+      {mascotVisible && <DashboardMascot
+        mascotId={mascotId}
+        pickerOpen={picker}
+        onTogglePicker={() => setPicker((value) => !value)}
+        onChoose={chooseMascot}
+        onHide={() => showMascot(false)}
+        cheers={companionCheers(roots.length, completedJobs, totalJobs, upcoming.length)}
+      />}
+    </DashboardStats>
     <div className="dashboard-content-column">
     <section className="dashboard-welcome dashboard-card">
       <div className="dashboard-greeting"><div><span className="eyebrow">PROTEIN LAB · LOCAL WORKSPACE</span><h1>{greeting(now)}, {profile.name || "Researcher"}.</h1><p>Plan the next experiment, review active work, and keep the purification team synchronized.</p></div></div>
-      <div className="dashboard-welcome-actions"><LiveClock/><Button variant="outline" size="sm" onClick={openProfile}><Pencil/> Profile</Button></div>
+      <div className="dashboard-welcome-actions">
+        <LiveClock/>
+        <Button size="sm" onClick={onCreate}><Plus/> New project</Button>
+        <Button variant="outline" size="sm" onClick={openProfile}><Pencil/> Profile</Button>
+        <Button variant="outline" size="icon" className={`mascot-toggle ${mascotVisible ? "is-on" : ""}`} aria-pressed={mascotVisible} onClick={() => showMascot(!mascotVisible)} title={mascotVisible ? "Hide your lab companion" : "Show your lab companion"} aria-label={mascotVisible ? "Hide lab companion" : "Show lab companion"}><span aria-hidden="true">{mascot.emoji}</span></Button>
+      </div>
     </section>
 
     {notice && <div className="dashboard-notice"><Sparkles/><span>{notice}</span><button onClick={() => setNotice("")}><X/></button></div>}
 
     <div className="dashboard-board">
-      {/* Each column stacks its own cards: fixed cards keep their natural
-          height and the list cards share what is left, so no card is cut off. */}
+      {/* Each tile shows an overview and flips to its full list. In a column
+          the flipped tile takes the spare height and its back scrolls. */}
       <div className="dashboard-board-column">
-        <article className="dashboard-card dashboard-project-overview-card">
-          <CardHeader icon={FolderKanban} title="Projects" subtitle={`${roots.length} local protein project${roots.length === 1 ? "" : "s"} · ${completedJobs}/${totalJobs} workflow jobs complete`}><div><Button variant="outline" size="sm" onClick={onProjects}>View gallery <ArrowRight/></Button><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div></CardHeader>
-          <div className="project-tile-grid">
+        <FlipTile className="dashboard-project-overview-card" icon={FolderKanban} title="Projects" subtitle="Local protein projects"
+          backSubtitle={`${roots.length} project${roots.length === 1 ? "" : "s"} · ${completedJobs}/${totalJobs} workflow jobs complete`}
+          actions={<Button variant="outline" size="sm" onClick={onProjects}>Gallery <ArrowRight/></Button>}
+          front={<>
+            <TileHeadline value={roots.length} label={`protein project${roots.length === 1 ? "" : "s"}`} detail={roots.length ? `${completedJobs} of ${totalJobs} workflow jobs complete` : "Start from an amino-acid sequence"}/>
+            {latestProjects[0] && <span className="tile-latest"><small>Last updated</small><b>{projectEmoji(latestProjects[0])} {latestProjects[0].name}</b><time>{formatRelative(latestProjects[0].updatedAt ?? latestProjects[0].createdAt)}</time></span>}
+          </>}
+          back={<div className="project-tile-grid">
             {roots.map((protein, index) => { const projectBundle = bundles.find((value) => value.protein.id === protein.id); return <ProjectTile key={protein.id} protein={protein} index={index} complete={projectBundle?.projectJobs.filter((job) => job.status === "complete").length ?? 0} total={projectBundle?.projectJobs.length ?? 0} linked={projectIdsInTrees.has(protein.id)} onOpen={() => onOpenProject(protein.id)}/>; })}
             {!roots.length && <button className="project-tile project-tile-new" onClick={onCreate}><span><Plus/></span><strong>Create your first project</strong><small>Start from an amino-acid sequence</small></button>}
-          </div>
-        </article>
+          </div>}
+        />
 
-        <article className="dashboard-card dashboard-tree-overview-card">
-          <CardHeader icon={GitBranch} title="Project trees" subtitle="How your constructs relate and what changed"><Button variant="outline" size="sm" onClick={onTrees}>Open trees <ArrowRight/></Button></CardHeader>
-          <button className="tree-stat-strip" onClick={onTrees}><span><strong>{treeStats.trees}</strong><small>Tree{treeStats.trees === 1 ? "" : "s"}</small></span><span><strong>{treeStats.branches}</strong><small>Branch{treeStats.branches === 1 ? "" : "es"}</small></span><span><strong>{projectIdsInTrees.size}</strong><small>Linked project{projectIdsInTrees.size === 1 ? "" : "s"}</small></span></button>
-          {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].relationships.length} branch{trees[0].relationships.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
-          <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.relationships.length} branch{tree.relationships.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
-        </article>
+        <FlipTile className="dashboard-tree-overview-card" icon={GitBranch} title="Project trees" subtitle="How your constructs relate"
+          backSubtitle="How your constructs relate and what changed"
+          actions={<Button variant="outline" size="sm" onClick={onTrees}>Open trees <ArrowRight/></Button>}
+          front={<>
+            <TileHeadline value={treeStats.trees} label={`tree${treeStats.trees === 1 ? "" : "s"}`} detail={`${treeStats.branches} branch${treeStats.branches === 1 ? "" : "es"} · ${projectIdsInTrees.size} linked project${projectIdsInTrees.size === 1 ? "" : "s"}`}/>
+            {trees[0] ? <span className="tile-latest"><small>Newest tree</small><b>{trees[0].name}</b><time>from {projectName(roots, trees[0].rootProjectId)}</time></span> : <span className="tile-latest"><small>No trees yet</small><b>Link construct, vector, host or process changes</b></span>}
+          </>}
+          back={<>
+            <button className="tree-stat-strip" onClick={onTrees}><span><strong>{treeStats.trees}</strong><small>Tree{treeStats.trees === 1 ? "" : "s"}</small></span><span><strong>{treeStats.branches}</strong><small>Branch{treeStats.branches === 1 ? "" : "es"}</small></span><span><strong>{projectIdsInTrees.size}</strong><small>Linked project{projectIdsInTrees.size === 1 ? "" : "s"}</small></span></button>
+            {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].relationships.length} branch{trees[0].relationships.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
+            <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.relationships.length} branch{tree.relationships.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
+          </>}
+        />
       </div>
 
       <div className="dashboard-board-column">
-        <article className="dashboard-card dashboard-current-job-card">
-          <CardHeader icon={Activity} title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}>{currentJob && <Button variant="ghost" size="sm" onClick={() => onOpenProject(currentJob.project.id)}>Resume <ArrowRight/></Button>}</CardHeader>
-          {currentJob ? <button className="current-job-body" onClick={() => onOpenProject(currentJob.project.id)}>
+        <FlipTile className="dashboard-current-job-card" icon={Activity} title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}
+          actions={currentJob && <Button variant="outline" size="sm" onClick={() => onOpenProject(currentJob.project.id)}>Resume <ArrowRight/></Button>}
+          front={currentJob ? <span className="tile-job">
+            <span className="current-job-head">
+              <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
+              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small></span>
+              <em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em>
+            </span>
+            <span className="current-job-progress">
+              <i style={{ "--value": `${Math.round(currentJob.progress * 100)}%` } as React.CSSProperties}/>
+              <small>{currentJob.complete} of {currentJob.total} workflow jobs complete in this project</small>
+            </span>
+          </span> : <TileHeadline value="—" label="No job opened yet" detail="Save a workflow step in a project and it appears here"/>}
+          back={currentJob ? <button className="current-job-body" onClick={() => onOpenProject(currentJob.project.id)}>
             <span className="current-job-head">
               <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
               <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small></span>
@@ -227,42 +273,60 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
               {currentJob.recent.map((job) => <span key={job.id} className={job.status === "complete" ? "done" : ""}><i/>{job.name}</span>)}
             </span>
           </button> : <div className="current-job-empty"><FlaskConical/><span><strong>No job has been opened yet</strong><small>Open a project and save a workflow step; the most recent one appears here.</small></span><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div>}
-        </article>
+        />
 
-        <article className="dashboard-card dashboard-reports-card">
-          <CardHeader icon={FileText} title="Reports" subtitle="Publication-quality records to print or send to a client"/>
-          <div className="reports-card-body">
-            <label className="dashboard-project-select">Project<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">No projects yet</option>}</select></label>
-            <ul className="reports-card-pages">
-              {["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"].map((page) => <li key={page}><i/>{page}</li>)}
-            </ul>
+        <FlipTile className="dashboard-reports-card" icon={FileText} title="Reports" subtitle="Records to print or send"
+          backSubtitle="Publication-quality records to print or send to a client"
+          front={<TileHeadline value={reportPages.length} label="report sections" detail={activeProject ? `For ${activeProject.name}` : "Create a project to build its report"}/>}
+          back={<div className="reports-card-body">
+            {projectSelect("Project")}
+            <ul className="reports-card-pages">{reportPages.map((page) => <li key={page}><i/>{page}</li>)}</ul>
             <Button className="wide" disabled={!activeProjectId} onClick={() => onOpenReports(activeProjectId)}><FileText/> Open the report</Button>
-          </div>
-        </article>
+          </div>}
+        />
 
-        <article className="dashboard-card dashboard-team-card">
-          <CardHeader icon={Users} title="Team members" subtitle="Prepare project handoffs for collaborators"><Button variant="ghost" size="icon" onClick={() => setMemberOpen(true)} aria-label="Add team member"><UserPlus/></Button></CardHeader>
-          <label className="dashboard-project-select">Project to share<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>)}</select></label>
-          <div className="team-list"><div className="team-member owner"><span>{initials(profile.name)}</span><div><strong>{profile.name || "Researcher"}</strong><small>{profile.googleEmail || "Local workspace owner"}</small></div><em>Owner</em></div>{members.map((member) => <div className="team-member" key={member.id}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><em>{member.role}</em><button title={`Share with ${member.name}`} onClick={() => void shareWith(member)}><Send/></button><button title={`Remove ${member.name}`} onClick={() => removeMember(member.id)}><Trash2/></button></div>)}{!members.length && <div className="team-empty"><Users/><span><strong>No collaborators yet</strong><small>Add a researcher, then create an email-ready project handoff.</small></span></div>}</div>
-        </article>
+        <FlipTile className="dashboard-team-card" icon={Users} title="Team members" subtitle="Project handoffs for collaborators"
+          actions={<Button variant="outline" size="sm" onClick={() => setMemberOpen(true)}><UserPlus/> Add</Button>}
+          front={<TileHeadline value={members.length + 1} label={members.length ? "people on the team" : "person on the team"} detail={members.length ? `${profile.name || "You"} and ${members.length} collaborator${members.length === 1 ? "" : "s"}` : "Only you so far"}/>}
+          back={<>
+            {projectSelect("Project to share")}
+            <div className="team-list"><div className="team-member owner"><span>{initials(profile.name)}</span><div><strong>{profile.name || "Researcher"}</strong><small>{profile.googleEmail || "Local workspace owner"}</small></div><em>Owner</em></div>{members.map((member) => <div className="team-member" key={member.id}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><em>{member.role}</em><button title={`Share with ${member.name}`} onClick={() => void shareWith(member)}><Send/></button><button title={`Remove ${member.name}`} onClick={() => removeMember(member.id)}><Trash2/></button></div>)}{!members.length && <div className="team-empty"><Users/><span><strong>No collaborators yet</strong><small>Add a researcher, then create an email-ready project handoff.</small></span></div>}</div>
+          </>}
+        />
       </div>
 
       <div className="dashboard-board-column">
-        <article className="dashboard-card dashboard-calendar-card">
-          <CardHeader icon={CalendarDays} title="Purification timeline" subtitle="Schedule expression, columns, and quality control"><button className="calendar-today" onClick={() => { setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedDate(dateKey(now)); }}>Today</button></CardHeader>
-          <div className="calendar-toolbar"><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, -1))}><ChevronLeft/></button><strong>{calendarMonth.toLocaleDateString([], { month: "long", year: "numeric" })}</strong><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, 1))}><ChevronRight/></button></div>
-          <div className="purification-calendar"><div className="calendar-weekdays">{["S", "M", "T", "W", "T", "F", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div><div className="calendar-days">{cells.map((cell) => { const key = dateKey(cell.date); const dayEvents = events.filter((event) => event.date === key); return <button key={key} className={`${cell.outside ? "outside" : ""} ${key === dateKey(now) ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => setSelectedDate(key)}><span>{cell.date.getDate()}</span><i>{dayEvents.slice(0, 3).map((event) => <b key={event.id} style={{ background: stage(event.stage).color }}/>)}</i></button>; })}</div></div>
-          <div className="timeline-editor"><div className="timeline-date"><strong>{formatCalendarDate(selectedDate)}</strong><small>{selectedEvents.length} planned item{selectedEvents.length === 1 ? "" : "s"}</small></div><div className="timeline-add"><input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addEvent(); }} placeholder="e.g. Run Superdex 200 Increase"/><select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">General lab work</option>}</select><select value={eventStage} onChange={(event) => setEventStage(event.target.value as TimelineStage)}>{timelineStages.map((value) => <option key={value.id} value={value.id}>{value.label}</option>)}</select><button onClick={addEvent}><Plus/></button></div><div className="timeline-items">{selectedEvents.map((event) => <div key={event.id}><i style={{ background: stage(event.stage).color }}/><span><strong>{event.title}</strong><small>{stage(event.stage).label} · {projectName(roots, event.projectId)}</small></span><button onClick={() => removeEvent(event.id)}><X/></button></div>)}{!selectedEvents.length && <p>Select a day and add the next purification milestone.</p>}</div></div>
-        </article>
+        <FlipTile className="dashboard-calendar-card" icon={CalendarDays} title="Purification timeline" subtitle="Expression, columns and QC"
+          backSubtitle="Schedule expression, columns, and quality control"
+          actions={<Button variant="outline" size="sm" onClick={() => { setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedDate(dateKey(now)); }}>Today</Button>}
+          front={<>
+            <TileHeadline value={upcoming.length} label={`upcoming item${upcoming.length === 1 ? "" : "s"}`} detail={upcoming.length ? undefined : "Nothing scheduled yet"}/>
+            {upcoming[0] && <span className="tile-latest"><small>Next</small><b><i className="tile-stage-dot" style={{ background: stage(upcoming[0].stage).color }}/>{upcoming[0].title}</b><time>{formatCalendarDate(upcoming[0].date)} · {stage(upcoming[0].stage).label}</time></span>}
+          </>}
+          back={<>
+            <div className="calendar-toolbar"><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, -1))} aria-label="Previous month"><ChevronLeft/></button><strong>{calendarMonth.toLocaleDateString([], { month: "long", year: "numeric" })}</strong><button onClick={() => setCalendarMonth(shiftMonth(calendarMonth, 1))} aria-label="Next month"><ChevronRight/></button></div>
+            <div className="purification-calendar"><div className="calendar-weekdays">{["S", "M", "T", "W", "T", "F", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div><div className="calendar-days">{cells.map((cell) => { const key = dateKey(cell.date); const dayEvents = events.filter((event) => event.date === key); return <button key={key} className={`${cell.outside ? "outside" : ""} ${key === dateKey(now) ? "today" : ""} ${key === selectedDate ? "selected" : ""}`} onClick={() => setSelectedDate(key)}><span>{cell.date.getDate()}</span><i>{dayEvents.slice(0, 3).map((event) => <b key={event.id} style={{ background: stage(event.stage).color }}/>)}</i></button>; })}</div></div>
+            <div className="timeline-editor"><div className="timeline-date"><strong>{formatCalendarDate(selectedDate)}</strong><small>{selectedEvents.length} planned item{selectedEvents.length === 1 ? "" : "s"}</small></div><div className="timeline-add"><input value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addEvent(); }} placeholder="e.g. Run Superdex 200 Increase" aria-label="Timeline item"/><select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)} aria-label="Project">{roots.length ? roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>) : <option value="">General lab work</option>}</select><select value={eventStage} onChange={(event) => setEventStage(event.target.value as TimelineStage)} aria-label="Stage">{timelineStages.map((value) => <option key={value.id} value={value.id}>{value.label}</option>)}</select><button onClick={addEvent} aria-label="Add timeline item"><Plus/></button></div><div className="timeline-items">{selectedEvents.map((event) => <div key={event.id}><i style={{ background: stage(event.stage).color }}/><span><strong>{event.title}</strong><small>{stage(event.stage).label} · {projectName(roots, event.projectId)}</small></span><button onClick={() => removeEvent(event.id)} aria-label={`Remove ${event.title}`}><X/></button></div>)}{!selectedEvents.length && <p>Select a day and add the next purification milestone.</p>}</div></div>
+          </>}
+        />
 
-        <VectorDatabaseCard onOpenProject={onOpenProject}/>
+        <FlipTile className="dashboard-vector-card" icon={Database} title="Vector database" subtitle="Saved vectors and their inserts"
+          backSubtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} across ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : "Saved vectors appear here"}
+          front={vectorsState === "error"
+            ? <TileHeadline value="—" label="Vector database unavailable" detail="Start the local engine to read the catalogue"/>
+            : <TileHeadline value={vectorsState === "loading" ? "…" : vectors.length} label={`saved vector${vectors.length === 1 ? "" : "s"}`} detail={vectors.length ? `Across ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : vectorsState === "ready" ? "Name and save one in Expression vector design" : undefined}/>}
+          back={<VectorList vectors={vectors} failed={vectorsState === "error"} onOpenProject={onOpenProject}/>}
+        />
 
-        <article className="dashboard-card dashboard-account-card">
-          <CardHeader icon={Sparkles} title="AlphaFold access" subtitle="Use your Google-authenticated system browser"/>
-          <div className="account-identity"><span className={profile.googleConnected ? "connected" : ""}>{profile.googleConnected ? "G" : mascot.emoji}</span><div><strong>{profile.googleConnected ? "Google browser link ready" : "Connect a Google account"}</strong><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab."}</small></div></div>
-          {profile.googleConnected ? <><label className="dashboard-project-select">Sequence to prepare<select value={activeProjectId} onChange={(event) => setSelectedProject(event.target.value)}>{roots.map((protein) => <option key={protein.id} value={protein.id}>{protein.name}</option>)}</select></label><Button className="wide" onClick={() => void openAlphaFold()}><ExternalLink/> Copy FASTA & open AlphaFold</Button><button className="account-text-action" onClick={disconnectGoogle}>Disconnect browser link</button></> : <Button className="wide" onClick={connectGoogle}><ExternalLink/> Choose Google account</Button>}
-          <p>AlphaFold Server remains a Google-hosted service. Protein Lab opens the official site and prepares the selected sequence; it never stores your Google password or authentication token.</p>
-        </article>
+        <FlipTile className="dashboard-account-card" icon={Sparkles} title="AlphaFold access" subtitle="Through your system browser"
+          backSubtitle="Use your Google-authenticated system browser"
+          front={<span className={`tile-status ${profile.googleConnected ? "is-on" : ""}`}><i aria-hidden="true"/><span><b>{profile.googleConnected ? "Google browser link ready" : "Not connected"}</b><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab"}</small></span></span>}
+          back={<>
+            <div className="account-identity"><span className={profile.googleConnected ? "connected" : ""}>{profile.googleConnected ? "G" : mascot.emoji}</span><div><strong>{profile.googleConnected ? "Google browser link ready" : "Connect a Google account"}</strong><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab."}</small></div></div>
+            {profile.googleConnected ? <>{projectSelect("Sequence to prepare")}<Button className="wide" onClick={() => void openAlphaFold()}><ExternalLink/> Copy FASTA & open AlphaFold</Button><button className="account-text-action" onClick={disconnectGoogle}>Disconnect browser link</button></> : <Button className="wide" onClick={connectGoogle}><ExternalLink/> Choose Google account</Button>}
+            <p>AlphaFold Server remains a Google-hosted service. Protein Lab opens the official site and prepares the selected sequence; it never stores your Google password or authentication token.</p>
+          </>}
+        />
       </div>
     </div>
     </div>
@@ -274,14 +338,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   </main>;
 }
 
-type CompanionStats = {
-  purified: number; completedJobs: number; openJobs: number; totalJobs: number;
-  projects: number; residues: number; hours: number; upcoming: number; nextItem: string;
-  trees: number; branches: number; linked: number; collaborators: number;
-};
-
-function DashboardMascot({ mascotId, pickerOpen, onTogglePicker, onChoose, cheers, stats }: { mascotId: string; pickerOpen: boolean; onTogglePicker: () => void; onChoose: (id: string) => void; cheers: string[]; stats: CompanionStats }) {
-  const [flipped, setFlipped] = useState(false);
+function DashboardMascot({ mascotId, pickerOpen, onTogglePicker, onChoose, onHide, cheers }: { mascotId: string; pickerOpen: boolean; onTogglePicker: () => void; onChoose: (id: string) => void; onHide: () => void; cheers: string[] }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [idle, setIdle] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -360,10 +417,8 @@ function DashboardMascot({ mascotId, pickerOpen, onTogglePicker, onChoose, cheer
     cheerTimer.current = window.setTimeout(() => setCheering(0), 1_100);
   }
 
-  return <aside className="dashboard-mascot-column" aria-label="Lab mascot">
-    <div className={`companion-flip ${flipped ? "is-flipped" : ""}`}>
-    <div className={`companion-face companion-front dashboard-mascot-companion dashboard-card mascot-theme-${mascot.id} ${idle ? "is-idle" : "is-active"} ${cheering ? "is-cheering" : ""}`} aria-hidden={flipped}>
-      <header><span><Sparkles/><span><strong>Your lab companion</strong><small>{idle ? "Sleeping while you are away" : "Awake and following your work"}</small></span></span><span className="companion-header-actions"><button onClick={onTogglePicker}>{mascot.emoji} Change</button><button className="companion-flip-button" onClick={() => setFlipped(true)} title="Show lab statistics"><RotateCw/> Stats</button></span></header>
+  return <section className={`dashboard-mascot-companion dashboard-card mascot-theme-${mascot.id} ${idle ? "is-idle" : "is-active"} ${cheering ? "is-cheering" : ""}`} aria-label="Lab companion">
+      <header><span><Sparkles/><span><strong>Your lab companion</strong><small>{idle ? "Sleeping while you are away" : "Awake and following your work"}</small></span></span><span className="companion-header-actions"><button onClick={onTogglePicker}>{mascot.emoji} Change</button><button className="companion-flip-button" onClick={onHide} title="Hide your lab companion" aria-label="Hide lab companion"><X/> Hide</button></span></header>
       <div className="mascot-companion-stage" ref={stageRef} onClick={saySomething} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") saySomething(); }} aria-label={`${mascot.label}. Click for encouragement.`}>
         <span className="mascot-aura" aria-hidden="true"/>
         <span className="mascot-orbit orbit-a" aria-hidden="true"><i/></span><span className="mascot-orbit orbit-b" aria-hidden="true"><i/></span>
@@ -386,31 +441,7 @@ function DashboardMascot({ mascotId, pickerOpen, onTogglePicker, onChoose, cheer
       </div>
       <footer><span><strong>{mascot.label}</strong><small>{mascot.caption}</small></span><span className={`mascot-presence ${idle ? "away" : "online"}`}><i/>{idle ? "AFK · asleep" : "Active · awake"}</span></footer>
       {pickerOpen && <div className="mascot-picker companion-mascot-picker"><button className="mascot-picker-close" onClick={onTogglePicker} aria-label="Close mascot picker"><X/></button>{mascots.map((item) => <button key={item.id} className={item.id === mascotId ? "selected" : ""} onClick={() => onChoose(item.id)}><span>{item.emoji}</span><small>{item.label}</small></button>)}</div>}
-    </div>
-    <div className="companion-face companion-back dashboard-card" aria-hidden={!flipped}>
-      <header><span><BarChart3/><span><strong>Lab statistics</strong><small>Everything this workspace has recorded</small></span></span><button className="companion-flip-button" onClick={() => setFlipped(false)} title="Back to your lab companion"><RotateCcw/> Companion</button></header>
-      <div className="companion-stat-scroll">
-        <div className="companion-headline-stats">
-          <CompanionStat value={stats.purified} label="Proteins purified" detail="With completed purification or QC"/>
-          <CompanionStat value={stats.completedJobs} label="Completed jobs" detail={`${stats.openJobs} still in progress`}/>
-          <CompanionStat value={formatHours(stats.hours)} label="Hours in the workspace" detail="Counted while Protein Lab is open"/>
-          <CompanionStat value={stats.upcoming} label="Upcoming timeline items" detail={stats.nextItem || "Nothing scheduled yet"}/>
-        </div>
-        <dl className="companion-stat-list">
-          <div><dt>Projects</dt><dd>{stats.projects}</dd></div>
-          <div><dt>Workflow jobs saved</dt><dd>{stats.totalJobs}</dd></div>
-          <div><dt>Residues planned</dt><dd>{stats.residues.toLocaleString()}</dd></div>
-          <div><dt>Project trees</dt><dd>{stats.trees}</dd></div>
-          <div><dt>Tree branches</dt><dd>{stats.branches}</dd></div>
-          <div><dt>Projects linked in trees</dt><dd>{stats.linked}</dd></div>
-          <div><dt>Collaborators</dt><dd>{stats.collaborators}</dd></div>
-          <div><dt>Average jobs per project</dt><dd>{stats.projects ? (stats.totalJobs / stats.projects).toFixed(1) : "—"}</dd></div>
-        </dl>
-        <p className="companion-stat-note">Counts come from the jobs saved in this workspace, so they grow as you complete real work.</p>
-      </div>
-    </div>
-    </div>
-  </aside>;
+  </section>;
 }
 
 type LibraryVector = {
@@ -430,58 +461,32 @@ type LibraryVector = {
  * saved in Expression vector design, so this is a workspace-wide view rather
  * than a per-project one.
  */
-function VectorDatabaseCard({ onOpenProject }: { onOpenProject: (id: string) => void }) {
-  const [vectors, setVectors] = useState<LibraryVector[]>([]);
-  const [failed, setFailed] = useState(false);
+function VectorList({ vectors, failed, onOpenProject }: { vectors: LibraryVector[]; failed: boolean; onOpenProject: (id: string) => void }) {
   const [search, setSearch] = useState("");
-  useEffect(() => {
-    let active = true;
-    proteinLabsApi.vectorLibrary()
-      .then((value) => { if (active) setVectors(value.vectors as unknown as LibraryVector[]); })
-      .catch(() => { if (active) setFailed(true); });
-    return () => { active = false; };
-  }, []);
   const needle = search.trim().toLowerCase();
   const shown = needle
     ? vectors.filter((vector) => [vector.name, vector.insertName, ...vector.projects.map((use) => use.proteinName)].join(" ").toLowerCase().includes(needle))
     : vectors;
-  const linked = new Set(vectors.flatMap((vector) => vector.projects.map((use) => use.proteinId))).size;
-  return <article className="dashboard-card dashboard-vector-card">
-    <CardHeader
-      icon={Database}
-      title="Vector database"
-      subtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} across ${linked} project${linked === 1 ? "" : "s"}` : "Saved vectors appear here"}
-    />
-    <div className="vector-card-body">
-      {vectors.length > 3 && <label className="vector-card-search"><Search/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search vectors, inserts, or projects"/></label>}
-      <div className="vector-card-list">
-        {shown.map((vector) => <article key={vector.id}>
-          <span>
-            <strong>{vector.name}</strong>
-            <small>{vector.lengthBp.toLocaleString()} bp · {vector.featureCount} annotations{vector.insertName ? ` · ${vector.insertName}` : ""}</small>
-            <small className="vector-card-uses">{vector.projectCount} project{vector.projectCount === 1 ? "" : "s"}{vector.projects.length ? `: ${vector.projects.map((use) => use.proteinName).join(", ")}` : ""}</small>
-          </span>
-          {vector.projects[0] && <Button size="sm" variant="outline" onClick={() => onOpenProject(vector.projects[0].proteinId)}>Open <ArrowRight/></Button>}
-        </article>)}
-        {!shown.length && <div className="vector-card-empty">
-          <Database/>
-          <span>
-            <strong>{failed ? "The vector database is unavailable" : vectors.length ? "No vector matched that search" : "No vectors saved yet"}</strong>
-            <small>{failed ? "Start the local engine to read the catalogue." : "Name and save a vector in Expression vector design and it is catalogued here, with the construct inserted into it."}</small>
-          </span>
-        </div>}
-      </div>
+  return <div className="vector-card-body">
+    {vectors.length > 3 && <label className="vector-card-search"><Search/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search vectors, inserts, or projects" aria-label="Search vectors"/></label>}
+    <div className="vector-card-list">
+      {shown.map((vector) => <article key={vector.id}>
+        <span>
+          <strong>{vector.name}</strong>
+          <small>{vector.lengthBp.toLocaleString()} bp · {vector.featureCount} annotations{vector.insertName ? ` · ${vector.insertName}` : ""}</small>
+          <small className="vector-card-uses">{vector.projectCount} project{vector.projectCount === 1 ? "" : "s"}{vector.projects.length ? `: ${vector.projects.map((use) => use.proteinName).join(", ")}` : ""}</small>
+        </span>
+        {vector.projects[0] && <Button size="sm" variant="outline" onClick={() => onOpenProject(vector.projects[0].proteinId)}>Open <ArrowRight/></Button>}
+      </article>)}
+      {!shown.length && <div className="vector-card-empty">
+        <Database/>
+        <span>
+          <strong>{failed ? "The vector database is unavailable" : vectors.length ? "No vector matched that search" : "No vectors saved yet"}</strong>
+          <small>{failed ? "Start the local engine to read the catalogue." : "Name and save a vector in Expression vector design and it is catalogued here, with the construct inserted into it."}</small>
+        </span>
+      </div>}
     </div>
-  </article>;
-}
-
-function CompanionStat({ value, label, detail }: { value: number | string; label: string; detail: string }) {
-  return <article className="companion-stat"><strong>{value}</strong><span>{label}</span><small>{detail}</small></article>;
-}
-
-function formatHours(hours: number) {
-  if (hours < 1) return `${Math.round(hours * 60)}m`;
-  return hours < 10 ? hours.toFixed(1) : String(Math.round(hours));
+  </div>;
 }
 
 // Time the workspace has actually been open and visible, accumulated locally.
@@ -586,7 +591,6 @@ function truncate(value: string, length: number) { return value.length > length 
 function hashString(value: string) { let hash = 0; for (let index = 0; index < value.length; index += 1) hash = (hash * 31 + value.charCodeAt(index)) >>> 0; return hash; }
 function sampleResidues(sequence: string, count: number) { if (!sequence) return []; const length = Math.min(count, sequence.length); return Array.from({ length }, (_, index) => { const residue = sequence[Math.floor(index * sequence.length / length)].toUpperCase(); return residueClasses.find(([pattern]) => pattern.test(residue))?.[1] ?? "#9aa4a8"; }); }
 
-function CardHeader({ icon: Icon, title, subtitle, children }: { icon: typeof Dna; title: string; subtitle: string; children?: React.ReactNode }) { return <header className="dashboard-card-header"><span><Icon/><span><strong>{title}</strong><small>{subtitle}</small></span></span>{children}</header>; }
 function greeting(date: Date) { const hour = date.getHours(); return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good night"; }
 function projectEmoji(protein: ProteinRecord) { const text = `${protein.organism} ${protein.expressionSystem}`.toLowerCase(); return text.includes("yeast") || text.includes("saccharomyces") || text.includes("pichia") ? "🍞" : text.includes("mammal") || text.includes("hek") || text.includes("cho") ? "🧫" : text.includes("coli") || text.includes("bacter") ? "🦠" : "🧬"; }
 function formatRelative(value?: string) { if (!value) return "Saved locally"; const date = new Date(value); if (Number.isNaN(date.valueOf())) return "Saved locally"; const days = Math.max(0, Math.floor((Date.now() - date.valueOf()) / 86400000)); return days === 0 ? "Today" : days === 1 ? "Yesterday" : `${days} days ago`; }

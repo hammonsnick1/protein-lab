@@ -12325,3 +12325,416 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .vseq .vmap-enzyme-label {
   font-size: 10.5px;
 }
+
+/* ===========================================================================
+   Dashboard overview (HOM-67): a statistics column on the left, tiles that
+   show an overview and flip to their full list, and a lab companion that
+   only appears when asked for.
+   ======================================================================== */
+.suite-dashboard .dashboard-stats-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+.suite-dashboard .dashboard-stats-column > .dashboard-mascot-companion {
+  flex: none;
+  height: clamp(380px, 38vh, 480px);
+  min-height: 0;
+}
+.suite-dashboard .dashboard-stats-column .companion-header-actions > button:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.suite-dashboard .dashboard-stats-column .companion-header-actions > button:hover { border-color: var(--primary); }
+.suite-dashboard .dashboard-stats-column .mascot-speech-bubble { top: 3%; }
+.suite-dashboard .dashboard-stats-column .lab-cell-mascot { margin-top: 64px; }
+.suite-dashboard .dashboard-stats-column .mascot-bacteria { width: min(46%, 200px); margin-right: 24px; }
+.suite-dashboard .dashboard-stats-column .mascot-yeast,
+.suite-dashboard .dashboard-stats-column .mascot-mammalian { width: min(46%, 200px); }
+.suite-dashboard .dashboard-stats-column .mascot-insect { width: min(36%, 160px); }
+.suite-dashboard .dashboard-stats-column .dashboard-mascot-companion:after { width: min(64%, 240px); }
+.dashboard-stats-card {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px 16px 4px;
+}
+.dashboard-stats-card > .dashboard-card-header { flex: none; }
+.dashboard-stats-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 4px 14px 0;
+}
+.suite-dashboard .dashboard-card-header > .stats-view-switch {
+  flex: none;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.suite-dashboard .dashboard-card-header > .stats-view-switch button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.suite-dashboard .dashboard-card-header > .stats-view-switch button[aria-pressed="true"] { background: var(--muted); color: var(--foreground); }
+.suite-dashboard .dashboard-card-header > .stats-view-switch button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.stats-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.stats-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+}
+.stats-kpi > span { font-size: 12px; color: var(--muted-foreground); line-height: 1.3; }
+.stats-kpi > strong { font-size: 26px; font-weight: 650; line-height: 1.05; letter-spacing: -.015em; }
+.stats-kpi > small { font-size: 11.5px; color: var(--muted-foreground); }
+.stats-message {
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.stats-charts { display: flex; flex-direction: column; gap: 20px; transition: opacity .2s ease; }
+/* While jobs reload the previous render stays, dimmed, so nothing jumps. */
+.stats-charts.is-waiting { opacity: .45; }
+.stats-figure { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stats-figure figcaption { display: flex; flex-direction: column; gap: 2px; }
+.stats-figure figcaption strong { font-size: 13px; font-weight: 650; }
+.stats-figure figcaption small { font-size: 11.5px; color: var(--muted-foreground); }
+
+/* Horizontal bars: one baseline, a 4px rounded data end, the value at the tip. */
+.stats-bars { display: flex; flex-direction: column; gap: 7px; }
+.stats-bar {
+  display: grid;
+  grid-template-columns: minmax(76px, 36%) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.stats-bar > span:first-child { color: var(--muted-foreground); overflow-wrap: anywhere; line-height: 1.25; }
+.stats-bar-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 20px;
+  /* Room for the value after a full-length bar. */
+  padding-right: calc(4ch + 6px);
+  border-left: 1px solid color-mix(in srgb, var(--foreground) 24%, transparent);
+}
+.stats-bar-track i { flex: none; display: block; height: 14px; border-radius: 0 4px 4px 0; background: var(--primary); }
+.stats-bar-track b { flex: none; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* Weekly columns and the running-total line share one plot frame. */
+.stats-week-chart { display: flex; flex-direction: column; gap: 5px; border-radius: 8px; outline: none; }
+.stats-week-chart:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.stats-plot { position: relative; height: 104px; margin: 16px 6px 0 26px; }
+.stats-gridline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid color-mix(in srgb, var(--foreground) 9%, transparent);
+  pointer-events: none;
+}
+.stats-gridline.baseline { border-top-color: color-mix(in srgb, var(--foreground) 26%, transparent); }
+.stats-gridline em {
+  position: absolute;
+  right: calc(100% + 6px);
+  top: 0;
+  transform: translateY(-50%);
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.stats-columns,
+.stats-hit,
+.stats-week-axis {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+.stats-columns { position: absolute; inset: 0; }
+.stats-columns > span { position: relative; display: flex; align-items: flex-end; justify-content: center; border-radius: 5px; }
+.stats-columns > span.active { background: color-mix(in srgb, var(--foreground) 6%, transparent); }
+.stats-columns i { position: relative; display: block; width: min(62%, 22px); background: var(--primary); border-radius: 4px 4px 0 0; }
+.stats-columns > span.active i { filter: brightness(1.12); }
+.stats-columns b {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.stats-line { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.stats-line .wash { fill: color-mix(in srgb, var(--primary) 10%, transparent); }
+.stats-line .stroke { fill: none; stroke: var(--primary); stroke-width: 2px; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.stats-line-dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 2px var(--card);
+  transform: translate(-50%, 50%);
+  pointer-events: none;
+}
+.stats-line-end { position: absolute; right: 0; margin-bottom: 9px; font-size: 11px; font-weight: 650; pointer-events: none; }
+/* Hit areas centred on each week, so the pointer only needs the nearest one. */
+.stats-hit { position: absolute; top: 0; bottom: 0; left: var(--edge, 0); right: var(--edge, 0); }
+.stats-week-axis { margin: 0 6px 0 26px; font-size: 11px; color: var(--muted-foreground); }
+.stats-week-axis span { display: flex; justify-content: center; white-space: nowrap; }
+.stats-week-axis span:first-child { justify-content: flex-start; }
+.stats-week-axis span:last-child { justify-content: flex-end; }
+.stats-readout { margin-left: 26px; min-height: 17px; font-size: 11.5px; color: var(--muted-foreground); }
+.stats-readout strong { color: var(--foreground); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.stats-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.stats-table th,
+.stats-table td { padding: 5px 6px; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); text-align: left; font-weight: 400; }
+.stats-table thead th { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted-foreground); }
+.stats-table td,
+.stats-table thead th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.stats-table td { font-weight: 650; }
+
+/* The welcome bar wraps its actions under the greeting before it would
+   squeeze the greeting into a narrow column. */
+.suite-dashboard .dashboard-welcome.dashboard-card { flex-wrap: wrap; row-gap: 10px; }
+.suite-dashboard .dashboard-welcome .dashboard-greeting { flex: 1 1 340px; }
+.suite-dashboard .dashboard-welcome-actions { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+
+/* Companion toggle in the welcome bar. */
+.suite-dashboard .dashboard-welcome-actions > button.mascot-toggle { width: 40px; padding: 0; font-size: 18px; line-height: 1; }
+.suite-dashboard .dashboard-welcome-actions > button.mascot-toggle.is-on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--card)); }
+
+/* Flip tiles. The tile holds the space; both faces fill it and turn about Y.
+   In a column the flipped tile takes three shares of the height. */
+.suite-dashboard .dashboard-board .flip-tile {
+  position: relative;
+  display: block;
+  flex: 1 1 0;
+  min-height: 150px;
+  padding: 0;
+  overflow: visible;
+  perspective: 1800px;
+  transition: flex-grow .5s cubic-bezier(.22,1,.36,1);
+  animation: dash-card-in .6s cubic-bezier(.22,1,.36,1) both;
+}
+.suite-dashboard .dashboard-board .flip-tile.is-flipped { flex-grow: 3; }
+.suite-dashboard .dashboard-board .flip-face {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  min-height: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  animation: none;
+  transition: transform .62s cubic-bezier(.3,.9,.3,1), border-color .2s ease;
+}
+.suite-dashboard .dashboard-board .flip-front { transform: rotateY(0deg); }
+.suite-dashboard .dashboard-board .flip-back { transform: rotateY(180deg); }
+.suite-dashboard .dashboard-board .is-flipped > .flip-front { transform: rotateY(-180deg); }
+.suite-dashboard .dashboard-board .is-flipped > .flip-back { transform: rotateY(0deg); }
+.suite-dashboard .dashboard-board .flip-front {
+  container-type: size;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+  font: inherit;
+  text-align: left;
+  color: var(--card-foreground);
+  cursor: pointer;
+}
+.suite-dashboard .dashboard-board .flip-front:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.suite-dashboard .dashboard-board .flip-front:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.flip-front-head { display: flex; align-items: center; gap: 11px; min-width: 0; flex: none; }
+.flip-front-head > svg,
+.suite-dashboard .dashboard-card-header .flip-back-title > svg {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 9px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--card-accent, var(--primary)) 14%, transparent);
+  color: var(--card-accent, var(--primary));
+}
+.flip-front-head > span,
+.suite-dashboard .flip-back-title > span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.flip-front-head strong,
+.suite-dashboard .flip-back-title strong { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.flip-front-head small,
+.suite-dashboard .flip-back-title small { font-size: 12px; margin-top: 2px; color: var(--muted-foreground); line-height: 1.35; }
+.flip-hint {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-style: normal;
+  color: var(--muted-foreground);
+  transition: color .2s ease, border-color .2s ease;
+}
+.flip-hint svg { width: 12px; }
+.flip-front:hover .flip-hint,
+.flip-front:focus-visible .flip-hint { color: var(--foreground); border-color: var(--primary); }
+.flip-front-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.tile-headline { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.tile-headline > strong { font-size: 36px; font-weight: 650; line-height: 1; letter-spacing: -.02em; }
+.tile-headline > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile-headline b { font-size: 13.5px; font-weight: 600; }
+.tile-headline small { font-size: 12px; color: var(--muted-foreground); line-height: 1.35; overflow-wrap: anywhere; }
+.tile-latest {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  min-width: 0;
+}
+.tile-latest small { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-foreground); }
+.tile-latest b { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.tile-latest time { font-size: 12px; color: var(--muted-foreground); }
+.tile-stage-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; }
+.tile-job { display: flex; flex-direction: column; gap: 12px; }
+.tile-status { display: flex; align-items: flex-start; gap: 10px; }
+.tile-status > i { width: 10px; height: 10px; flex: none; margin-top: 5px; border-radius: 50%; border: 2px solid var(--muted-foreground); }
+.tile-status.is-on > i { border-color: var(--primary); background: var(--primary); }
+.tile-status > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tile-status b { font-size: 13.5px; font-weight: 600; }
+.tile-status small { font-size: 12px; color: var(--muted-foreground); }
+/* A short face keeps the headline and drops the secondary line whole,
+   rather than cutting it. */
+/* On a narrow face the hint keeps its icon; the words stay for screen readers. */
+@container (max-width: 400px) {
+  .flip-hint { padding: 5px; }
+  .flip-hint > span,
+  .suite-dashboard .flip-back-button > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .suite-dashboard .flip-back-title small { display: none; }
+  .suite-dashboard .dashboard-card-header .flip-back-button { padding: 0 9px; }
+}
+@container (max-height: 205px) {
+  .tile-latest { display: none; }
+}
+@container (max-height: 185px) {
+  .tile-headline small,
+  .tile-status small,
+  .tile-job .current-job-progress,
+  .tile-job .current-job-head small { display: none; }
+}
+.suite-dashboard .dashboard-board .flip-back { container-type: size; display: flex; flex-direction: column; padding: 14px 16px 16px; }
+.suite-dashboard .flip-back-header { flex: none; align-items: center; }
+.suite-dashboard .dashboard-card-header .flip-back-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.suite-dashboard .dashboard-card-header .flip-back-title:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.suite-dashboard .flip-back-header > div { flex: none; justify-content: flex-end; }
+.suite-dashboard .dashboard-card-header .flip-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: inherit;
+  cursor: pointer;
+}
+.suite-dashboard .dashboard-card-header .flip-back-button:hover { border-color: var(--primary); }
+.suite-dashboard .dashboard-card-header .flip-back-button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.flip-back-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+}
+/* The back scrolls as one; the lists inside it no longer scroll on their own. */
+.suite-dashboard .dashboard-board .flip-back-body > *,
+.suite-dashboard .dashboard-board .flip-back-body .reports-card-body > *,
+.suite-dashboard .dashboard-board .flip-back-body .vector-card-body > * { flex: none; max-height: none; overflow: visible; margin-top: 0; }
+.suite-dashboard .dashboard-board .flip-back-body .current-job-body { padding-top: 0; }
+/* The tile grid's bleed margin would push the back sideways; its padding
+   still leaves room for the hover lift. */
+.suite-dashboard .dashboard-board .flip-back-body > .project-tile-grid { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  /* A cross-fade instead of the turn. */
+  .suite-dashboard .dashboard-board .flip-tile { transition: none; animation: none; }
+  .suite-dashboard .dashboard-board .flip-face,
+  .suite-dashboard .dashboard-board .is-flipped > .flip-face { transform: none; transition: opacity .22s ease, visibility 0s linear .22s; }
+  .suite-dashboard .dashboard-board .flip-back,
+  .suite-dashboard .dashboard-board .is-flipped > .flip-front { opacity: 0; visibility: hidden; }
+  .suite-dashboard .dashboard-board .is-flipped > .flip-back { opacity: 1; visibility: visible; transition: opacity .22s ease, visibility 0s; }
+}
+@media (max-width: 1180px) {
+  /* Stacked tiles: a fixed overview height, and room for the list when flipped. */
+  .suite-dashboard .dashboard-board .flip-tile { flex: none; height: 190px; min-height: 0; transition: height .5s cubic-bezier(.22,1,.36,1); }
+  .suite-dashboard .dashboard-board .flip-tile.is-flipped { height: 500px; }
+}
+@media (max-width: 920px) {
+  .suite-dashboard .dashboard-stats-card { flex: none; }
+  .suite-dashboard .dashboard-stats-scroll { overflow: visible; }
+}
+@media (max-width: 1180px) and (prefers-reduced-motion: reduce) {
+  .suite-dashboard .dashboard-board .flip-tile { transition: none; }
+}
