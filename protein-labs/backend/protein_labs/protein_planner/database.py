@@ -659,6 +659,58 @@ class Database:
     # ------------------------------------------------------------------
     # Shared vector library
     # ------------------------------------------------------------------
+    def import_library_vector(
+        self, vector: dict[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        """Insert a project-free catalogue record, or return its sequence twin."""
+        sequence = str(vector.get("sequence") or "")
+        if not sequence:
+            raise ValueError("A catalogued vector needs a sequence")
+        fingerprint = hashlib.sha256(sequence.upper().encode("utf-8")).hexdigest()
+        features = vector.get("features") or []
+        insert_name = next(
+            (
+                str(feature.get("name") or "")
+                for feature in features
+                if isinstance(feature, dict) and feature.get("isInsert")
+            ),
+            "",
+        )
+        library_id = str(uuid.uuid4())
+        timestamp = utc_now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO vector_library (
+                    id, fingerprint, name, sequence, circular, features_json,
+                    insert_name, notes, metadata_json, is_standard, favorite,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', 0, 0, ?, ?)
+                """,
+                (
+                    library_id,
+                    fingerprint,
+                    str(vector.get("name") or "Untitled vector"),
+                    sequence,
+                    1 if vector.get("circular", True) else 0,
+                    json.dumps(features, allow_nan=False),
+                    insert_name,
+                    str(vector.get("notes") or ""),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            duplicate = cursor.rowcount == 0
+            if duplicate:
+                row = connection.execute(
+                    "SELECT id, sequence FROM vector_library WHERE fingerprint = ?",
+                    (fingerprint,),
+                ).fetchone()
+                if row is None or row["sequence"] != sequence:
+                    raise ValueError("The vector sequence fingerprint collided")
+                library_id = row["id"]
+        return self.get_library_vector(library_id), duplicate
+
     def record_vector_use(
         self,
         protein_id: str,
