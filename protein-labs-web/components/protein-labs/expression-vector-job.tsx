@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlignCenter, ArrowLeftRight, Beaker, Check, CircleAlert, Database, Dna, Download, Eye, EyeOff, FileInput, FlaskConical, History, Keyboard, LoaderCircle, Map as MapIcon, Plus, Redo2, Save, Scissors, Trash2, Undo2, WandSparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { DesignedPrimer, EnzymeRow, GelResult, JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
+import type { EnzymeRow, GelResult, JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, fileToBase64, proteinLabsApi } from "@/lib/protein-labs-api";
 import type { MapFeature, Viewport } from "@/lib/vector-geometry";
 import { CATEGORY_STYLE, cutSitesFromEnzymeRows, cutSitesFromRecord, featureCategory, featureColor, formatRange, locateMcs, rangeLength, rangeSequence } from "@/lib/vector-geometry";
+import type { CheckedPrimer, Tagged } from "@/lib/vector-editor-state";
+import { commit, createRequestGate, readDesignedPrimers, redoStep, undoStep, valueFor } from "@/lib/vector-editor-state";
 import { VectorBackboneBrowser } from "@/components/protein-labs/vector-backbone-browser";
 import { VectorCloningWorkspace } from "@/components/protein-labs/vector-cloning-workspace";
 import type { VectorSelection, ViewVector } from "@/components/protein-labs/vector-views";
@@ -59,7 +61,10 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
   const [redo, setRedo] = useState<VectorRecord[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
   // Enzymes, gel and primers.
-  const [rawEnzymeRows, setEnzymeRows] = useState<EnzymeRow[] | null>(null);
+  // Enzyme rows are tagged with the vector they describe, and only the latest
+  // request may store them, so a slow answer can never plot another vector's sites.
+  const [enzymeResult, setEnzymeResult] = useState<Tagged<EnzymeRow[]> | null>(null);
+  const [enzymeGate] = useState(createRequestGate);
   const [enzymeLoading, setEnzymeLoading] = useState(false);
   const [enzymeError, setEnzymeError] = useState("");
   const [insertChecked, setInsertChecked] = useState(false);
@@ -70,7 +75,7 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
   const [gelLoading, setGelLoading] = useState(false);
   const [gelError, setGelError] = useState("");
   const [primerSettings, setPrimerSettings] = useState<PrimerSettings>(defaultPrimerSettings);
-  const [designed, setDesigned] = useState<DesignedPrimer[]>([]);
+  const [designed, setDesigned] = useState<CheckedPrimer[]>([]);
   const [primerLoading, setPrimerLoading] = useState(false);
   const [primerError, setPrimerError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -107,6 +112,7 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
   // "Flanks the MCS" means a unique cutter in or just beside the cloning region,
   // which is what a cloner looks for. (The engine's flag requires sites on both
   // sides, which only multi-cutters can satisfy; raised on HOM-49.)
+  const rawEnzymeRows = valueFor(enzymeResult, selectedId);
   const enzymeRows = useMemo(() => rawEnzymeRows?.map((row) => ({ ...row, mcsFlanking: row.uniqueCutter && !!mcs && row.cutPositions.some((position) => position - 1 >= mcs.start - 40 && position - 1 <= mcs.end + 40) })) ?? null, [rawEnzymeRows, mcs]);
   const allCuts = useMemo(() => enzymeRows ? cutSitesFromEnzymeRows(enzymeRows, length) : recordCuts, [enzymeRows, recordCuts, length]);
   const shownCuts = useMemo(() => {
@@ -133,17 +139,20 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
 
   // ---- Enzyme analysis ---------------------------------------------------------------------
   async function analyseEnzymes(id = selectedId, record = draft) {
-    if (!id) { setEnzymeRows(null); return; }
-    setEnzymeLoading(true); setEnzymeError("");
+    const token = enzymeGate.begin();
+    setEnzymeResult(null); setEnzymeError("");
+    if (!id) { setEnzymeLoading(false); return; }
+    setEnzymeLoading(true);
     try {
       let insert = "";
       if (insertChecked && bundle.protein.sequence) insert = String((await proteinLabsApi.backTranslate(bundle.protein.sequence, "ecoli")).dna ?? "");
+      if (!enzymeGate.isCurrent(token)) return;
       const cuts = cutSitesFromRecord(record.restrictionSites, record.sequence.length);
       const region = locateMcs(record.features.map(mapFeature), cuts, record.sequence.length);
       const result = await proteinLabsApi.vectorEnzymeSets(bundle.protein.id, id, { enzymeNames: ANALYSED_ENZYMES, ...(insert ? { insertSequence: insert } : {}), ...(region ? { mcs: region } : {}) });
-      setEnzymeRows(result.enzymes);
-    } catch (reason) { setEnzymeRows(null); setEnzymeError(`Enzyme analysis failed: ${errorText(reason)}. The maps show the vector's stored sites instead.`); }
-    finally { setEnzymeLoading(false); }
+      if (enzymeGate.isCurrent(token)) setEnzymeResult({ key: id, value: result.enzymes });
+    } catch (reason) { if (enzymeGate.isCurrent(token)) setEnzymeError(`Enzyme analysis failed: ${errorText(reason)}. The maps show the vector's stored sites instead.`); }
+    finally { if (enzymeGate.isCurrent(token)) setEnzymeLoading(false); }
   }
   useEffect(() => {
     void analyseEnzymes(); // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -191,6 +200,14 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
     });
     await onChanged();
     setBrowsing(false); setTab(nextTab); say(note);
+    return record;
+  }
+
+  /** A server-side commit into the open construct: keep the construct before it on the undo stack. */
+  async function adoptCommitted(vector: JsonObject, note: string, before: VectorRecord) {
+    const record = await adopt(vector, note, "map");
+    const next = commit({ undo, redo, current: before }, record);
+    setUndo(next.undo); setRedo(next.redo);
   }
 
   async function importFile(file: File | null) {
@@ -227,16 +244,16 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
 
   // ---- Local edits with undo ---------------------------------------------------------------
   function edit(next: VectorRecord) {
-    setUndo((values) => [...values.slice(-99), structuredClone(draft)]); setRedo([]);
+    const history = commit({ undo, redo, current: structuredClone(draft) }, next);
+    setUndo(history.undo); setRedo(history.redo);
     setDraft(next); setDirty(true);
   }
 
   function restore(direction: "undo" | "redo") {
-    const source = direction === "undo" ? undo : redo;
-    const target = source.at(-1); if (!target) return;
-    if (direction === "undo") { setUndo(source.slice(0, -1)); setRedo((values) => [...values, structuredClone(draft)]); }
-    else { setRedo(source.slice(0, -1)); setUndo((values) => [...values, structuredClone(draft)]); }
-    setDraft(target); setDirty(true); say(`${direction === "undo" ? "Undid" : "Redid"} the last change. Save to keep it.`);
+    if (!(direction === "undo" ? undo : redo).length) return;
+    const history = (direction === "undo" ? undoStep : redoStep)({ undo, redo, current: structuredClone(draft) });
+    setUndo(history.undo); setRedo(history.redo);
+    setDraft(history.current); setDirty(true); say(`${direction === "undo" ? "Undid" : "Redid"} the last change. Save to keep it.`);
   }
 
   function annotateSelection() {
@@ -324,9 +341,11 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
         minGcPercent: settings.minGc, maxGcPercent: settings.maxGc, cloningMethod: settings.method === "restriction" ? "pcr" : settings.method,
         forwardOverhang: settings.forwardOverhang, reverseOverhang: settings.reverseOverhang,
       });
-      setDesigned(response.designedPrimers ?? []);
+      const checked = readDesignedPrimers(response);
+      setDesigned(checked.primers);
       await load(String(response.id ?? saved.id));
-      say("Primer pair designed and saved to the construct.");
+      if (checked.error) setPrimerError(checked.error);
+      else say("Primer pair designed and saved to the construct.");
     } catch (reason) { setPrimerError(errorText(reason)); }
     finally { setPrimerLoading(false); }
   }
@@ -429,7 +448,7 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
             <GelPanel lanes={gelLanes} onLanes={setGelLanes} result={gel} loading={gelLoading} error={gelError} ladder={ladder} onLadder={setLadder} onRun={() => void runGel()} />
           </>}
         </div>}
-        {tab === "clone" && <VectorCloningWorkspace bundle={bundle} vectorId={dirty ? "" : selectedId} vectorName={draft.name} backbone={view} projectVectors={vectors.filter((vector) => vector.id !== selectedId).map((vector) => ({ id: vector.id, name: vector.name, length: vector.sequence.length }))} uniqueEnzymes={(enzymeRows ?? []).filter((row) => enzymeInGroup(row, "unique")).map((row) => row.enzyme)} unsaved={dirty} onInserted={(vector, note) => adopt(vector, note, "map")} />}
+        {tab === "clone" && <VectorCloningWorkspace bundle={bundle} vectorId={dirty ? "" : selectedId} vectorName={draft.name} backbone={view} projectVectors={vectors.filter((vector) => vector.id !== selectedId).map((vector) => ({ id: vector.id, name: vector.name, length: vector.sequence.length }))} uniqueEnzymes={(enzymeRows ?? []).filter((row) => enzymeInGroup(row, "unique")).map((row) => row.enzyme)} unsaved={dirty} onInserted={(vector, note) => adopt(vector, note, "map")} onCommitted={(vector, note) => adoptCommitted(vector, note, structuredClone(draft))} />}
         {tab === "primers" && <PrimerPanel settings={primerSettings} onSettings={setPrimerSettings} region={range && selectedSize ? range : null} length={length} designed={designed} saved={draft.primers} loading={primerLoading} error={primerError} onDesign={() => void designPrimers()} onRemove={(id) => void removePrimer(id)} onFocus={(next) => select({ range: next, source: "list" })} />}
         {tab === "orfs" && <div className="orf-workspace"><div className="tool-row"><label>Minimum ORF amino acids<input type="number" min="5" value={orfMinimum} onChange={(event) => setOrfMinimum(Number(event.target.value))} /></label><Button onClick={() => void annotateAutomatically()}><WandSparkles /> Detect and annotate ORFs</Button></div>{!draft.orfs.length && <div className="vpanel-empty">No ORFs detected yet. Run detection above.</div>}{draft.orfs.length > 0 && <div className="data-table"><div><b>ORF</b><b>Coordinates</b><b>Frame</b><b>Length</b><b>Translation</b></div>{draft.orfs.map((orf) => <button key={String(orf.id)} onClick={() => select({ range: { start: Number(orf.start), end: Number(orf.end) }, source: "list" })}><strong>{String(orf.name)}</strong><span>{Number(orf.start) + 1}–{String(orf.end)}</span><span>{String(orf.frame)}</span><span>{String(orf.aminoAcids)} aa</span><code>{String(orf.translation).slice(0, 45)}…</code></button>)}</div>}</div>}
         {tab === "tools" && <div className="vector-tools"><section><h3><AlignCenter /> Align saved vectors</h3><select value={alignId} onChange={(event) => setAlignId(event.target.value)}><option value="">Choose query vector</option>{vectors.filter((vector) => vector.id !== selectedId).map((vector) => <option key={vector.id} value={vector.id}>{vector.name}</option>)}</select><Button onClick={() => void runAlignment()}>Align</Button>{alignment && <div className="alignment-result"><strong>{Number(alignment.identityPercent ?? 0).toFixed(2)}% identity</strong><span>{String(alignment.mismatches ?? 0)} mismatches · {String(alignment.gaps ?? 0)} gaps · score {String(alignment.score ?? "—")}</span></div>}</section><section><h3><FlaskConical /> Overlap assembly</h3><input value={assemblyName} onChange={(event) => setAssemblyName(event.target.value)} /><div className="assembly-list">{vectors.map((vector) => <label key={vector.id}><input type="checkbox" checked={assemblyIds.includes(vector.id)} onChange={(event) => setAssemblyIds(event.target.checked ? [...assemblyIds, vector.id] : assemblyIds.filter((id) => id !== vector.id))} />{vector.name}</label>)}</div><Button onClick={() => void runAssembly()}>Assemble selected vectors</Button></section></div>}
@@ -465,7 +484,7 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
       {selectedId && <Button variant="ghost" className="danger-text" onClick={() => void deleteVector()}><Trash2 /> Delete vector</Button>}
     </aside>
     {helpOpen && <div className="backbone-overlay" role="dialog" aria-label="Keyboard shortcuts" onClick={() => setHelpOpen(false)}><div className="vhelp" onClick={(event) => event.stopPropagation()}><header><strong>Keyboard shortcuts</strong><Button variant="ghost" size="icon-sm" onClick={() => setHelpOpen(false)} aria-label="Close"><X /></Button></header><dl>{SHORTCUTS.map(([keys, action]) => <div key={keys}><dt>{keys.split(" ").map((part, index) => <kbd key={index}>{part}</kbd>)}</dt><dd>{action}</dd></div>)}</dl></div></div>}
-    {(browsing || (!loadingList && !listError && !vectors.length && !selectedId && !browserDismissed)) && <div className="backbone-overlay" role="dialog" aria-label="Load a vector backbone"><VectorBackboneBrowser proteinId={bundle.protein.id} onLoaded={(vector, note) => adopt(vector, note, "map")} onClose={() => { setBrowsing(false); setBrowserDismissed(true); }} /></div>}
+    {(browsing || (!loadingList && !listError && !vectors.length && !selectedId && !browserDismissed)) && <div className="backbone-overlay" role="dialog" aria-label="Load a vector backbone"><VectorBackboneBrowser proteinId={bundle.protein.id} onLoaded={async (vector, note) => { await adopt(vector, note, "map"); }} onClose={() => { setBrowsing(false); setBrowserDismissed(true); }} /></div>}
   </div>;
 }
 

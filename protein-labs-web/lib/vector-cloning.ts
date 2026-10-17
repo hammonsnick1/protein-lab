@@ -79,3 +79,23 @@ export function dedupeSites<T extends { start: number; end: number; strand: numb
   }
   return sites.filter((site) => best.get(`${site.start}:${site.replaceRegion ? site.end : site.start}:${site.strand}`) === site);
 }
+
+/**
+ * How the insertion junction reads in the product, as segments in sequence
+ * order. Frame padding sits before the insert on the forward strand and after
+ * the reverse-complemented insert on the reverse strand, exactly as committed.
+ */
+export type JunctionSegment = { kind: "backbone" | "padding" | "insert" | "gap"; text: string };
+export function junctionSegments(preview: Pick<InsertPreview, "sequence" | "insertRange" | "paddingBases">, strand: number, flank = 18, show = 12): JunctionSegment[] {
+  const { start, end } = preview.insertRange;
+  const leading = strand >= 0 ? preview.paddingBases : 0;
+  const trailing = strand >= 0 ? 0 : preview.paddingBases;
+  const core = preview.sequence.slice(start + leading, end - trailing);
+  const segments: JunctionSegment[] = [{ kind: "backbone", text: preview.sequence.slice(Math.max(0, start - flank), start) }];
+  if (leading) segments.push({ kind: "padding", text: preview.sequence.slice(start, start + leading) });
+  if (core.length <= show * 2) segments.push({ kind: "insert", text: core });
+  else segments.push({ kind: "insert", text: core.slice(0, show) }, { kind: "gap", text: "…" }, { kind: "insert", text: core.slice(-show) });
+  if (trailing) segments.push({ kind: "padding", text: preview.sequence.slice(end - trailing, end) });
+  segments.push({ kind: "backbone", text: preview.sequence.slice(end, end + flank) });
+  return segments.filter((segment) => segment.text);
+}

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { CloningMethod, CloningPreview, JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import type { PreviewWarning } from "@/lib/vector-cloning";
-import { dedupeSites, previewInsert } from "@/lib/vector-cloning";
+import { dedupeSites, junctionSegments, previewInsert } from "@/lib/vector-cloning";
 import type { MapFeature } from "@/lib/vector-geometry";
 import { MiniMap } from "@/components/protein-labs/vector-views";
 import type { ViewVector } from "@/components/protein-labs/vector-views";
@@ -53,7 +53,7 @@ const METHODS: { id: CloningMethod; label: string; hint: string }[] = [
  * backbone features it replaces, and every warning.
  */
 export function VectorCloningWorkspace({
-  bundle, vectorId, vectorName, backbone, projectVectors, uniqueEnzymes, unsaved, onInserted,
+  bundle, vectorId, vectorName, backbone, projectVectors, uniqueEnzymes, unsaved, onInserted, onCommitted,
 }: {
   bundle: ProteinBundle;
   vectorId: string;
@@ -62,7 +62,9 @@ export function VectorCloningWorkspace({
   projectVectors: { id: string; name: string; length: number }[];
   uniqueEnzymes: string[];
   unsaved: boolean;
-  onInserted: (vector: JsonObject, note: string) => Promise<void> | void;
+  onInserted: (vector: JsonObject, note: string) => Promise<unknown> | void;
+  /** The open construct was changed on the server; the parent keeps the previous one for undo. */
+  onCommitted: (vector: JsonObject, note: string) => Promise<unknown> | void;
 }) {
   const [mode, setMode] = useState<"site" | "combine">("site");
   if (!vectorId) return <div className="cloning-empty"><Dna /><p>{unsaved ? "Save your changes first; cloning works on the saved construct." : "Load a vector backbone to start cloning."}</p></div>;
@@ -72,12 +74,12 @@ export function VectorCloningWorkspace({
       <button role="radio" aria-checked={mode === "combine"} className={mode === "combine" ? "active" : ""} onClick={() => setMode("combine")}>Combine two constructs</button>
     </div>
     {mode === "site"
-      ? <SiteInsertion bundle={bundle} vectorId={vectorId} vectorName={vectorName} backbone={backbone} onInserted={onInserted} />
+      ? <SiteInsertion bundle={bundle} vectorId={vectorId} vectorName={vectorName} backbone={backbone} onCommitted={onCommitted} />
       : <CombineConstructs bundle={bundle} vectorId={vectorId} vectorName={vectorName} projectVectors={projectVectors} uniqueEnzymes={uniqueEnzymes} onInserted={onInserted} />}
   </div>;
 }
 
-function SiteInsertion({ bundle, vectorId, vectorName, backbone, onInserted }: { bundle: ProteinBundle; vectorId: string; vectorName: string; backbone: ViewVector; onInserted: (vector: JsonObject, note: string) => Promise<void> | void }) {
+function SiteInsertion({ bundle, vectorId, vectorName, backbone, onCommitted }: { bundle: ProteinBundle; vectorId: string; vectorName: string; backbone: ViewVector; onCommitted: (vector: JsonObject, note: string) => Promise<unknown> | void }) {
   const [sites, setSites] = useState<InsertionSite[]>([]);
   const [siteId, setSiteId] = useState("");
   const [mode, setMode] = useState<"protein" | "dna">("protein");
@@ -151,7 +153,7 @@ function SiteInsertion({ bundle, vectorId, vectorName, backbone, onInserted }: {
         name: featureName.trim() || `${bundle.protein.name} CDS`,
         keepFrame,
       });
-      await onInserted(vector, `${featureName} inserted at ${site.label}. The product is now the saved construct; undo with Ctrl+Z.`);
+      await onCommitted(vector, `${featureName} inserted at ${site.label} and saved. Ctrl+Z brings back the construct as it was before the insert; save again to keep that.`);
     } catch (reason) { setFailure(message(reason)); }
     finally { setBusy(false); }
   }
@@ -230,10 +232,10 @@ function SiteInsertion({ bundle, vectorId, vectorName, backbone, onInserted }: {
         <div className="cloning-junction">
           <span className="junction-label">Junction</span>
           <code>
-            <i>{site.upstream.slice(-18)}</i>
-            {preview.paddingBases > 0 && <u title="Frame padding">{"G".repeat(preview.paddingBases).toLowerCase()}</u>}
-            <b>{preview.sequence.slice(preview.insertRange.start + preview.paddingBases, preview.insertRange.start + preview.paddingBases + 12)}…{preview.sequence.slice(preview.insertRange.end - 9, preview.insertRange.end)}</b>
-            <i>{site.downstream.slice(0, 18)}</i>
+            {junctionSegments(preview, site.strand).map((segment, index) => segment.kind === "backbone" ? <i key={index}>{segment.text}</i>
+              : segment.kind === "padding" ? <u key={index} title="Frame padding">{segment.text.toLowerCase()}</u>
+              : segment.kind === "gap" ? <span key={index}>{segment.text}</span>
+              : <b key={index}>{segment.text}</b>)}
           </code>
         </div>
         <Warnings warnings={warnings} />
@@ -246,7 +248,7 @@ function SiteInsertion({ bundle, vectorId, vectorName, backbone, onInserted }: {
   </div>;
 }
 
-function CombineConstructs({ bundle, vectorId, vectorName, projectVectors, uniqueEnzymes, onInserted }: { bundle: ProteinBundle; vectorId: string; vectorName: string; projectVectors: { id: string; name: string; length: number }[]; uniqueEnzymes: string[]; onInserted: (vector: JsonObject, note: string) => Promise<void> | void }) {
+function CombineConstructs({ bundle, vectorId, vectorName, projectVectors, uniqueEnzymes, onInserted }: { bundle: ProteinBundle; vectorId: string; vectorName: string; projectVectors: { id: string; name: string; length: number }[]; uniqueEnzymes: string[]; onInserted: (vector: JsonObject, note: string) => Promise<unknown> | void }) {
   const [method, setMethod] = useState<CloningMethod>("restriction-ligation");
   const [insertId, setInsertId] = useState("");
   const [left, setLeft] = useState("");

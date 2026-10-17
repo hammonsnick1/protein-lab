@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { CircleAlert, FlaskConical, LoaderCircle, Plus, RefreshCw, Scissors, Trash2, WandSparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { DesignedPrimer, EnzymeRow, GelResult, JsonObject, StructureScreen } from "@/lib/protein-labs-api";
+import type { EnzymeRow, GelResult, JsonObject } from "@/lib/protein-labs-api";
+import type { CheckedPrimer } from "@/lib/vector-editor-state";
 import type { SeqRange } from "@/lib/vector-geometry";
 import { formatRange, rangeLength } from "@/lib/vector-geometry";
 
@@ -158,7 +159,7 @@ export const defaultPrimerSettings: PrimerSettings = { name: "Insert PCR", targe
 
 export function PrimerPanel({ settings, onSettings, region, length, designed, saved, loading, error, onDesign, onRemove, onFocus }: {
   settings: PrimerSettings; onSettings: (settings: PrimerSettings) => void; region: SeqRange | null; length: number;
-  designed: DesignedPrimer[]; saved: JsonObject[]; loading: boolean; error: string; onDesign: () => void; onRemove: (id: string) => void; onFocus: (range: SeqRange) => void;
+  designed: CheckedPrimer[]; saved: JsonObject[]; loading: boolean; error: string; onDesign: () => void; onRemove: (id: string) => void; onFocus: (range: SeqRange) => void;
 }) {
   const set = (patch: Partial<PrimerSettings>) => onSettings({ ...settings, ...patch });
   const method = METHODS.find((entry) => entry.id === settings.method) ?? METHODS[0];
@@ -201,7 +202,7 @@ export function PrimerPanel({ settings, onSettings, region, length, designed, sa
   </div>;
 }
 
-function PrimerCard({ primer, onFocus }: { primer: DesignedPrimer; onFocus: (range: SeqRange) => void }) {
+function PrimerCard({ primer, onFocus }: { primer: CheckedPrimer; onFocus: (range: SeqRange) => void }) {
   const off = Math.abs(primer.tmDeltaCelsius) > 2;
   return <article className="vprimer-card">
     <header><button type="button" onClick={() => onFocus({ start: primer.start, end: primer.end })}><strong>{primer.strand > 0 ? "Forward" : "Reverse"}</strong><small>{primer.start + 1}–{primer.end} · {primer.totalLength} nt</small></button></header>
@@ -215,6 +216,6 @@ function PrimerCard({ primer, onFocus }: { primer: DesignedPrimer; onFocus: (ran
   </article>;
 }
 
-function Risk({ screen }: { screen: StructureScreen }) {
+function Risk({ screen }: { screen: CheckedPrimer["hairpin"] }) {
   return <b className={`vrisk risk-${screen.risk}`} title={`${screen.longestComplementaryRun} nt complementary run, ${screen.threePrimeComplementarity} nt at the 3′ end. ${screen.limitation}`}>{screen.risk}</b>;
 }
