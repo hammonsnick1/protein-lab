@@ -639,6 +639,42 @@ class ProteinPlanner:
     def get_library_vector(self, library_id: str) -> dict[str, Any]:
         return self.database.get_library_vector(library_id)
 
+    def import_library_vector(
+        self, filename: str, content: str
+    ) -> dict[str, Any]:
+        """Parse a sequence file directly into the shared catalogue."""
+        if len(content) > 15_000_000:
+            raise ValueError("The sequence file is too large")
+        parsed = parse_sequence_file(content, filename)
+        name = str(parsed.get("name") or "Untitled vector").strip()
+        if not name or len(name) > 120:
+            raise ValueError("Vector names must be 1 to 120 characters")
+        sequence = normalize_dna(str(parsed.get("sequence") or ""))
+        if not sequence:
+            raise ValueError("The imported file does not contain a DNA sequence")
+        if len(sequence) > 5_000_000:
+            raise ValueError("Vectors are limited to 5,000,000 bases")
+        vector, duplicate = self.database.import_library_vector({
+            "name": name,
+            "sequence": sequence,
+            "circular": bool(parsed.get("circular", True)),
+            "features": normalize_features(parsed.get("features") or [], len(sequence)),
+        })
+        return {**vector, "duplicate": True} if duplicate else vector
+
+    def export_library_vector(
+        self, library_id: str, file_format: str
+    ) -> dict[str, Any]:
+        """Export a catalogue record without requiring a project copy."""
+        if file_format not in {"genbank", "fasta"}:
+            raise ValueError("Export format must be genbank or fasta")
+        vector = self.database.get_library_vector(library_id)
+        return {
+            "filename": f"{vector['name']}.{'gb' if file_format == 'genbank' else 'fasta'}",
+            "format": file_format,
+            "content": export_sequence(vector, file_format),
+        }
+
     def delete_library_vector(self, library_id: str) -> None:
         self.database.delete_library_vector(library_id)
 
