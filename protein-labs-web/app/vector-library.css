@@ -314,5 +314,5 @@
   .vl-body { grid-template-columns: 200px minmax(320px, 1fr) 330px; }
 }
 
-/* Buttons here sit at the dashboard's compact size, not the page default. */
-.vlib [data-slot="button"], .topbar-vector-library { font-size: 12.5px; }
+/* The top-bar entry sits with the compact File/Edit menu, not at button size. */
+.topbar-vector-library { font-size: 12.5px; }
