@@ -51,6 +51,7 @@ import {
   reanalysisReasons,
   SIGNAL_FRACTION_CAVEAT,
 } from "@/lib/gel-quantification";
+import { roadmapStepOptions, stageBindingLabel } from "@/lib/roadmap-steps";
 
 type Mode = "select" | "lane" | "band";
 type Panel = "setup" | "ladder" | "method";
@@ -118,6 +119,10 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
   const [imageRatio, setImageRatio] = useState<number | null>(null);
   const drag = useRef<number | null>(null);
 
+  // A lane is bound to a step only by the scientist choosing one here. Opening
+  // the studio from a roadmap step does not bind anything, because one gel
+  // usually carries lysate, flow-through and eluate from different steps.
+  const stepOptions = useMemo(() => roadmapStepOptions(bundle), [bundle]);
   const masses = useMemo(() => ladderMassesKDa(ladderPreset, customWeights), [ladderPreset, customWeights]);
   const massError = ladderMassesError(masses);
   const ladderLaneId = lanes.find((lane) => lane.isLadder)?.id ?? "";
@@ -276,7 +281,14 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
 
   function markLadder(id: string, isLadder: boolean) {
     // One ladder lane at a time, or the engine has no unambiguous marker set.
-    setLanes(lanes.map((item) => ({ ...item, isLadder: item.id === id ? isLadder : false })));
+    // A ladder is not a sample, so it carries no step binding.
+    setLanes(
+      lanes.map((item) => ({
+        ...item,
+        isLadder: item.id === id ? isLadder : false,
+        stageId: item.id === id && isLadder ? null : item.stageId,
+      })),
+    );
   }
 
   function deleteLane(id: string) {
@@ -623,6 +635,7 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
               <button
                 key={item.id}
                 className={`gel-lane ${item.id === selectedLane ? "selected" : ""} ${item.isLadder ? "ladder" : ""}`}
+                title={item.isLadder ? `${item.label} · ladder` : `${item.label} · ${stageBindingLabel(item.stageId, stepOptions)}`}
                 style={{ left: `${item.xStart * 100}%`, width: `${(item.xEnd - item.xStart) * 100}%` }}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -696,7 +709,33 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
                 onChange={(event) => updateLane(lane.id, { sampleLabel: event.target.value })}
               />
             </label>
-            {lane.stageId && <p className="gel-hint">Bound to purification step {lane.stageId}.</p>}
+            <label>
+              Purification step
+              <select
+                value={lane.stageId ?? ""}
+                disabled={lane.isLadder}
+                onChange={(event) => updateLane(lane.id, { stageId: event.target.value || null })}
+              >
+                <option value="">Not bound</option>
+                {lane.stageId && !stepOptions.some((option) => option.id === lane.stageId) && (
+                  <option value={lane.stageId}>{stageBindingLabel(lane.stageId, stepOptions)}</option>
+                )}
+                {stepOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {stageBindingLabel(option.id, stepOptions)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="gel-hint">
+              {lane.isLadder
+                ? "A ladder lane is not a sample, so it is not bound to a step."
+                : !lane.stageId
+                  ? "Choose the roadmap step this sample was taken at. The CSV's Stage ID stays empty until you do."
+                  : stepOptions.some((option) => option.id === lane.stageId)
+                    ? "Saved with the gel and exported as this lane's Stage ID."
+                    : "This step was removed from the roadmap. The binding is kept until you choose another step."}
+            </p>
             <label className="check-field">
               <input
                 type="checkbox"

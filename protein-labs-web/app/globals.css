@@ -4650,12 +4650,16 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .gel-controls select,
 .gel-controls textarea,
-.gel-results-panel input {
+.gel-results-panel input,
+.gel-results-panel select {
   border: 1px solid var(--input);
   border-radius: 7px;
   background: var(--background);
   color: var(--foreground);
   padding: 8px;
+}
+.gel-results-panel select:disabled {
+  opacity: 0.55;
 }
 .gel-controls textarea {
   min-height: 65px;
