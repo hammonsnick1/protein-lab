@@ -1,11 +1,17 @@
 """Regression and known-answer tests for the expression-vector catalogue."""
 
+import base64
 import hashlib
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
+import json
 import sqlite3
+from struct import pack
+from threading import Thread
 
 import pytest
 
-from protein_labs.server import parse_vector_library_search
+from protein_labs.server import ApiHandler, parse_vector_library_search
 from protein_labs.protein_planner.database import Database
 from protein_labs.protein_planner.integrations import (
     HttpClient,
@@ -29,6 +35,47 @@ def planner(tmp_path):
 
 def project(service, name="Vector project"):
     return service.create_protein({"name": name, "sequence": "ACDE"})["protein"]
+
+
+@pytest.fixture
+def catalogue_api(tmp_path):
+    service = planner(tmp_path)
+    handler = type("CatalogueApiHandler", (ApiHandler,), {"planner": service})
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def request(method, path, body=None):
+        connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        encoded = None if body is None else json.dumps(body).encode("utf-8")
+        headers = {"Content-Type": "application/json"} if encoded else {}
+        connection.request(method, path, body=encoded, headers=headers)
+        response = connection.getresponse()
+        payload = json.loads(response.read().decode("utf-8"))
+        connection.close()
+        return response.status, payload
+
+    try:
+        yield service, request
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def snapgene_base64(sequence):
+    """Build the smallest valid SnapGene binary around a known DNA sequence."""
+    def packet(packet_type, data):
+        return bytes([packet_type]) + pack(">I", len(data)) + data
+
+    cookie = pack(">8sHHH", b"SnapGene", 1, 1, 1)
+    dna = bytes([1]) + sequence.encode("ascii")  # circular topology flag
+    features = (
+        '<Features><Feature name="Test CDS" type="CDS" directionality="1">'
+        '<Segment range="1-9"/></Feature></Features>'
+    ).encode("utf-8")
+    content = packet(0x09, cookie) + packet(0x00, dna) + packet(0x0A, features)
+    return base64.b64encode(content).decode("ascii")
 
 
 def write_legacy_database(path):
@@ -304,3 +351,94 @@ def test_vector_library_api_query_contract(tmp_path):
     assert [vector["name"] for vector in payload["vectors"]] == ["pGEX-4T-1"]
     assert payload["total"] == 1
     assert "host" in payload["facets"]
+
+
+def test_catalogue_export_route_preserves_provenance(catalogue_api):
+    service, request = catalogue_api
+    vector = next(
+        item for item in service.list_library_vectors()
+        if item["name"] == "pET28a-LIC"
+    )
+
+    status, exported = request(
+        "GET",
+        f"/v1/protein-planner/vector-library/{vector['id']}/export?format=genbank",
+    )
+
+    assert status == 200
+    assert exported["filename"] == "pET28a-LIC.gb"
+    assert exported["format"] == "genbank"
+    assert "LOCUS" in exported["content"]
+    assert "COMMENT" in exported["content"]
+    assert vector["supplier"] in exported["content"]
+    assert vector["sourceUrl"] in exported["content"]
+    assert "no restrictions" in exported["content"]
+
+    status, fasta = request(
+        "GET",
+        f"/v1/protein-planner/vector-library/{vector['id']}/export?format=fasta",
+    )
+    assert status == 200
+    assert fasta["filename"] == "pET28a-LIC.fasta"
+    assert fasta["content"].startswith(">pET28a-LIC")
+
+    status, missing = request(
+        "GET", "/v1/protein-planner/vector-library/not-a-vector/export"
+    )
+    assert status == 404
+    assert "not-a-vector" in missing["error"]
+
+
+def test_catalogue_import_route_reads_snapgene_and_deduplicates(catalogue_api):
+    service, request = catalogue_api
+    sequence = "ATGGCCGCTTAA"
+    initial_total = service.search_library_vectors()["total"]
+    body = {
+        "filename": "my_vector.dna",
+        "content": snapgene_base64(sequence),
+    }
+
+    status, imported = request(
+        "POST", "/v1/protein-planner/vector-library/import", body
+    )
+
+    assert status == 201
+    assert imported["name"] == "my_vector"
+    assert imported["sequence"] == sequence
+    assert imported["circular"] is True
+    assert imported["features"][0] == {
+        "id": "feature-1",
+        "name": "Test CDS",
+        "type": "CDS",
+        "start": 0,
+        "end": 9,
+        "strand": 1,
+        "color": "#43A047",
+        "notes": "",
+        "automatic": False,
+        "isInsert": False,
+        "qualifiers": {"label": ["Test CDS"]},
+    }
+    assert imported["isStandard"] is False
+    assert imported["supplier"] == ""
+    assert imported["license"] == ""
+    assert imported["projects"] == []
+
+    stored = service.get_library_vector(imported["id"])
+    assert imported == stored
+
+    status, duplicate = request(
+        "POST", "/v1/protein-planner/vector-library/import", body
+    )
+    assert status == 201
+    assert duplicate["id"] == imported["id"]
+    assert duplicate["duplicate"] is True
+    assert service.search_library_vectors()["total"] == initial_total + 1
+
+    status, invalid = request(
+        "POST",
+        "/v1/protein-planner/vector-library/import",
+        {"filename": "broken.dna", "content": "%%%%"},
+    )
+    assert status == 400
+    assert "Could not read snapgene sequence" in invalid["error"]

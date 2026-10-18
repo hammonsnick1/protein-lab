@@ -693,6 +693,21 @@ def export_sequence(vector: dict[str, Any], file_format: str) -> str:
     )
     record.annotations["molecule_type"] = "DNA"
     record.annotations["topology"] = "circular" if vector.get("circular") else "linear"
+    provenance: list[str] = []
+    supplier = str(vector.get("supplier") or "").strip()
+    source_url = str(vector.get("sourceUrl") or "").strip()
+    license_name = str(vector.get("license") or "").strip()
+    license_url = str(vector.get("licenseUrl") or "").strip()
+    if supplier or source_url:
+        source = supplier or "Source record"
+        provenance.append(f"Source: {source}{f' ({source_url})' if source_url else ''}")
+    if license_name or license_url:
+        license_value = license_name or "See source licence"
+        provenance.append(
+            f"License: {license_value}{f' ({license_url})' if license_url else ''}"
+        )
+    if provenance:
+        record.annotations["comment"] = "\n".join(provenance)
     for feature in vector.get("features") or []:
         qualifiers = {
             str(key): [str(value) for value in values]
