@@ -12,9 +12,11 @@ import {
   dragRange,
   featureCategory,
   featureColor,
+  fitLabel,
   formatRange,
   layoutCircularLabels,
   locateMcs,
+  mapTextScale,
   niceTickStep,
   oligoTm,
   panViewport,
@@ -23,6 +25,7 @@ import {
   rangeSequence,
   reverseComplement,
   spreadPositions,
+  stackEnzymeLabels,
   translate,
   zoomViewport,
 } from "./vector-geometry.ts";
@@ -158,6 +161,52 @@ describe("circular map", () => {
     // The lowest-priority labels are the ones hidden.
     assert.ok(hidden.includes("k0"));
     assert.ok(!hidden.includes("k39"));
+  });
+});
+
+describe("map text legibility", () => {
+  it("enlarges text only when the drawing renders it below the floor", () => {
+    const view = { width: 860, height: 500 };
+    assert.equal(mapTextScale({ width: 1720, height: 1000 }, view, 10.5, 10.6), 1);
+    // Half size: 10.5 units render at 5.25 px, so text must double (and a bit).
+    const k = mapTextScale({ width: 430, height: 600 }, view, 10.5, 10.6);
+    assert.ok(Math.abs(10.5 * k * 0.5 - 10.6) < 1e-9);
+    // The tighter axis decides the fit.
+    assert.equal(mapTextScale({ width: 2000, height: 250 }, view, 10.5, 10.6), mapTextScale({ width: 430, height: 250 }, view, 10.5, 10.6));
+    assert.equal(mapTextScale({ width: 0, height: 0 }, view, 10.5, 10.6), 1);
+  });
+
+  it("shortens labels that do not fit, with an ellipsis", () => {
+    assert.equal(fitLabel("lacI", 100, 8), "lacI");
+    assert.equal(fitLabel("thrombin cleavage site", 80, 8), "thrombin…");
+    assert.equal(fitLabel("thrombin cleavage site", 8, 8), "");
+  });
+
+  it("stacks enzyme labels so no label overlaps a label or another site's cut line", () => {
+    // SacII and KpnI cut 18 bases apart: KpnI's label would sit on SacII's line.
+    const items = [{ x: 100, width: 30 }, { x: 112, width: 30 }, { x: 300, width: 40 }, { x: 305, width: 40 }, { x: 310, width: 40 }];
+    const rows = stackEnzymeLabels(items, 4);
+    assert.deepEqual(rows.map((entry) => entry.row), [0, 1, 0, 1, 0]);
+    // The first label hangs left of its line so the second site's line passes it.
+    assert.equal(rows[0].anchor, "end");
+    rows.forEach((a, i) => rows.forEach((b, j) => {
+      if (i === j || a.row < 0 || b.row < 0) return;
+      if (a.row === b.row) assert.ok(a.right <= b.left || b.right <= a.left);
+      // A higher label's line passes through every lower row.
+      if (a.row > b.row) assert.ok(items[i].x < b.left || items[i].x > b.right);
+    }));
+  });
+
+  it("keeps labels inside the map, hanging them inward at the edges", () => {
+    const rows = stackEnzymeLabels([{ x: 4, width: 40 }, { x: 596, width: 40 }], 2, { min: 0, max: 600 });
+    assert.deepEqual(rows.map((entry) => entry.anchor), ["start", "end"]);
+    assert.ok(rows.every((entry) => entry.left >= 0 && entry.right <= 600));
+  });
+
+  it("leaves a label off rather than overlapping when the rows run out", () => {
+    const rows = stackEnzymeLabels([{ x: 100, width: 30 }, { x: 101, width: 30 }, { x: 102, width: 30 }], 2);
+    assert.equal(rows[0].row, 0);
+    assert.ok(rows.slice(1).every((entry) => entry.row < 0));
   });
 });
 
