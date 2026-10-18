@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
+import { gelFigureNote, readGelJobConfig } from "@/lib/gel-quantification";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 
 /**
@@ -461,10 +462,13 @@ function PlasmidMap({ name, length, circular, features }: { name: string; length
 function AnalysisFigure({ job }: { job: ProjectJob }) {
   if (job.appType === "gel-analysis") {
     const preview = String(job.config.previewBase64 ?? "");
-    return preview
-      // The gel is an inline data URL destined for print.
-      ? <img className="report-gel-image" alt={job.name} src={`data:image/png;base64,${preview}`}/>
-      : <p className="report-missing">This gel analysis has no saved image.</p>;
+    if (!preview) return <p className="report-missing">This gel analysis has no saved image.</p>;
+    const note = gelFigureNote(readGelJobConfig(job.config));
+    return <>
+      {/* The gel is an inline data URL destined for print. */}
+      <img className="report-gel-image" alt={job.name} src={`data:image/png;base64,${preview}`}/>
+      {note && <p className="report-gel-note">{note}</p>}
+    </>;
   }
   const traces = array(job.config.traces).filter((trace) => trace.visible !== false);
   const series = traces.map((trace) => ({
@@ -654,7 +658,10 @@ function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages
       const image = job?.appType === "gel-analysis" && job.config.previewBase64
         ? `<img src="data:image/png;base64,${String(job.config.previewBase64)}" alt="${escapeHtml(figure.caption)}"/>`
         : `<p class="placeholder">${escapeHtml(job?.name ?? "Figure")}</p>`;
-      return `<figure>${image}<figcaption><b>Figure ${index + 1}.</b> ${escapeHtml(figure.caption)}</figcaption></figure>`;
+      // Whatever the caption claims, the figure carries the engine's own
+      // verdict for each annotated lane, including the lanes it would not quantify.
+      const note = job?.appType === "gel-analysis" ? gelFigureNote(readGelJobConfig(job.config)) : null;
+      return `<figure>${image}<figcaption><b>Figure ${index + 1}.</b> ${escapeHtml(figure.caption)}${note ? ` <span class="gel-note">${escapeHtml(note)}</span>` : ""}</figcaption></figure>`;
     }).join("");
     return `<section class="sheet">
       <h2>${escapeHtml(page.title)}</h2>
@@ -675,6 +682,7 @@ function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages
     .notes { white-space: pre-wrap; line-height: 1.6; margin: 16px 0; }
     figure { margin: 22px 0; } figure img { max-width: 100%; border: 1px solid #d8dadd; }
     figcaption { font-size: 12px; color: #5d666c; margin-top: 7px; }
+    figcaption .gel-note { display: block; margin-top: 5px; font-size: 11px; line-height: 1.5; color: #6d767c; }
     .placeholder { color: #8a9197; font-style: italic; }
     @media print { body { background: #fff; } .sheet { box-shadow: none; margin: 0; page-break-after: always; } }
   </style></head><body>
