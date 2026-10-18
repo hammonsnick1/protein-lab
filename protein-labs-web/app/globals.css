@@ -3509,12 +3509,10 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   }
 }
 /* The editor works at the dashboard's compact type size. Without this, any
-   text not sized by its own rule, and every Button, inherits the 16px body. */
+   text not sized by its own rule inherits the 16px body. Buttons size
+   themselves (text-sm) like everywhere else in the app. */
 .vector-planner {
   font-size: 13px;
-}
-.vector-planner [data-slot="button"] {
-  font-size: 12.5px;
 }
 .vector-planner {
   height: 100%;
