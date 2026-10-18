@@ -40,10 +40,19 @@ from ..expression_planner import (
     vector_preview,
 )
 from ..construct_builder import (
+    CODON_PREFERENCES,
     available_hosts,
     back_translate,
     insert_target_sequence,
     insertion_sites,
+)
+from ..vector_engine import (
+    assembly_warnings,
+    enzyme_analysis,
+    gateway_preview,
+    optimize_codons,
+    restriction_ligation_preview,
+    simulate_gel,
 )
 from ..vector_sources import (
     describe_sources,
@@ -550,7 +559,10 @@ class ProteinPlanner:
             raise ValueError("Enter or import a DNA sequence before saving the vector")
         if len(sequence) > 5_000_000:
             raise ValueError("Vectors are limited to 5,000,000 bases")
-        features = normalize_features(fields.get("features") or [], len(sequence))
+        circular = bool(fields.get("circular", True))
+        features = normalize_features(
+            fields.get("features") or [], len(sequence), circular=circular
+        )
         primers = normalize_primers(fields.get("primers") or [], len(sequence))
         enzyme_names = fields.get("enzymeNames") or COMMON_ENZYMES
         if not isinstance(enzyme_names, list) or len(enzyme_names) > 250:
@@ -573,19 +585,24 @@ class ProteinPlanner:
             {
                 "name": name,
                 "sequence": sequence,
-                "circular": bool(fields.get("circular", True)),
+                "circular": circular,
                 "features": features,
                 "primers": primers,
                 "enzymeNames": enzyme_names,
                 "minimumOrfAminoAcids": minimum_orf_amino_acids,
                 "history": history,
+                "libraryId": fields.get("sourceLibraryId") or fields.get("libraryId"),
             },
             vector_id,
         )
-        # Naming and saving a vector is what publishes it: the catalogue keeps
-        # one entry per distinct sequence and records this project against it.
-        self.database.record_vector_use(protein_id, value)
-        return vector_preview(value)
+        self.database.record_vector_use(
+            protein_id,
+            value,
+            source_library_id=str(fields.get("sourceLibraryId") or "") or None,
+        )
+        return vector_preview(
+            self.database.get_expression_vector(protein_id, value["id"])
+        )
 
     # ------------------------------------------------------------------
     # Shared vector library
@@ -593,8 +610,82 @@ class ProteinPlanner:
     def list_library_vectors(self) -> list[dict[str, Any]]:
         return self.database.list_library_vectors()
 
+    def search_library_vectors(
+        self,
+        *,
+        query: str = "",
+        filters: dict[str, list[str]] | None = None,
+        favorite: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        if limit < 1 or limit > 500:
+            raise ValueError("Vector library limit must be between 1 and 500")
+        if offset < 0:
+            raise ValueError("Vector library offset cannot be negative")
+        unknown = set(filters or {}) - set(self.database.VECTOR_LIBRARY_FACETS)
+        if unknown:
+            raise ValueError(
+                "Unknown vector library facet: " + ", ".join(sorted(unknown))
+            )
+        return self.database.search_library_vectors(
+            query=query,
+            filters=filters,
+            favorite=favorite,
+            limit=limit,
+            offset=offset,
+        )
+
+    def list_recent_library_vectors(self, limit: int = 10) -> list[dict[str, Any]]:
+        if limit < 1 or limit > 100:
+            raise ValueError("Recent vector limit must be between 1 and 100")
+        return self.database.list_recent_library_vectors(limit)
+
+    def set_library_favorite(
+        self, library_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        if "favorite" not in fields or not isinstance(fields["favorite"], bool):
+            raise ValueError("favorite must be a boolean")
+        return self.database.set_library_favorite(library_id, fields["favorite"])
+
     def get_library_vector(self, library_id: str) -> dict[str, Any]:
         return self.database.get_library_vector(library_id)
+
+    def import_library_vector(
+        self, filename: str, content: str
+    ) -> dict[str, Any]:
+        """Parse a sequence file directly into the shared catalogue."""
+        if len(content) > 15_000_000:
+            raise ValueError("The sequence file is too large")
+        parsed = parse_sequence_file(content, filename)
+        name = str(parsed.get("name") or "Untitled vector").strip()
+        if not name or len(name) > 120:
+            raise ValueError("Vector names must be 1 to 120 characters")
+        sequence = normalize_dna(str(parsed.get("sequence") or ""))
+        if not sequence:
+            raise ValueError("The imported file does not contain a DNA sequence")
+        if len(sequence) > 5_000_000:
+            raise ValueError("Vectors are limited to 5,000,000 bases")
+        vector, duplicate = self.database.import_library_vector({
+            "name": name,
+            "sequence": sequence,
+            "circular": bool(parsed.get("circular", True)),
+            "features": normalize_features(parsed.get("features") or [], len(sequence)),
+        })
+        return {**vector, "duplicate": True} if duplicate else vector
+
+    def export_library_vector(
+        self, library_id: str, file_format: str
+    ) -> dict[str, Any]:
+        """Export a catalogue record without requiring a project copy."""
+        if file_format not in {"genbank", "fasta"}:
+            raise ValueError("Export format must be genbank or fasta")
+        vector = self.database.get_library_vector(library_id)
+        return {
+            "filename": f"{vector['name']}.{'gb' if file_format == 'genbank' else 'fasta'}",
+            "format": file_format,
+            "content": export_sequence(vector, file_format),
+        }
 
     def delete_library_vector(self, library_id: str) -> None:
         self.database.delete_library_vector(library_id)
@@ -607,6 +698,7 @@ class ProteinPlanner:
             "sequence": source["sequence"],
             "circular": source["circular"],
             "features": source["features"],
+            "sourceLibraryId": source["id"],
         })
 
     def auto_annotate_expression_vector(
@@ -686,11 +778,27 @@ class ProteinPlanner:
         self, protein_id: str, vector_id: str, fields: dict[str, Any]
     ) -> dict[str, Any]:
         vector = self.database.get_expression_vector(protein_id, vector_id)
+        primer_length = (
+            int(fields["primerLength"]) if fields.get("primerLength") is not None else None
+        )
         primers = design_pcr_primers(
             vector["sequence"],
             int(fields.get("start", 0)),
             int(fields.get("end", len(vector["sequence"]))),
-            int(fields.get("primerLength", 20)),
+            primer_length,
+            target_tm=float(fields.get("targetTmCelsius", 60.0)),
+            min_length=int(fields.get("minLength", 18)),
+            max_length=int(fields.get("maxLength", 30)),
+            min_gc=float(fields.get("minGcPercent", 35.0)),
+            max_gc=float(fields.get("maxGcPercent", 65.0)),
+            sodium_mm=float(fields.get("sodiumMm", 50.0)),
+            magnesium_mm=float(fields.get("magnesiumMm", 1.5)),
+            dntp_mm=float(fields.get("dntpMm", 0.2)),
+            primer_nm=float(fields.get("primerNm", 500.0)),
+            forward_overhang=str(fields.get("forwardOverhang") or ""),
+            reverse_overhang=str(fields.get("reverseOverhang") or ""),
+            cloning_method=str(fields.get("cloningMethod") or "pcr"),
+            max_five_prime_shift=int(fields.get("maxFivePrimeShift", 0)),
         )
         label = str(fields.get("name") or "PCR").strip()
         primers[0]["name"] = f"{label} forward"
@@ -728,6 +836,23 @@ class ProteinPlanner:
             avoid_enzymes=[str(name) for name in (fields.get("avoidEnzymes") or [])],
             include_stop=fields.get("includeStop") is not False,
         )
+
+    def optimize_target_codons(self, fields: dict[str, Any]) -> dict[str, Any]:
+        host = str(fields.get("host") or "ecoli")
+        preferences = CODON_PREFERENCES.get(host)
+        if preferences is None:
+            raise ValueError(f"No codon table for host {host!r}")
+        result = optimize_codons(
+            str(fields.get("protein") or ""),
+            preferences=preferences,
+            target_gc=float(fields.get("targetGcPercent", 55.0)),
+            min_gc=float(fields.get("minGcPercent", 40.0)),
+            max_gc=float(fields.get("maxGcPercent", 65.0)),
+            avoid_motifs=[str(value) for value in (fields.get("avoidMotifs") or [])],
+            max_homopolymer=int(fields.get("maxHomopolymer", 6)),
+        )
+        result["host"] = host
+        return result
 
     def expression_vector_insertion_sites(
         self, protein_id: str, vector_id: str, fields: dict[str, Any]
@@ -784,6 +909,115 @@ class ProteinPlanner:
             vector["sequence"],
             circular=bool(vector.get("circular", True)),
             enzyme_names=[str(name) for name in enzymes],
+        )
+
+    def analyze_expression_vector_enzymes(
+        self, protein_id: str, vector_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        vector = self.database.get_expression_vector(protein_id, vector_id)
+        insert_sequence = str(fields.get("insertSequence") or "")
+        insert_id = str(fields.get("insertVectorId") or "")
+        if insert_id:
+            insert_sequence = self.database.get_expression_vector(protein_id, insert_id)["sequence"]
+        mcs = fields.get("mcs") or {}
+        names = fields.get("enzymeNames") or vector.get("enzymeNames") or COMMON_ENZYMES
+        if not isinstance(names, list) or not names or len(names) > 250:
+            raise ValueError("Select between 1 and 250 restriction enzymes")
+        return enzyme_analysis(
+            vector["sequence"],
+            insert_sequence=insert_sequence,
+            enzyme_names=[str(name) for name in names],
+            mcs_start=None if mcs.get("start") is None else int(mcs["start"]),
+            mcs_end=None if mcs.get("end") is None else int(mcs["end"]),
+            supplier=str(fields.get("supplier") or "") or None,
+            circular=bool(vector.get("circular", True)),
+        )
+
+    def simulate_expression_vector_gel(
+        self, protein_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        lanes = fields.get("lanes") or []
+        if not isinstance(lanes, list) or not lanes or len(lanes) > 24:
+            raise ValueError("A gel requires between 1 and 24 sample lanes")
+        prepared = []
+        for lane in lanes:
+            if not isinstance(lane, dict):
+                raise ValueError("Every gel lane must be an object")
+            item = dict(lane)
+            vector_id = str(item.get("vectorId") or "")
+            if vector_id:
+                vector = self.database.get_expression_vector(protein_id, vector_id)
+                item["name"] = item.get("name") or vector["name"]
+                enzyme_names = [str(name) for name in (item.get("enzymeNames") or [])]
+                if enzyme_names:
+                    digest = simulate_restriction_digest(
+                        vector["sequence"],
+                        circular=bool(vector.get("circular", True)),
+                        enzyme_names=enzyme_names,
+                    )
+                    item["fragments"] = digest["fragments"]
+                else:
+                    item["bandSizes"] = [len(vector["sequence"])]
+                    item["uncut"] = {
+                        "sizeBp": len(vector["sequence"]),
+                        "forms": ["supercoiled", "nicked/open-circle", "linear"],
+                        "note": (
+                            "Rendered as one size-equivalent band. Uncut plasmids can show "
+                            "multiple topology-dependent apparent mobilities."
+                        ),
+                    }
+            prepared.append(item)
+        return simulate_gel(prepared, ladder=str(fields.get("ladder") or "1kb"))
+
+    def simulate_expression_cloning(
+        self, protein_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        method = str(fields.get("method") or "").lower().replace("_", "-")
+        backbone = self.database.get_expression_vector(
+            protein_id, str(fields.get("backboneVectorId") or "")
+        )
+        insert = self.database.get_expression_vector(
+            protein_id, str(fields.get("insertVectorId") or "")
+        )
+        if method == "restriction-ligation":
+            return restriction_ligation_preview(
+                backbone,
+                insert,
+                backbone_enzymes=[str(name) for name in (fields.get("backboneEnzymes") or [])],
+                insert_enzymes=[str(name) for name in (fields.get("insertEnzymes") or [])] or None,
+            )
+        if method in {"gibson", "in-fusion", "infusion"}:
+            vectors = [backbone, insert]
+            result = assemble_by_overlap(
+                vectors,
+                minimum_overlap=int(fields.get("minimumOverlap", 20)),
+                circular=bool(fields.get("circular", False)),
+            )
+            return {
+                "method": "in-fusion" if method in {"in-fusion", "infusion"} else "gibson",
+                "product": {
+                    "sequence": result["sequence"],
+                    "circular": result["circular"],
+                    "features": result["features"],
+                },
+                "junctions": result["junctions"],
+                "warnings": assembly_warnings(result["sequence"], result["features"]),
+                "lostFeatures": [],
+            }
+        if method in {"gateway-bp", "gateway-lr"}:
+            return gateway_preview(
+                backbone,
+                insert,
+                reaction=method.rsplit("-", 1)[1],
+                backbone_start=int(fields.get("backboneStart", 0)),
+                backbone_end=int(fields.get("backboneEnd", len(backbone["sequence"]))),
+                insert_start=int(fields.get("insertStart", 0)),
+                insert_end=(
+                    None if fields.get("insertEnd") is None else int(fields["insertEnd"])
+                ),
+            )
+        raise ValueError(
+            "Cloning method must be restriction-ligation, gibson, in-fusion, gateway-bp, or gateway-lr"
         )
 
     def align_expression_vectors(
@@ -890,13 +1124,15 @@ class ProteinPlanner:
     def export_expression_vector(
         self, protein_id: str, vector_id: str, file_format: str
     ) -> dict[str, Any]:
-        if file_format not in {"genbank", "fasta"}:
-            raise ValueError("Export format must be genbank or fasta")
+        if file_format not in {"genbank", "fasta", "snapgene"}:
+            raise ValueError("Export format must be genbank, fasta, or snapgene")
         vector = self.database.get_expression_vector(protein_id, vector_id)
+        extension = {"genbank": "gb", "fasta": "fasta", "snapgene": "dna"}[file_format]
         return {
-            "filename": f"{vector['name']}.{'gb' if file_format == 'genbank' else 'fasta'}",
+            "filename": f"{vector['name']}.{extension}",
             "format": file_format,
             "content": export_sequence(vector, file_format),
+            "encoding": "base64" if file_format == "snapgene" else "text",
         }
 
     def save_project_notebook(

@@ -47,7 +47,7 @@ const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleCon
 const MASCOT_VISIBLE_KEY = "protein-labs-mascot-visible";
 const reportPages = ["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"];
 
-export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onCreate }: { proteins: ProteinRecord[]; trees: SavedProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onCreate: () => void }) {
+export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onVectors, onCreate }: { proteins: ProteinRecord[]; trees: SavedProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onVectors: () => void; onCreate: () => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
   // Which project list the bundles were loaded for, so a newer list reads as loading.
@@ -310,12 +310,13 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </>}
         />
 
-        <FlipTile className="dashboard-vector-card" icon={Database} title="Vector database" subtitle="Saved vectors and their inserts"
-          backSubtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} across ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : "Saved vectors appear here"}
+        <FlipTile className="dashboard-vector-card" icon={Database} title="Vector library" subtitle="Standard and saved vectors"
+          backSubtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} · used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : "Saved vectors appear here"}
+          actions={<Button variant="outline" size="sm" onClick={onVectors}>Open library <ArrowRight/></Button>}
           front={vectorsState === "error"
-            ? <TileHeadline value="—" label="Vector database unavailable" detail="Start the local engine to read the catalogue"/>
-            : <TileHeadline value={vectorsState === "loading" ? "…" : vectors.length} label={`saved vector${vectors.length === 1 ? "" : "s"}`} detail={vectors.length ? `Across ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : vectorsState === "ready" ? "Name and save one in Expression vector design" : undefined}/>}
-          back={<VectorList vectors={vectors} failed={vectorsState === "error"} onOpenProject={onOpenProject}/>}
+            ? <TileHeadline value="—" label="Vector library unavailable" detail="Start the local engine to read the catalogue"/>
+            : <TileHeadline value={vectorsState === "loading" ? "…" : vectors.length} label={`vector${vectors.length === 1 ? "" : "s"} in the library`} detail={vectors.length ? `Used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : vectorsState === "ready" ? "Name and save one in Expression vector design" : undefined}/>}
+          back={<VectorList vectors={vectors} failed={vectorsState === "error"} onOpenProject={onOpenProject} onOpenLibrary={onVectors}/>}
         />
 
         <FlipTile className="dashboard-account-card" icon={Sparkles} title="AlphaFold access" subtitle="Through your system browser"
@@ -456,12 +457,11 @@ type LibraryVector = {
 };
 
 /**
- * Every vector saved anywhere in the workspace, with the construct it carries
- * and the projects using it. Vectors are catalogued when they are named and
- * saved in Expression vector design, so this is a workspace-wide view rather
- * than a per-project one.
+ * The standard vectors plus every vector saved anywhere in the workspace, with
+ * the construct it carries and the projects using it. The full faceted search
+ * lives on the vector library page this tile opens.
  */
-function VectorList({ vectors, failed, onOpenProject }: { vectors: LibraryVector[]; failed: boolean; onOpenProject: (id: string) => void }) {
+function VectorList({ vectors, failed, onOpenProject, onOpenLibrary }: { vectors: LibraryVector[]; failed: boolean; onOpenProject: (id: string) => void; onOpenLibrary: () => void }) {
   const [search, setSearch] = useState("");
   const needle = search.trim().toLowerCase();
   const shown = needle
@@ -476,12 +476,12 @@ function VectorList({ vectors, failed, onOpenProject }: { vectors: LibraryVector
           <small>{vector.lengthBp.toLocaleString()} bp · {vector.featureCount} annotations{vector.insertName ? ` · ${vector.insertName}` : ""}</small>
           <small className="vector-card-uses">{vector.projectCount} project{vector.projectCount === 1 ? "" : "s"}{vector.projects.length ? `: ${vector.projects.map((use) => use.proteinName).join(", ")}` : ""}</small>
         </span>
-        {vector.projects[0] && <Button size="sm" variant="outline" onClick={() => onOpenProject(vector.projects[0].proteinId)}>Open <ArrowRight/></Button>}
+        {vector.projects[0] ? <Button size="sm" variant="outline" onClick={() => onOpenProject(vector.projects[0].proteinId)}>Open <ArrowRight/></Button> : <Button size="sm" variant="ghost" onClick={onOpenLibrary}>Preview <ArrowRight/></Button>}
       </article>)}
       {!shown.length && <div className="vector-card-empty">
         <Database/>
         <span>
-          <strong>{failed ? "The vector database is unavailable" : vectors.length ? "No vector matched that search" : "No vectors saved yet"}</strong>
+          <strong>{failed ? "The vector library is unavailable" : vectors.length ? "No vector matched that search" : "No vectors saved yet"}</strong>
           <small>{failed ? "Start the local engine to read the catalogue." : "Name and save a vector in Expression vector design and it is catalogued here, with the construct inserted into it."}</small>
         </span>
       </div>}

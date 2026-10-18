@@ -78,7 +78,9 @@ export type GelResult = { ladder: string; lanes: GelLane[]; migrationModel: stri
 
 export type BackendHealth ={ service: string; version: number; apps: string[]; database: string };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+// Exported so feature-specific engine clients (chromatography, gels) share one
+// transport, one error shape and one base URL instead of hand-rolling fetch.
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -121,6 +123,12 @@ export const proteinLabsApi = {
   deleteVector: (proteinId: string, vectorId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}`, { method: "DELETE" }),
   importVector: (proteinId: string, filename: string, content: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/import`, { filename, content }),
   vectorLibrary: () => request<{ vectors: JsonObject[] }>("/v1/protein-planner/vector-library"),
+  // Catalogue search (HOM-48): `params` comes from librarySearchParams in lib/vector-library.
+  searchVectorLibrary: (params: string) => request<{ vectors: JsonObject[]; total: number; limit: number; offset: number; facets: Record<string, { value: string; count: number }[]> }>(`/v1/protein-planner/vector-library?${params}`),
+  recentLibraryVectors: (limit = 8) => request<{ vectors: JsonObject[] }>(`/v1/protein-planner/vector-library/recent?limit=${limit}`),
+  setLibraryFavorite: (libraryId: string, favorite: boolean) => patch<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { favorite }),
+  exportLibraryVector: (libraryId: string, format: "genbank" | "fasta") => request<{ filename: string; content: string }>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/export?format=${format}`),
+  importLibraryVector: (filename: string, content: string) => post<JsonObject & { duplicate?: boolean }>("/v1/protein-planner/vector-library/import", { filename, content }),
   getLibraryVector: (libraryId: string) => request<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`),
   deleteLibraryVector: (libraryId: string) => request<{ deleted: string }>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { method: "DELETE" }),
   copyLibraryVector: (proteinId: string, libraryId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/library/${encodeURIComponent(libraryId)}`),
@@ -143,7 +151,6 @@ export const proteinLabsApi = {
   insertIntoVector: (proteinId: string, vectorId: string, fields: JsonObject) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/insert`, fields),
   digestVector: (proteinId: string, vectorId: string, enzymeNames: string[]) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/digest`, { enzymeNames }),
   alignVectors: (proteinId: string, vectorId: string, queryVectorId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/align`, { queryVectorId }),
-  analyzeGel: (filename: string, imageBase64: string, sensitivity: number, lanes: JsonObject[] = []) => post<JsonObject>("/v1/gel/analyze", { filename, imageBase64, sensitivity, ...(lanes.length ? { lanes } : {}) }),
 };
 
 export async function ensureProjectJob(proteinId: string, jobs: ProjectJob[], appType: string, name: string, config: JsonObject, status: ProjectJob["status"] = "complete") {

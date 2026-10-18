@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode, WheelEvent as ReactWheelEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, WheelEvent as ReactWheelEvent } from "react";
 import { Copy, Maximize2, Minus, Plus, ScanSearch } from "lucide-react";
-import type { CutSite, FeatureCategory, MapFeature, SeqRange, Viewport } from "@/lib/vector-geometry";
+import type { CutSite, FeatureCategory, MapFeature, SeqRange, StackedLabel, Viewport } from "@/lib/vector-geometry";
 import {
   CATEGORY_STYLE, angleToBase, angularSpan, arcBand, assignTracks, baseAngle, clipRange, dragRange, featureArrow,
-  featureCategory, featureColor, formatRange, gcPercent, inkOn, layoutCircularLabels, niceTickStep, oligoTm, polar,
-  rangeLength, rangeSequence, reverseComplement, complement, translate, zoomViewport, panViewport,
+  featureCategory, featureColor, fitLabel, formatRange, gcPercent, inkOn, layoutCircularLabels, mapTextScale, niceTickStep, oligoTm, polar,
+  rangeLength, rangeSequence, reverseComplement, complement, stackEnzymeLabels, translate, zoomViewport, panViewport,
 } from "@/lib/vector-geometry";
 
 /** The construct as every view sees it. */
@@ -25,6 +25,10 @@ type ViewProps = {
   onSelect: (selection: VectorSelection) => void;
   showOrfs: boolean;
 };
+
+/** Legibility floor for map text on screen, and the smallest circular-map font in user units (the length). */
+const MIN_TEXT_PX = 10.6;
+const CIRCULAR_SMALLEST_TEXT = 11.5;
 
 function visibleFeatures(vector: ViewVector, showOrfs: boolean) {
   return vector.features.filter((feature) => showOrfs || featureCategory(feature) !== "orf");
@@ -44,6 +48,9 @@ export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps
   const length = Math.max(1, vector.sequence.length);
   const width = 860, height = 500, cx = width / 2, cy = height / 2, radius = 150;
   const svgRef = useRef<SVGSVGElement>(null);
+  const [boxRef, box] = useBox<HTMLDivElement>();
+  // The drawing scales with its box; text grows in user units so it stays legible on small windows.
+  const textScale = mapTextScale(box, { width, height }, CIRCULAR_SMALLEST_TEXT, MIN_TEXT_PX);
   const [drag, setDrag] = useState<number | null>(null);
   const features = useMemo(() => visibleFeatures(vector, showOrfs), [vector, showOrfs]);
   const tracks = useMemo(() => assignTracks(features, length, vector.circular), [features, length, vector.circular]);
@@ -57,8 +64,10 @@ export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps
       }),
       ...vector.cuts.map((site) => ({ key: `e:${site.enzyme}:${site.cut}`, angle: baseAngle(site.cut, length), priority: site.cutCount === 1 ? 2.5 : 1.5, width: site.enzyme.length * 6 })),
     ];
-    return layoutCircularLabels(requests, { cx, cy, radius: radius + 50, top: 12, bottom: height - 8, lineHeight: 14 });
-  }, [features, vector.cuts, length, cx, cy]);
+    return layoutCircularLabels(requests, { cx, cy, radius: radius + 50, top: 12 * textScale, bottom: height - 8, lineHeight: 14 * textScale });
+  }, [features, vector.cuts, length, cx, cy, textScale]);
+  // Room between a label's anchor and the edge of the drawing, in characters of the label font.
+  const labelText = (text: string, x: number, left: boolean, fontUnits: number) => fitLabel(text, (left ? x : width - x) - 4, fontUnits * 0.62 * textScale);
   const labels = useMemo(() => new Map(layout.placed.map((label) => [label.key, label])), [layout]);
 
   function baseAt(event: ReactPointerEvent) {
@@ -73,8 +82,8 @@ export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps
   const range = selection?.range;
   const selectionSpan = range ? angularSpan(range.start, range.end, length) : 0;
 
-  return <div className="vmap-circular">
-    <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Circular map of ${vector.name}`}>
+  return <div className={`vmap-circular${layout.hidden.length ? " has-note" : ""}`} ref={boxRef}>
+    <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Circular map of ${vector.name}`} style={{ "--vmap-text": textScale } as CSSProperties}>
       <circle cx={cx} cy={cy} r={radius} className="vmap-backbone" />
       <circle cx={cx} cy={cy} r={radius - 4} className="vmap-backbone-inner" />
       {/* Drag anywhere on the ring to select a range; it may cross the origin. */}
@@ -89,12 +98,10 @@ export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps
       {range && <line {...lineAt(cx, cy, radius - 108, radius + 14, baseAngle(range.start, length))} className="vmap-caret" />}
       {range && selectionSpan > 0 && <line {...lineAt(cx, cy, radius - 108, radius + 14, baseAngle(range.end, length))} className="vmap-caret" />}
 
+      {/* Quarter ticks only: numbers here collided with the name in the centre and with labels outside. */}
       {[0, 0.25, 0.5, 0.75].map((fraction) => {
-        const angle = fraction * 360 - 90, inner = polar(cx, cy, radius + 3, angle), label = polar(cx, cy, radius - 118, angle);
-        return <g key={fraction} className="vmap-ruler">
-          <line x1={inner.x} y1={inner.y} x2={polar(cx, cy, radius - 6, angle).x} y2={polar(cx, cy, radius - 6, angle).y} />
-          <text x={label.x} y={label.y + 3} textAnchor="middle">{Math.round(fraction * length) || 1}</text>
-        </g>;
+        const angle = fraction * 360 - 90, inner = polar(cx, cy, radius + 3, angle), outer = polar(cx, cy, radius - 6, angle);
+        return <g key={fraction} className="vmap-ruler"><line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} /></g>;
       })}
 
       {features.map((feature) => {
@@ -111,7 +118,7 @@ export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps
           <path d={featureArrow(cx, cy, r, 11, baseAngle(feature.start, length), span, feature.strand)} fill={color} className="vmap-arrow" />
           {label && <>
             <polyline points={`${anchor.x},${anchor.y} ${label.x + (label.left ? 4 : -4)},${label.y}`} className="vmap-leader" />
-            <text x={label.x} y={label.y + 3.5} textAnchor={label.left ? "end" : "start"} className="vmap-label">{feature.name}</text>
+            <text x={label.x} y={label.y + 3.5} textAnchor={label.left ? "end" : "start"} className="vmap-label">{labelText(feature.name, label.x, label.left, 13)}</text>
           </>}
         </g>;
       })}
@@ -121,21 +128,24 @@ export function CircularMap({ vector, selection, onSelect, showOrfs }: ViewProps
         const inner = polar(cx, cy, radius - 4, angle), outer = polar(cx, cy, radius + 12, angle);
         const label = labels.get(`e:${site.enzyme}:${site.cut}`);
         const selected = selection?.enzyme === site.enzyme;
+        const position = (site.cut + 1).toLocaleString();
+        // Drop the position before shortening the enzyme name when the label runs out of room.
+        const withPosition = !!label && labelText(`${site.enzyme} (${position})`, label.x, label.left, 12).endsWith(")");
         return <g key={`${site.enzyme}:${site.cut}`} className={`vmap-enzyme${selected ? " selected" : ""}`} onClick={() => onSelect({ range: { start: site.cut, end: site.cut }, enzyme: site.enzyme, source: "circular" })}>
           <title>{`${site.enzyme} cuts after ${site.cut.toLocaleString()} · ${site.recognitionSite} · ${site.cutCount === 1 ? "unique cutter" : `${site.cutCount} sites`}`}</title>
           <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} className="vmap-cut" />
           {label && <>
             <polyline points={`${outer.x},${outer.y} ${label.x + (label.left ? 4 : -4)},${label.y}`} className="vmap-leader enzyme" />
             <text x={label.x} y={label.y + 3.5} textAnchor={label.left ? "end" : "start"} className="vmap-enzyme-label">
-              {site.enzyme}<tspan className="vmap-position"> ({(site.cut + 1).toLocaleString()})</tspan>
+              {withPosition ? <>{site.enzyme}<tspan className="vmap-position"> ({position})</tspan></> : labelText(site.enzyme, label.x, label.left, 12)}
             </text>
           </>}
         </g>;
       })}
 
-      <text x={cx} y={cy - 8} textAnchor="middle" className="vmap-name">{vector.name}</text>
-      <text x={cx} y={cy + 13} textAnchor="middle" className="vmap-length">{length.toLocaleString()} bp</text>
-      {range && rangeLength(range, length) > 0 && <text x={cx} y={cy + 32} textAnchor="middle" className="vmap-length">{formatRange(range, length)} · {rangeLength(range, length).toLocaleString()} bp</text>}
+      <text x={cx} y={cy - 8 * textScale} textAnchor="middle" className="vmap-name">{fitLabel(vector.name, 2 * (radius - 62), 18 * 0.62 * textScale)}</text>
+      <text x={cx} y={cy + 13 * textScale} textAnchor="middle" className="vmap-length">{length.toLocaleString()} bp</text>
+      {range && rangeLength(range, length) > 0 && <text x={cx} y={cy + 32 * textScale} textAnchor="middle" className="vmap-length">{formatRange(range, length)} · {rangeLength(range, length).toLocaleString()} bp</text>}
     </svg>
     {layout.hidden.length > 0 && <p className="vmap-note">{layout.hidden.length} label{layout.hidden.length === 1 ? "" : "s"} hidden to avoid overlap. Zoom the linear map or hover a feature to read it.</p>}
   </div>;
@@ -166,6 +176,19 @@ export function MiniMap({ vector, highlight }: { vector: ViewVector; highlight?:
 // ---------------------------------------------------------------------------
 // Linear map
 // ---------------------------------------------------------------------------
+
+function useBox<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver((entries) => { const { width, height } = entries[0].contentRect; setBox({ width, height }); });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, box] as const;
+}
 
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -198,20 +221,13 @@ export function LinearMap({ vector, selection, onSelect, showOrfs, viewport, onV
   const trackCount = Math.min(compact ? 2 : 6, Math.max(1, ...[...tracks.values()].map((track) => track + 1)));
 
   const cuts = vector.cuts.filter((site) => site.cut >= viewport.from && site.cut <= viewport.to);
-  // Enzyme labels are stacked into rows greedily so they never overlap.
-  const enzymeRows: { site: CutSite; row: number; x: number }[] = [];
-  const rowEnds: number[] = [];
-  for (const site of [...cuts].sort((a, b) => a.cut - b.cut)) {
-    const x = xOf(site.cut), textWidth = site.enzyme.length * 6.2 + 6;
-    let row = rowEnds.findIndex((end) => end < x - textWidth / 2);
-    if (row < 0) { row = rowEnds.length; rowEnds.push(0); }
-    if (row > (compact ? 1 : 3)) continue;
-    rowEnds[row] = x + textWidth / 2;
-    enzymeRows.push({ site, row, x });
-  }
-  const enzymeBand = Math.min(compact ? 2 : 4, rowEnds.length) * 12 + (cuts.length ? 6 : 0);
+  // Enzyme labels are stacked into rows so no label overlaps another label or another site's cut line.
+  const sortedCuts = [...cuts].sort((a, b) => a.cut - b.cut);
+  const stacked = stackEnzymeLabels(sortedCuts.map((site) => ({ x: xOf(site.cut), width: site.enzyme.length * 6.6 + 2 })), compact ? 2 : 4, { min: 0, max: width });
+  const enzymeRows = sortedCuts.map((site, index) => ({ site, row: stacked[index].row, anchor: stacked[index].anchor, x: xOf(site.cut) }));
+  const enzymeBand = (Math.max(0, ...enzymeRows.map((entry) => entry.row + 1))) * 12 + (cuts.length ? 6 : 0);
   const rulerY = enzymeBand + 14;
-  const trackTop = rulerY + 14;
+  const trackTop = rulerY + 17;
   const height = trackTop + trackCount * 17 + 8;
   const step = niceTickStep(span, Math.max(4, Math.round(inner / 90)));
   const ticks: number[] = [];
@@ -268,10 +284,10 @@ export function LinearMap({ vector, selection, onSelect, showOrfs, viewport, onV
         <line x1={xOf(tick)} x2={xOf(tick)} y1={rulerY} y2={rulerY + 5} />
         <text x={xOf(tick)} y={rulerY + 13} textAnchor="middle">{tick === 0 ? 1 : tick.toLocaleString()}</text>
       </g>)}
-      {enzymeRows.map(({ site, row, x }) => <g key={`${site.enzyme}:${site.cut}`} className={`vmap-enzyme${selection?.enzyme === site.enzyme ? " selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); onSelect({ range: { start: site.cut, end: site.cut }, enzyme: site.enzyme, source: "linear" }); }}>
+      {enzymeRows.map(({ site, row, anchor, x }) => <g key={`${site.enzyme}:${site.cut}`} className={`vmap-enzyme${selection?.enzyme === site.enzyme ? " selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); onSelect({ range: { start: site.cut, end: site.cut }, enzyme: site.enzyme, source: "linear" }); }}>
         <title>{`${site.enzyme} cuts after ${site.cut.toLocaleString()} · ${site.recognitionSite}`}</title>
-        <line x1={x} x2={x} y1={enzymeBand - row * 12 - 2} y2={rulerY + 3} className="vmap-cut thin" />
-        <text x={x} y={enzymeBand - row * 12 - 4} textAnchor="middle" className="vmap-enzyme-label">{site.enzyme}</text>
+        <line x1={x} x2={x} y1={row < 0 ? rulerY - 6 : enzymeBand - row * 12 - 2} y2={rulerY + 3} className="vmap-cut thin" />
+        {row >= 0 && <text x={x + (anchor === "start" ? 2 : anchor === "end" ? -2 : 0)} y={enzymeBand - row * 12 - 4} textAnchor={anchor} className="vmap-enzyme-label">{site.enzyme}</text>}
       </g>)}
       {pieces.map(({ feature, piece, key }) => {
         const track = Math.min(trackCount - 1, trackOf.get(key) ?? 0);
@@ -310,7 +326,7 @@ export function fitRange(range: SeqRange, length: number): Viewport {
 const CHAR = 8.6;
 const GUTTER = 66;
 
-type RowLayout = { start: number; end: number; top: number; height: number; cuts: CutSite[]; bars: { feature: MapFeature; piece: SeqRange; track: number }[]; tracks: number };
+type RowLayout = { start: number; end: number; top: number; height: number; cuts: CutSite[]; labels: StackedLabel[]; labelRows: number; bars: { feature: MapFeature; piece: SeqRange; track: number }[]; tracks: number };
 
 /**
  * Double-stranded sequence with ruler, enzyme sites, feature bars and the
@@ -333,13 +349,16 @@ export function SequenceView({ vector, selection, onSelect, showOrfs }: ViewProp
     let top = 6;
     for (let start = 0; start < length; start += perRow) {
       const end = Math.min(length, start + perRow);
-      const cuts = vector.cuts.filter((site) => site.cut >= start && site.cut < end);
+      const cuts = vector.cuts.filter((site) => site.cut >= start && site.cut < end).sort((a, b) => a.cut - b.cut);
+      // Nearby sites (SmaI and XmaI share CCCGGG) stack their labels instead of overprinting.
+      const labels = stackEnzymeLabels(cuts.map((site) => ({ x: GUTTER + (site.cut - start) * CHAR, width: site.enzyme.length * 6.6 + 4 })), 3, { min: 0, max: GUTTER + perRow * CHAR + 20 });
+      const labelRows = cuts.length ? Math.max(1, ...labels.map((label) => label.row + 1)) : 0;
       const pieces = features.flatMap((feature) => clipRange(feature, start, end, length).map((piece) => ({ feature, piece })));
       const assigned = assignTracks(pieces.map((item) => ({ ...item.piece, item })), length, false);
       const bars = [...assigned].map(([entry, track]) => ({ ...entry.item, track }));
       const tracks = bars.length ? Math.max(...bars.map((bar) => bar.track)) + 1 : 0;
-      const height = (cuts.length ? 14 : 0) + 36 + tracks * 17 + 12;
-      out.push({ start, end, top, height, cuts, bars, tracks });
+      const height = (cuts.length ? 2 + labelRows * 12 : 0) + 36 + tracks * 17 + 12;
+      out.push({ start, end, top, height, cuts, labels, labelRows, bars, tracks });
       top += height;
     }
     return { rows: out, total: top + 6 };
@@ -404,7 +423,7 @@ function SequenceRow({ row, vector, complementStrand, selection, onSelect }: { r
   const length = vector.sequence.length;
   const count = row.end - row.start;
   const xOf = (base: number) => GUTTER + (base - row.start) * CHAR;
-  const enzymeY = row.top + (row.cuts.length ? 11 : 0);
+  const enzymeY = row.top + (row.cuts.length ? row.labelRows * 12 - 1 : 0);
   const forwardY = enzymeY + 14, reverseY = forwardY + 15;
   const barsTop = reverseY + 8;
   const range = selection?.range;
@@ -413,10 +432,14 @@ function SequenceRow({ row, vector, complementStrand, selection, onSelect }: { r
     <text x={GUTTER - 10} y={forwardY} textAnchor="end" className="vseq-number">{(row.start + 1).toLocaleString()}</text>
     {highlight.map((piece, index) => <rect key={index} x={xOf(piece.start)} y={forwardY - 11} width={(piece.end - piece.start) * CHAR} height={reverseY - forwardY + 15} className="vseq-selection" />)}
     {range && rangeLength(range, length) === 0 && range.start >= row.start && range.start < row.end && <line x1={xOf(range.start)} x2={xOf(range.start)} y1={forwardY - 12} y2={reverseY + 4} className="vmap-caret" />}
-    {row.cuts.map((site) => <g key={`${site.enzyme}:${site.cut}`} className={`vmap-enzyme${selection?.enzyme === site.enzyme ? " selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); onSelect({ range: { start: site.cut, end: site.cut }, enzyme: site.enzyme, source: "sequence" }); }}>
-      <line x1={xOf(site.cut)} x2={xOf(site.cut)} y1={enzymeY + 1} y2={forwardY - 10} className="vmap-cut thin" />
-      <text x={xOf(site.cut) + 2} y={enzymeY - 1} className="vmap-enzyme-label">{site.enzyme}</text>
-    </g>)}
+    {row.cuts.map((site, index) => {
+      const { row: level, anchor } = row.labels[index];
+      return <g key={`${site.enzyme}:${site.cut}`} className={`vmap-enzyme${selection?.enzyme === site.enzyme ? " selected" : ""}`} onPointerDown={(event) => { event.stopPropagation(); onSelect({ range: { start: site.cut, end: site.cut }, enzyme: site.enzyme, source: "sequence" }); }}>
+        <title>{`${site.enzyme} cuts after ${site.cut.toLocaleString()} · ${site.recognitionSite}`}</title>
+        <line x1={xOf(site.cut)} x2={xOf(site.cut)} y1={enzymeY + 1 - Math.max(0, level) * 12} y2={forwardY - 10} className="vmap-cut thin" />
+        {level >= 0 && <text x={xOf(site.cut) + (anchor === "start" ? 2 : anchor === "end" ? -2 : 0)} y={enzymeY - 1 - level * 12} textAnchor={anchor} className="vmap-enzyme-label">{site.enzyme}</text>}
+      </g>;
+    })}
     <text x={GUTTER} y={forwardY} textLength={count * CHAR} lengthAdjust="spacing" className="vseq-bases">{vector.sequence.slice(row.start, row.end)}</text>
     <text x={GUTTER} y={reverseY} textLength={count * CHAR} lengthAdjust="spacing" className="vseq-bases reverse">{complementStrand.slice(row.start, row.end)}</text>
     {Array.from({ length: Math.floor((count - 1) / 10) }, (_, index) => {

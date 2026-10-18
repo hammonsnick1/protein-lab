@@ -28,6 +28,37 @@ from .gel_analysis import analyze_gel
 from .vector_sources import VectorSourceError
 
 
+def parse_vector_library_search(
+    query: dict[str, list[str]], facet_names: dict[str, str]
+) -> dict[str, Any]:
+    """Translate URL query values into the stable catalogue service contract."""
+    filters = {
+        facet: [
+            item.strip()
+            for value in query.get(facet, [])
+            for item in value.split(",")
+            if item.strip()
+        ]
+        for facet in facet_names
+        if query.get(facet)
+    }
+    favorite_value = (query.get("favorite") or [""])[0].lower()
+    if favorite_value not in {"", "true", "false"}:
+        raise ValueError("favorite must be true or false")
+    favorite = (
+        True if favorite_value == "true"
+        else False if favorite_value == "false"
+        else None
+    )
+    return {
+        "query": (query.get("q") or [""])[0],
+        "filters": filters,
+        "favorite": favorite,
+        "limit": int((query.get("limit") or ["100"])[0]),
+        "offset": int((query.get("offset") or ["0"])[0]),
+    }
+
+
 class ApiHandler(BaseHTTPRequestHandler):
     server_version = "ProteinLabs/0.1"
     planner: ProteinPlanner
@@ -62,7 +93,25 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(200, self.planner.list_construct_hosts())
                 return
             if path == "/v1/protein-planner/vector-library":
-                self._send(200, {"vectors": self.planner.list_library_vectors()})
+                search = parse_vector_library_search(
+                    query, self.planner.database.VECTOR_LIBRARY_FACETS
+                )
+                self._send(200, self.planner.search_library_vectors(**search))
+                return
+            if path == "/v1/protein-planner/vector-library/recent":
+                self._send(200, {
+                    "vectors": self.planner.list_recent_library_vectors(
+                        int((query.get("limit") or ["10"])[0])
+                    )
+                })
+                return
+            match = re.fullmatch(
+                r"/v1/protein-planner/vector-library/([^/]+)/export", path
+            )
+            if match:
+                self._send(200, self.planner.export_library_vector(
+                    match.group(1), query.get("format", ["genbank"])[0]
+                ))
                 return
             match = re.fullmatch(r"/v1/protein-planner/vector-library/([^/]+)", path)
             if match:
@@ -132,6 +181,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/v1/protein-planner/back-translate":
                 self._send(200, self.planner.back_translate_target(body))
                 return
+            if path == "/v1/protein-planner/codon-optimize":
+                self._send(200, self.planner.optimize_target_codons(body))
+                return
             if path == "/v1/protein-planner/vector-sources/search":
                 self._send(200, self.planner.search_vector_sources(body))
                 return
@@ -139,6 +191,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(200, {"result": self.planner.analyze_raw_sequence(
                     str(body.get("sequence") or "")
                 )})
+                return
+            if path == "/v1/protein-planner/vector-library/import":
+                self._send(201, self.planner.import_library_vector(
+                    str(body.get("filename") or "sequence.gb"),
+                    str(body.get("content") or ""),
+                ))
                 return
             match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors", path
@@ -183,8 +241,21 @@ class ApiHandler(BaseHTTPRequestHandler):
                 ))
                 return
             match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/vectors/(cloning-preview|gel)",
+                path,
+            )
+            if match:
+                protein_id, action = match.groups()
+                value = (
+                    self.planner.simulate_expression_cloning(protein_id, body)
+                    if action == "cloning-preview"
+                    else self.planner.simulate_expression_vector_gel(protein_id, body)
+                )
+                self._send(200, value)
+                return
+            match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors/([^/]+)/"
-                r"(auto-annotate|primers|edit|digest|align|insertion-sites|insert)",
+                r"(auto-annotate|primers|edit|digest|enzyme-sets|align|insertion-sites|insert)",
                 path,
             )
             if match:
@@ -207,6 +278,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                     )
                 elif action == "digest":
                     value = self.planner.digest_expression_vector(
+                        protein_id, vector_id, body
+                    )
+                elif action == "enzyme-sets":
+                    value = self.planner.analyze_expression_vector_enzymes(
                         protein_id, vector_id, body
                     )
                 elif action == "align":
@@ -302,8 +377,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 r"/v1/protein-planner/vector-library/([^/]+)", path
             )
             if library_match:
-                self.planner.delete_library_vector(library_match.group(1))
-                self._send(200, {"deleted": library_match.group(1)})
+                self._send(200, self.planner.set_library_favorite(
+                    library_match.group(1), self._read_json()
+                ))
                 return
             vector_match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors/([^/]+)", path
@@ -324,6 +400,13 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         try:
             path, _ = self._path_and_query()
+            library_match = re.fullmatch(
+                r"/v1/protein-planner/vector-library/([^/]+)", path
+            )
+            if library_match:
+                self.planner.delete_library_vector(library_match.group(1))
+                self._send(200, {"deleted": library_match.group(1)})
+                return
             job_match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/jobs/([^/]+)", path
             )
