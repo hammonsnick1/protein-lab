@@ -28,6 +28,7 @@ WORKFLOW_APP_TYPES = [
     "purification-sec",
     "purification-buffer",
     "purification-workflow",
+    "purification-roadmap",
     "transformation-expression",
     "chromatogram-studio",
     "gel-analysis",
@@ -50,6 +51,55 @@ def test_every_workflow_job_type_can_be_saved(tmp_path):
     for app_type in WORKFLOW_APP_TYPES:
         job = service.create_project_job(protein["protein"]["id"], {"appType": app_type, "config": {}})
         assert job["appType"] == app_type
+
+
+def test_purification_roadmap_round_trips_a_linked_gel_after_reload(tmp_path):
+    service = build_planner(tmp_path)
+    protein = service.create_protein({"name": "Roadmap", "sequence": "MKWVTFISLLLLFSSAYS"})
+    protein_id = protein["protein"]["id"]
+    gel = service.create_project_job(
+        protein_id,
+        {
+            "appType": "gel-analysis",
+            "name": "Elution fractions gel",
+            "config": {"filename": "elution-fractions.png"},
+        },
+    )
+    roadmap_config = {
+        "steps": [
+            {
+                "id": "affinity",
+                "title": "Affinity capture",
+                "components": [
+                    {
+                        "id": "gel-record-1",
+                        "type": "gel",
+                        "title": "Elution fractions gel",
+                        "notes": "Fractions E2-E4 contain the target band.",
+                        "sourceJobId": gel["id"],
+                    }
+                ],
+            }
+        ],
+        "savedByUser": True,
+        "updatedAt": "2026-10-15T12:00:00Z",
+    }
+
+    created = service.create_project_job(
+        protein_id,
+        {"appType": "purification-roadmap", "config": roadmap_config},
+    )
+
+    reloaded = build_planner(tmp_path).database.get_bundle(protein_id)
+    saved = next(
+        job for job in reloaded["projectJobs"]
+        if job["appType"] == "purification-roadmap"
+    )
+    linked_gel = saved["config"]["steps"][0]["components"][0]
+
+    assert created["name"] == "Purification roadmap"
+    assert saved["config"] == roadmap_config
+    assert linked_gel["sourceJobId"] == gel["id"]
 
 
 def test_report_pages_keep_their_layout_data(tmp_path):

@@ -495,6 +495,7 @@ class ProteinPlanner:
             "purification-sec": "Size exclusion chromatography polishing",
             "purification-buffer": "Purification buffer design",
             "purification-workflow": "Purification workflow review",
+            "purification-roadmap": "Purification roadmap",
             "transformation-expression": "Transformation and expression",
             "chromatogram-studio": "Chromatogram analysis",
             "gel-analysis": "Gel purity analysis",
