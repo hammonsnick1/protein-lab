@@ -345,6 +345,72 @@ export function layoutCircularLabels(
 }
 
 /**
+ * How much to enlarge map text drawn in SVG user units so it never renders
+ * below `floorPx` on screen. A `viewBox` drawing shrinks with its box, so a
+ * 12-unit label on a small window can come out at 7 px; this returns the
+ * factor (≥ 1) to multiply font sizes and label spacing by.
+ */
+export function mapTextScale(box: { width: number; height: number }, view: { width: number; height: number }, smallestUnits: number, floorPx: number): number {
+  if (box.width <= 0 || box.height <= 0) return 1;
+  const fit = Math.min(box.width / view.width, box.height / view.height);
+  return Math.max(1, floorPx / (smallestUnits * fit));
+}
+
+/** Shorten a label to at most `maxWidth` (at `charWidth` per character), ending in an ellipsis. */
+export function fitLabel(text: string, maxWidth: number, charWidth: number): string {
+  const room = Math.floor(maxWidth / charWidth);
+  if (text.length <= room) return text;
+  return room <= 1 ? "" : `${text.slice(0, room - 1).trimEnd()}…`;
+}
+
+export type LabelAnchor = "middle" | "end" | "start";
+export type StackedLabel = { row: number; anchor: LabelAnchor; left: number; right: number };
+
+/**
+ * Stack enzyme labels above a linear map into rows, left to right.
+ *
+ * Each label's cut line drops from its row through every row below it, so a
+ * label may not sit across another site's line. A label may hang to the left
+ * ("end") or right ("start") of its own line instead of centring on it, and
+ * an earlier, lower label is moved aside that way to let a later line pass.
+ * Labels must stay within `bounds`. Labels that fit no row within `maxRows`
+ * get `row: -1` and are left off the map; their sites still draw.
+ */
+export function stackEnzymeLabels(items: { x: number; width: number }[], maxRows: number, bounds = { min: -Infinity, max: Infinity }, gap = 4): StackedLabel[] {
+  type Placed = StackedLabel & { x: number; width: number };
+  const boxFor = (x: number, width: number, anchor: LabelAnchor) =>
+    anchor === "middle" ? { left: x - width / 2, right: x + width / 2 } : anchor === "end" ? { left: x - width, right: x } : { left: x, right: x + width };
+  const apart = (box: { left: number; right: number }, other: { left: number; right: number }) => box.right + gap <= other.left || box.left >= other.right + gap;
+  const crosses = (x: number, box: { left: number; right: number }) => x >= box.left - gap && x <= box.right + gap;
+  const placed: Placed[] = [];
+  // A box in `row` is clear of that row's labels and of lines dropping from higher rows.
+  const clear = (box: { left: number; right: number }, row: number, skip: Placed | null, extraLine?: { x: number; row: number }) =>
+    box.left >= bounds.min && box.right <= bounds.max
+    && placed.every((other) => other === skip || (other.row === row ? apart(box, other) : other.row > row ? !crosses(other.x, box) : true))
+    && !(extraLine && extraLine.row > row && crosses(extraLine.x, box));
+  const results: (Placed | null)[] = items.map(({ x, width }) => {
+    for (let row = 0; row < maxRows; row += 1) {
+      for (const anchor of ["middle", "end", "start"] as const) {
+        const box = boxFor(x, width, anchor);
+        if (!clear(box, row, null)) continue;
+        // Lower labels this line would cross must step aside, or this spot fails.
+        const moves = placed.filter((other) => other.row < row && crosses(x, other)).map((other) => {
+          const moved = boxFor(other.x, other.width, x > other.x ? "end" : "start");
+          return clear(moved, other.row, other, { x, row }) && !crosses(x, moved) ? { other, anchor: (x > other.x ? "end" : "start") as LabelAnchor, ...moved } : null;
+        });
+        if (moves.some((move) => !move)) continue;
+        for (const move of moves) Object.assign(move!.other, { anchor: move!.anchor, left: move!.left, right: move!.right });
+        const entry: Placed = { row, anchor, ...box, x, width };
+        placed.push(entry);
+        return entry;
+      }
+    }
+    return null;
+  });
+  return results.map((entry, index) => entry ? { row: entry.row, anchor: entry.anchor, left: entry.left, right: entry.right } : { row: -1, anchor: "middle", ...boxFor(items[index].x, items[index].width, "middle") });
+}
+
+/**
  * Spread sorted 1-D positions apart so neighbours are at least `gap` apart,
  * moving each as little as possible, and keep them within [min, max].
  */

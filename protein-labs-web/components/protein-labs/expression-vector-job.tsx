@@ -516,8 +516,13 @@ function mapFeature(raw: JsonObject): MapFeature {
   return { id: String(raw.id ?? ""), name: String(raw.name ?? raw.type ?? "feature"), type: String(raw.type ?? "misc_feature"), start: Number(raw.start ?? 0), end: Number(raw.end ?? 0), strand: Number(raw.strand ?? 1), color: String(raw.color ?? ""), customColor: Boolean(raw.customColor), automatic: Boolean(raw.automatic) };
 }
 function historyDetail(entry: JsonObject) {
-  const parts = Object.entries(entry).filter(([key, value]) => key !== "type" && value !== null && value !== "" && !(Array.isArray(value) && !value.length) && typeof value !== "object");
-  return parts.map(([key, value]) => `${humanize(key)}: ${String(value)}`).join(" · ") || "No details recorded";
+  // The engine records zero-based, half-open coordinates; show them the way every other view does.
+  const { start, end } = entry;
+  const coordinates = typeof start === "number" && typeof end === "number"
+    ? [end > start ? `Bases: ${(start + 1).toLocaleString()}–${end.toLocaleString()}` : `After base: ${start.toLocaleString()}`]
+    : [];
+  const parts = Object.entries(entry).filter(([key, value]) => key !== "type" && !(coordinates.length && (key === "start" || key === "end")) && value !== null && value !== "" && !(Array.isArray(value) && !value.length) && typeof value !== "object");
+  return [...coordinates, ...parts.map(([key, value]) => `${sentence(key)}: ${String(value)}`)].join(" · ") || "No details recorded";
 }
 function blankVector(): VectorRecord { return { id: "", name: "Untitled vector", sequence: "", circular: true, features: [], primers: [], orfs: [], restrictionSites: [], history: [], enzymeNames: [], minimumOrfAminoAcids: 50 }; }
 function vectorRecord(raw: JsonObject): VectorRecord { return { ...blankVector(), ...raw, id: String(raw.id ?? ""), name: String(raw.name ?? "Untitled vector"), sequence: String(raw.sequence ?? ""), circular: raw.circular !== false, features: array(raw.features), primers: array(raw.primers), orfs: array(raw.orfs), restrictionSites: array(raw.restrictionSites), history: array(raw.history) }; }
@@ -529,6 +534,7 @@ function reverseComplementOf(value: string) { return value.split("").reverse().m
 function hexOr(value: string, fallback: string) { return /^#[0-9a-f]{6}$/i.test(value) ? value : fallback; }
 function errorText(value: unknown) { return value instanceof Error ? value.message : String(value); }
 function humanize(value: string) { return value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]/g, " "); }
+function sentence(value: string) { const words = humanize(value).toLowerCase(); return words.charAt(0).toUpperCase() + words.slice(1); }
 function downloadText(filename: string, content: string) { downloadBlob(filename, new Blob([content], { type: "text/plain" })); }
 function downloadBytes(filename: string, base64: string) { const binary = atob(base64); const bytes = new Uint8Array(binary.length); for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index); downloadBlob(filename, new Blob([bytes], { type: "application/octet-stream" })); }
 function downloadBlob(filename: string, blob: Blob) { const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); }
