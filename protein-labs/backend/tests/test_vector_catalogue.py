@@ -412,6 +412,11 @@ def test_catalogue_import_route_reads_snapgene_and_deduplicates(catalogue_api):
         "type": "CDS",
         "start": 0,
         "end": 9,
+        # The public feature contract always exposes a normalized part list so
+        # map and sequence views can render origin-spanning features without
+        # inferring segments from coordinates.
+        "wrapsOrigin": False,
+        "parts": [{"start": 0, "end": 9}],
         "strand": 1,
         "color": "#43A047",
         "notes": "",
