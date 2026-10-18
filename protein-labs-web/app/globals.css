@@ -3485,10 +3485,34 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 
 /* SnapGene-style expression-vector workspace. */
+/* The editor fills the window under the top bar and job header, whatever
+   height the header takes, so the page itself never scrolls. */
+.job-workspace:has(.vector-planner) {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 62px);
+}
 .job-surface:has(.vector-planner) {
   max-width: none;
   padding: 0;
-  height: calc(100vh - 181px);
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+@media (max-height: 760px) {
+  .job-workspace:has(.vector-planner) .job-header {
+    min-height: 0;
+    padding-block: 10px;
+  }
+  .job-workspace:has(.vector-planner) .job-header p {
+    display: none;
+  }
+}
+/* The editor works at the dashboard's compact type size. Without this, any
+   text not sized by its own rule inherits the 16px body. Buttons size
+   themselves (text-sm) like everywhere else in the app. */
+.vector-planner {
+  font-size: 13px;
 }
 .vector-planner {
   height: 100%;
@@ -3577,6 +3601,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vector-editor-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 10px 13px;
@@ -3585,9 +3610,11 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .vector-editor-header > div:first-child {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 1 1 220px;
+  min-width: 0;
 }
 .vector-editor-header > div:first-child input {
+  font-size: 16px;
   border: 0;
   background: transparent;
   color: var(--foreground);
@@ -4011,21 +4038,6 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   margin-top: 4px;
 }
 @media (max-width: 1100px) {
-  .vector-planner {
-    grid-template-columns: 190px minmax(500px, 1fr);
-  }
-  .feature-inspector {
-    position: absolute;
-    right: 0;
-    top: 181px;
-    bottom: 0;
-    width: 260px;
-    z-index: 8;
-    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.2);
-  }
-  .vector-main {
-    padding-right: 260px;
-  }
   .vector-tools {
     grid-template-columns: 1fr;
   }
@@ -9961,7 +9973,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   z-index: 60;
   display: grid;
   place-items: center;
-  padding: 24px;
+  /* The app's top bar stays above this overlay, so the dialog starts below it. */
+  padding: 74px 24px 24px;
   background: color-mix(in srgb, #000 45%, transparent);
   backdrop-filter: blur(3px);
 }
@@ -11207,8 +11220,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   flex: 1;
 }
 .vector-tabs {
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-wrap: wrap;
 }
 .vector-tabs button {
   white-space: nowrap;
@@ -11265,6 +11277,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vmap-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 13px 0;
@@ -11279,10 +11292,11 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 10px;
+  font-size: 10.5px;
 }
 .vseg {
   display: inline-flex;
+  flex-wrap: wrap;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
@@ -11313,7 +11327,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   cursor: default;
 }
 .vseg button b {
-  font: 600 10px var(--font-mono);
+  font: 600 10.5px var(--font-mono);
   color: var(--muted-foreground);
 }
 .vmap-toggle {
@@ -11357,6 +11371,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   width: 100%;
   height: 100%;
   user-select: none;
+}
+.vmap-circular.has-note > svg {
+  height: calc(100% - 18px);
 }
 .vmap-note {
   position: absolute;
@@ -11420,7 +11437,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vmap-label {
   fill: var(--foreground);
-  font-size: 13px;
+  font-size: calc(13px * var(--vmap-text, 1));
   font-weight: 560;
 }
 .vmap-feature.selected .vmap-label {
@@ -11438,7 +11455,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vmap-enzyme-label {
   fill: #6a3fc0;
-  font-size: 12px;
+  font-size: calc(12px * var(--vmap-text, 1));
   font-weight: 650;
 }
 .vmap-enzyme.selected .vmap-enzyme-label {
@@ -11455,16 +11472,16 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vmap-ruler text {
   fill: var(--muted-foreground);
-  font: 9.5px var(--font-mono);
+  font: calc(10.5px * var(--vmap-text, 1)) var(--font-mono);
 }
 .vmap-name {
   fill: var(--foreground);
-  font-size: 18px;
+  font-size: calc(18px * var(--vmap-text, 1));
   font-weight: 800;
 }
 .vmap-length {
   fill: var(--muted-foreground);
-  font: 11.5px var(--font-mono);
+  font: calc(11.5px * var(--vmap-text, 1)) var(--font-mono);
 }
 .vmap-legend {
   display: flex;
@@ -11519,7 +11536,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   stroke-width: 2;
 }
 .vmap-bar-label {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 650;
   pointer-events: none;
 }
@@ -11544,7 +11561,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vmap-mini-name {
   fill: var(--foreground);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -11590,12 +11607,12 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   pointer-events: none;
 }
 .vseq-residue {
-  font: 700 10px var(--font-mono);
+  font: 700 10.5px var(--font-mono);
   pointer-events: none;
 }
 .vseq-feature-name {
   fill: var(--muted-foreground);
-  font-size: 9.5px;
+  font-size: 10.5px;
 }
 .vseq-empty,
 .vpanel-empty,
@@ -11634,6 +11651,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .vsel-bar {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   min-height: 36px;
@@ -11644,13 +11662,15 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .vsel-summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  flex: 1;
+  gap: 2px 12px;
+  flex: 1 1 260px;
   min-width: 0;
   color: var(--muted-foreground);
+}
+.vsel-summary b {
   white-space: nowrap;
-  overflow: hidden;
 }
 .vsel-summary b {
   color: var(--foreground);
@@ -11786,6 +11806,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .venz-row {
   display: grid;
   grid-template-columns: 26px 86px 110px minmax(90px, 1fr) 110px minmax(150px, 1.2fr);
+  min-width: max-content;
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
@@ -11892,7 +11913,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   padding: 3px 4px 3px 7px;
 }
 .vgel-lanes span b {
-  font: 600 10px var(--font-mono);
+  font: 600 10.5px var(--font-mono);
   color: var(--muted-foreground);
 }
 .vgel-lanes button {
@@ -11928,7 +11949,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .vgel-size,
 .vgel-lane {
   fill: var(--muted-foreground);
-  font: 10px var(--font-mono);
+  font: 10.5px var(--font-mono);
 }
 .vgel-figure figcaption {
   font-size: 12px;
@@ -12013,7 +12034,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   font-size: 12px;
 }
 .vprimer-region > span {
-  font-size: 10px;
+  font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--muted-foreground);
@@ -12317,6 +12338,20 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   }
   .vclone .cloning-preview-panel {
     grid-column: 1 / -1;
+  }
+}
+@media (max-width: 1100px) {
+  .venz-row {
+    grid-template-columns: 22px 70px 92px minmax(64px, 1fr) 84px minmax(120px, 1.2fr);
+    gap: 6px;
+  }
+  /* Three narrower columns rather than an inspector floating over the editor. */
+  .vector-planner {
+    grid-template-columns: 172px minmax(0, 1fr) 212px;
+  }
+  .vector-library,
+  .feature-inspector {
+    padding: 12px 10px;
   }
 }
 @media print {
