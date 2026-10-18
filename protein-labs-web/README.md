@@ -30,7 +30,7 @@ npm run typecheck
 npm test
 ```
 
-Vitest runs `*.test.ts` and `*.test.tsx` files. The initial tests cover the
+Node's built-in test runner runs `lib/*.test.ts`. The initial tests cover the
 shared class-name helper, including Tailwind conflict resolution. Add tests
 beside the code they exercise. Backend checks run separately from
 `protein-labs/backend/`: install `requirements-dev.txt`, then run
