@@ -28,6 +28,37 @@ from .gel_analysis import analyze_gel
 from .vector_sources import VectorSourceError
 
 
+def parse_vector_library_search(
+    query: dict[str, list[str]], facet_names: dict[str, str]
+) -> dict[str, Any]:
+    """Translate URL query values into the stable catalogue service contract."""
+    filters = {
+        facet: [
+            item.strip()
+            for value in query.get(facet, [])
+            for item in value.split(",")
+            if item.strip()
+        ]
+        for facet in facet_names
+        if query.get(facet)
+    }
+    favorite_value = (query.get("favorite") or [""])[0].lower()
+    if favorite_value not in {"", "true", "false"}:
+        raise ValueError("favorite must be true or false")
+    favorite = (
+        True if favorite_value == "true"
+        else False if favorite_value == "false"
+        else None
+    )
+    return {
+        "query": (query.get("q") or [""])[0],
+        "filters": filters,
+        "favorite": favorite,
+        "limit": int((query.get("limit") or ["100"])[0]),
+        "offset": int((query.get("offset") or ["0"])[0]),
+    }
+
+
 class ApiHandler(BaseHTTPRequestHandler):
     server_version = "ProteinLabs/0.1"
     planner: ProteinPlanner
@@ -62,7 +93,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(200, self.planner.list_construct_hosts())
                 return
             if path == "/v1/protein-planner/vector-library":
-                self._send(200, {"vectors": self.planner.list_library_vectors()})
+                search = parse_vector_library_search(
+                    query, self.planner.database.VECTOR_LIBRARY_FACETS
+                )
+                self._send(200, self.planner.search_library_vectors(**search))
+                return
+            if path == "/v1/protein-planner/vector-library/recent":
+                self._send(200, {
+                    "vectors": self.planner.list_recent_library_vectors(
+                        int((query.get("limit") or ["10"])[0])
+                    )
+                })
                 return
             match = re.fullmatch(r"/v1/protein-planner/vector-library/([^/]+)", path)
             if match:
@@ -302,8 +343,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 r"/v1/protein-planner/vector-library/([^/]+)", path
             )
             if library_match:
-                self.planner.delete_library_vector(library_match.group(1))
-                self._send(200, {"deleted": library_match.group(1)})
+                self._send(200, self.planner.set_library_favorite(
+                    library_match.group(1), self._read_json()
+                ))
                 return
             vector_match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors/([^/]+)", path
@@ -324,6 +366,13 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         try:
             path, _ = self._path_and_query()
+            library_match = re.fullmatch(
+                r"/v1/protein-planner/vector-library/([^/]+)", path
+            )
+            if library_match:
+                self.planner.delete_library_vector(library_match.group(1))
+                self._send(200, {"deleted": library_match.group(1)})
+                return
             job_match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/jobs/([^/]+)", path
             )
