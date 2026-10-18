@@ -384,3 +384,63 @@ def test_rgb_channel_clipping_cannot_be_hidden_by_grayscale_conversion(light):
     assert result["bands"][0]["quantificationRefused"] is True
     assert result["bands"][0]["density"] is None
     assert result["quantification"]["imageProcessing"]["sourceMode"] == "RGB"
+
+
+def test_report_contract_keeps_labels_stage_binding_and_input_unchanged():
+    request = _known_mw_gel()
+    request["lanes"][1].update(sampleLabel="SEC pool", stageId="step-sec")
+    before = json.dumps(request, sort_keys=True)
+    result = analyze_gel(request)
+    assert json.dumps(request, sort_keys=True) == before
+    assert result["lanes"][1]["sampleLabel"] == "SEC pool"
+    assert result["lanes"][1]["stageId"] == "step-sec"
+    assert result["lanes"][0]["sampleLabel"] == "Lane 1"
+    assert result["lanes"][0]["stageId"] is None
+    for band in result["bands"]:
+        assert 0 < band["densityUncertainty"] < band["density"] * .02
+        assert "density_uncertainty_noise_only" in {f["code"] for f in band["flags"]}
+        assert all(f["level"] in {"warning", "caution", "note"} for f in band["flags"])
+        assert all(f["title"] and f["message"] for f in band["flags"])
+        if band["molecularWeightStatus"] == "outside_ladder_range":
+            assert "outside_ladder_range" in {f["code"] for f in band["flags"]}
+
+
+def test_density_uncertainty_remains_available_for_valid_bands_in_refused_lane():
+    request = _known_mw_gel(saturated_marker=True)
+    result = analyze_gel(request)
+    ladder = [b for b in result["bands"] if b["laneId"] == "ladder"]
+    assert ladder[0]["densityUncertainty"] is None
+    assert "band_saturated" in {f["code"] for f in ladder[0]["flags"]}
+    for band in ladder:
+        assert "lane_fraction_unavailable" in {f["code"] for f in band["flags"]}
+        assert band["laneFractionUncertainty"] is None
+    assert all(b["densityUncertainty"] > 0 for b in ladder[1:])
+    matches = result["ladderCalibration"]["matchedBands"]
+    assert [m["massKDa"] for m in matches] == [50, 25]
+    assert [m["bandId"] for m in matches] == [b["id"] for b in ladder[1:]]
+
+
+def test_ladder_report_residuals_have_known_sign_units_and_fit_quality():
+    from protein_labs.gel_analysis import _apply_molecular_weights
+
+    bands = [{"id": str(i), "laneId": "ladder", "centerY": m}
+             for i, m in enumerate((.2, .4, .6))]
+    calibration = _apply_molecular_weights(
+        bands, [{"id": "ladder", "isLadder": True}], {"ladderMassesKDa": [100, 60, 25]})
+    # Equal spacing: fitted middle is the geometric mean, slope is set by endpoints.
+    middle = (100 * 60 * 25) ** (1 / 3)
+    expected_fits = [middle * 2, middle, middle / 2]
+    assert .97 < calibration["r2"] < .99
+    assert calibration["residualConvention"] == "observed_minus_fitted_kDa"
+    for match, mass, fit in zip(calibration["matchedBands"], (100, 60, 25), expected_fits):
+        assert match["fittedKDa"] == pytest.approx(fit, abs=1e-9)
+        assert match["residualKDa"] == pytest.approx(mass - fit, abs=1e-9)
+
+
+def test_missing_ladder_masses_are_visible_in_report_flags():
+    request = _known_mw_gel()
+    del request["ladderMassesKDa"]
+    result = analyze_gel(request)
+    assert all(any(f["title"] == "Molecular weight unavailable" for f in b["flags"])
+               for b in result["bands"])
+    assert "matchedBands" not in result["ladderCalibration"]
