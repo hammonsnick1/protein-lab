@@ -105,6 +105,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                     )
                 })
                 return
+            match = re.fullmatch(
+                r"/v1/protein-planner/vector-library/([^/]+)/export", path
+            )
+            if match:
+                self._send(200, self.planner.export_library_vector(
+                    match.group(1), query.get("format", ["genbank"])[0]
+                ))
+                return
             match = re.fullmatch(r"/v1/protein-planner/vector-library/([^/]+)", path)
             if match:
                 self._send(200, self.planner.get_library_vector(match.group(1)))
@@ -180,6 +188,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(200, {"result": self.planner.analyze_raw_sequence(
                     str(body.get("sequence") or "")
                 )})
+                return
+            if path == "/v1/protein-planner/vector-library/import":
+                self._send(201, self.planner.import_library_vector(
+                    str(body.get("filename") or "sequence.gb"),
+                    str(body.get("content") or ""),
+                ))
                 return
             match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors", path
