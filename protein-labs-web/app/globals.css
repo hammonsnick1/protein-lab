@@ -76,10 +76,14 @@ body {
   font-family: var(--font-sans);
   font-size: 16px;
 }
-button,
-input,
-textarea {
-  font: inherit;
+/* Layered so Tailwind utilities (text-sm, font-medium) on form controls win;
+   unlayered, this reset forced every <Button> to the 16px body size. */
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
 }
 /* The browser shrinks <small> to 0.8em, which dropped secondary labels below
    the legible floor wherever no explicit size was set. Size is set by the
