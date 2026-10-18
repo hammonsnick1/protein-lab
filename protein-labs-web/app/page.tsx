@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BookOpen, Check, CircleAlert, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderOpen, GitBranch, HelpCircle, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, Workflow, Wrench } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderOpen, GitBranch, HelpCircle, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, Workflow, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AppDashboard } from "@/components/protein-labs/app-dashboard";
@@ -11,15 +11,16 @@ import { ProjectDashboard, ProjectWorkflow } from "@/components/protein-labs/pro
 import { ProjectTrees } from "@/components/protein-labs/project-trees";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { PurificationRoadmapWorkspace } from "@/components/protein-labs/purification-roadmap";
+import { VectorLibrary } from "@/components/protein-labs/vector-library";
 import { JsonObject, ProteinBundle, ProteinRecord, proteinLabsApi } from "@/lib/protein-labs-api";
 import { definitionFor } from "@/lib/workflow";
 import { readProjectTrees, writeProjectTrees, type SavedProjectTree } from "@/lib/project-trees";
 import { useProteinLabsWebMcp } from "@/hooks/use-protein-labs-webmcp";
 import { runViewTransition } from "@/lib/view-transition";
 
-type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "roadmap" | "reports" | "job";
+type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "vectors" | "roadmap" | "reports" | "job";
 // Depth of each view; moving to a shallower view animates as "back".
-const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
+const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, vectors: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
 type MenuName = "file" | "edit" | "settings" | "tools" | "help";
 type VisualTheme = "paper" | "mono-dark" | "mono-light";
 
@@ -96,12 +97,20 @@ export default function Home() {
     const timer = window.setTimeout(() => setSplashReady(true), 1150);
     return () => window.clearTimeout(timer);
   }, []);
+  // Ctrl+Shift+L opens the vector library from anywhere in the workspace.
+  useEffect(() => {
+    if (!started) return;
+    const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "l") { event.preventDefault(); setView("vectors"); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [started, view]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const saved = savedVisualTheme(localStorage.getItem("protein-labs-visual-theme")); if (saved) queueMicrotask(() => setVisualTheme(saved)); }, []);
 
   function setView(next: View, update?: () => void) { runViewTransition(() => { update?.(); setViewState(next); }, viewDepth[next] < viewDepth[view] ? "back" : "forward"); }
   async function openProject(id: string, destination: View = "dashboard") { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView(destination, () => { setSelectedId(id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   async function createProject() { const sequence = newSequence.replace(/\s+/g, "").toUpperCase(); if (!sequence) { setError("Paste an amino-acid sequence before creating the project."); return; } setBusy(true); setError(""); try { const created = await proteinLabsApi.createProtein({ name: newName.trim() || `Protein project ${proteins.length + 1}`, sequence }); setNewName(""); setNewSequence(""); setCreateOpen(false); await loadProject(created.protein.id, undefined, false); setView("dashboard", () => { setSelectedId(created.protein.id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   function updateProjectTrees(next: SavedProjectTree[]) { setProjectTrees(next); writeProjectTrees(next); }
+  async function openProjectJob(id: string, job: string) { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView("job", () => { setSelectedId(id); setActiveJob(definitionFor(job).id); setJobReturn("planning"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   function openJob(value: string, returnTo: "planning" | "roadmap" = "planning") { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }); }
   function chooseVisualTheme(theme: VisualTheme) { setVisualTheme(theme); localStorage.setItem("protein-labs-visual-theme", theme); }
   async function shareProject() { if (!bundle) return; const text = `${bundle.protein.name}\n${bundle.protein.sequence.length} aa\n${bundle.projectJobs.length} saved workflow jobs`; try { await navigator.clipboard.writeText(text); setError("Project summary copied to the clipboard."); } catch { setError("Clipboard access was not available."); } }
@@ -130,19 +139,20 @@ export default function Home() {
         <DesktopMenu label="File" name="file" open={openMenu} setOpen={setOpenMenu}><button onClick={() => { setOpenMenu(null); setCreateOpen(true); }}><FilePlus2/> New project</button><button onClick={() => { setOpenMenu(null); setView("projects"); }}><FolderOpen/> Open…</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); void refreshBundle(); }}><Save/> Save / refresh</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("reports"); }}><FileDown/> Save As / Export</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); void shareProject(); }}><Share2/> Share</button></DesktopMenu>
         <DesktopMenu label="Edit" name="edit" open={openMenu} setOpen={setOpenMenu}><button disabled><span className="menu-glyph">↶</span> Undo</button><button disabled><span className="menu-glyph">↷</span> Redo</button><hr/><button onClick={() => { setOpenMenu(null); void refreshProjects(); }}><RefreshCw/> Refresh workspace</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("reports"); }}><BookOpen/> Edit report</button></DesktopMenu>
         <DesktopMenu label="Settings" name="settings" open={openMenu} setOpen={setOpenMenu}><span className="menu-heading"><Settings/> Appearance</span><div className="theme-preset-list">{visualThemes.map((theme) => <button key={theme.id} className={visualTheme === theme.id ? "selected" : ""} onClick={() => chooseVisualTheme(theme.id)}><span className="theme-swatches">{theme.colors.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><strong>{theme.label}</strong><small>{theme.description}</small></span>{visualTheme === theme.id && <Check/>}</button>)}</div><small>Each appearance sets its own light or dark mode.</small></DesktopMenu>
-        <DesktopMenu label="Tools" name="tools" open={openMenu} setOpen={setOpenMenu}><button onClick={() => { setOpenMenu(null); setView("projects"); }}><LayoutGrid/> Project gallery</button><button onClick={() => { setOpenMenu(null); setView("project-trees"); }}><GitBranch/> Project trees</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("workflow"); }}><Workflow/> Project workflow</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("roadmap"); }}><FlaskConical/> Purification roadmap</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("reports"); }}><BookOpen/> Purification report</button></DesktopMenu>
+        <DesktopMenu label="Tools" name="tools" open={openMenu} setOpen={setOpenMenu}><button onClick={() => { setOpenMenu(null); setView("projects"); }}><LayoutGrid/> Project gallery</button><button onClick={() => { setOpenMenu(null); setView("project-trees"); }}><GitBranch/> Project trees</button><button onClick={() => { setOpenMenu(null); setView("vectors"); }}><Disc3/> Vector library<kbd>Ctrl+Shift+L</kbd></button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("workflow"); }}><Workflow/> Project workflow</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("roadmap"); }}><FlaskConical/> Purification roadmap</button><button disabled={!bundle} onClick={() => { setOpenMenu(null); setView("reports"); }}><BookOpen/> Purification report</button></DesktopMenu>
         <DesktopMenu label="Help" name="help" open={openMenu} setOpen={setOpenMenu}><button onClick={() => showHelp("shortcuts")}><Wrench/> Mouse & keyboard controls</button><button onClick={() => showHelp("about")}><HelpCircle/> About Protein Lab</button></DesktopMenu>
       </nav>
       <div className="topbar-spacer"/>
-      <div className="top-actions"><TopGoogleAccount/></div>
+      <div className="top-actions"><Button variant={view === "vectors" ? "secondary" : "ghost"} size="sm" className="topbar-vector-library" aria-pressed={view === "vectors"} title="Vector library (Ctrl+Shift+L)" onClick={() => setView("vectors")}><Disc3/> Vector library</Button><TopGoogleAccount/></div>
     </header>
 
     {error && <div className="global-error"><CircleAlert/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
     {busy && <div className="global-working"><LoaderCircle className="spin"/> Working with the local scientific engine…</div>}
 
     <div className={`workspace-view-transition ${view === "home" ? "is-dashboard" : ""}`} key={`${view}:${selectedId}:${view === "job" ? activeJob : ""}`}>
-      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} onCreate={() => setCreateOpen(true)}/>
+      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} onVectors={() => setView("vectors")} onCreate={() => setCreateOpen(true)}/>
         : view === "projects" ? <ProjectGallery proteins={proteins} onOpen={(id) => void openProject(id)} onCreate={() => { setError(""); setCreateOpen(true); }}/>
+        : view === "vectors" ? <VectorLibrary mode="page" proteins={proteins} onOpenProject={(id) => void openProjectJob(id, "expression-vector")}/>
         : view === "project-trees" ? <ProjectTrees proteins={proteins} trees={projectTrees} onChange={updateProjectTrees} onOpenProject={(id) => void openProject(id)}/>
         : bundle ? <>{view === "dashboard" && <ProjectDashboard bundle={bundle} onResume={() => setView("workflow")} onRoadmap={() => setView("roadmap")} onReports={() => setView("reports")}/>} {view === "workflow" && <ProjectWorkflow bundle={bundle} onOpenJob={(id) => openJob(id, "planning")} onRoadmap={() => setView("roadmap")} onRefresh={() => refreshBundle(selectedId)}/>} {view === "roadmap" && <PurificationRoadmapWorkspace bundle={bundle} onOpenJob={(id) => openJob(id, "roadmap")} onBackToWorkflow={() => setView("workflow")} onChanged={() => refreshBundle(selectedId)}/>} {view === "job" && <JobWorkspace key={`${selectedId}:${activeJob}:${jobReturn}`} jobId={activeJob} bundle={bundle} returnTo={jobReturn} onBack={() => setView(jobReturn === "roadmap" ? "roadmap" : "workflow")} onOpenJob={(id) => openJob(id, "planning")} onReports={() => setView("reports")} onRoadmap={() => setView("roadmap")} onChanged={() => refreshBundle(selectedId)}/>} {view === "reports" && <ReportsWorkspace bundle={bundle} onChanged={() => refreshBundle(selectedId)}/>}</>
         : <main className="gallery"><p>Select a saved protein project.</p></main>}

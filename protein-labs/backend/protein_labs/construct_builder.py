@@ -244,7 +244,9 @@ def insertion_sites(vector: dict[str, Any], *, enzymes: Iterable[str] = ()) -> l
         strand = -1 if int(feature.get("strand", 1)) < 0 else 1
         junction = end if strand > 0 else start
         label = str(feature.get("name") or "tag")
-        reference = _reading_frame_reference(sequence, features, start, end, strand)
+        reference = _reading_frame_reference(
+            sequence, features, junction, junction, strand
+        )
         sites.append({
             "id": f"junction-{junction}-{strand}",
             "kind": "fusion-junction",
@@ -334,22 +336,36 @@ def _frame_in_orientation(
     candidates = [
         feature for feature in features
         if (-1 if int(feature.get("strand", 1)) < 0 else 1) == strand
-        and (_matches(feature, TAG_HINTS) or str(feature.get("type")) == "CDS"
+        and (_matches(feature, TAG_HINTS) or _matches(feature, CLEAVAGE_HINTS)
+             or str(feature.get("type")) == "CDS"
              or "start codon" in _feature_text(feature))
     ]
     if not candidates:
         return None
 
     junction = start if strand > 0 else end
+
+    def biological_priority(feature: dict[str, Any]) -> tuple[int, int]:
+        """Prefer explicit fusion annotations over broad predicted ORFs."""
+        named_fusion = _matches(feature, TAG_HINTS) or _matches(feature, CLEAVAGE_HINTS)
+        explicit = not bool(feature.get("automatic", False))
+        return (2 if named_fusion else 1, 1 if explicit else 0)
+
     if strand > 0:
         upstream = [f for f in candidates if int(f.get("end", 0)) <= junction]
-        reference = max(upstream, key=lambda f: int(f.get("end", 0))) if upstream else None
+        reference = max(
+            upstream,
+            key=lambda f: (*biological_priority(f), int(f.get("end", 0))),
+        ) if upstream else None
         if reference is None:
             return None
         offset = (junction - int(reference.get("start", 0))) % 3
     else:
         downstream = [f for f in candidates if int(f.get("start", 0)) >= junction]
-        reference = min(downstream, key=lambda f: int(f.get("start", 0))) if downstream else None
+        reference = max(
+            downstream,
+            key=lambda f: (*biological_priority(f), -int(f.get("start", 0))),
+        ) if downstream else None
         if reference is None:
             return None
         offset = (int(reference.get("end", 0)) - junction) % 3

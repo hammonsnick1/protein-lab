@@ -14,6 +14,7 @@ import base64
 import copy
 import json
 import re
+import struct
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -23,8 +24,11 @@ from Bio.Align import PairwiseAligner
 from Bio import SeqIO
 from Bio.Restriction import RestrictionBatch
 from Bio.Seq import Seq
-from Bio.SeqFeature import FeatureLocation, SeqFeature
+from Bio.SeqFeature import CompoundLocation, FeatureLocation, SeqFeature
 from Bio.SeqRecord import SeqRecord
+from xml.sax.saxutils import escape, quoteattr
+
+from .vector_engine import design_primers, primer_metrics as thermodynamic_primer_metrics
 
 
 COMMON_ENZYMES = [
@@ -80,7 +84,9 @@ def normalize_dna(value: str) -> str:
     return sequence
 
 
-def normalize_features(features: Any, sequence_length: int) -> list[dict[str, Any]]:
+def normalize_features(
+    features: Any, sequence_length: int, *, circular: bool = False
+) -> list[dict[str, Any]]:
     if not isinstance(features, list):
         raise ValueError("Vector features must be a list")
     cleaned: list[dict[str, Any]] = []
@@ -89,7 +95,15 @@ def normalize_features(features: Any, sequence_length: int) -> list[dict[str, An
             raise ValueError("Every vector feature must be an object")
         start = int(feature.get("start", 0))
         end = int(feature.get("end", 0))
-        if start < 0 or end <= start or end > sequence_length:
+        wraps_origin = bool(feature.get("wrapsOrigin", False) or start > end)
+        if (
+            start < 0
+            or end < 0
+            or start > sequence_length
+            or end > sequence_length
+            or start == end
+            or (end < start and not circular)
+        ):
             raise ValueError(
                 f"Feature {index + 1} must use zero-based coordinates within the sequence"
             )
@@ -107,6 +121,11 @@ def normalize_features(features: Any, sequence_length: int) -> list[dict[str, An
             "type": feature_type,
             "start": start,
             "end": end,
+            "wrapsOrigin": wraps_origin,
+            "parts": (
+                [{"start": start, "end": sequence_length}, {"start": 0, "end": end}]
+                if wraps_origin else [{"start": start, "end": end}]
+            ),
             "strand": -1 if int(feature.get("strand", 1)) < 0 else 1,
             "color": str(feature.get("color") or FEATURE_COLORS.get(feature_type, "#607D8B")),
             "notes": str(feature.get("notes") or "")[:5000],
@@ -480,17 +499,9 @@ def automatic_annotations(
     return sorted(annotations, key=lambda item: (item["start"], item["end"]))
 
 
-def primer_metrics(sequence: str) -> dict[str, Any]:
-    sequence = normalize_dna(sequence)
-    if not sequence:
-        raise ValueError("Primer sequence cannot be empty")
-    gc_count = sequence.count("G") + sequence.count("C")
-    at_count = sequence.count("A") + sequence.count("T")
-    return {
-        "length": len(sequence),
-        "gcPercent": round(100 * gc_count / len(sequence), 2),
-        "tmCelsius": round(4 * gc_count + 2 * at_count, 1),
-    }
+def primer_metrics(sequence: str, **conditions: float) -> dict[str, Any]:
+    """Return nearest-neighbour metrics under explicitly reported conditions."""
+    return thermodynamic_primer_metrics(sequence, **conditions)
 
 
 def normalize_primers(primers: Any, sequence_length: int) -> list[dict[str, Any]]:
@@ -505,16 +516,37 @@ def normalize_primers(primers: Any, sequence_length: int) -> list[dict[str, Any]
         end = int(primer.get("end", start + len(primer_sequence)))
         if not primer_sequence or start < 0 or end <= start or end > sequence_length:
             raise ValueError(f"Primer {index + 1} has invalid sequence coordinates")
+        annealing_sequence = normalize_dna(
+            str(primer.get("annealingSequence") or primer_sequence)
+        )
+        overhang = normalize_dna(str(primer.get("overhang") or ""))
+        conditions = primer.get("conditions") or {}
+        metrics = thermodynamic_primer_metrics(
+            annealing_sequence,
+            overhang=overhang,
+            sodium_mm=float(conditions.get("sodiumMm", 50.0)),
+            magnesium_mm=float(conditions.get("magnesiumMm", 1.5)),
+            dntp_mm=float(conditions.get("dntpMm", 0.2)),
+            primer_nm=float(conditions.get("primerNm", 500.0)),
+        )
         cleaned.append({
             "id": str(primer.get("id") or f"primer-{index + 1}"),
             "name": str(primer.get("name") or f"Primer {index + 1}")[:120],
             "sequence": primer_sequence,
+            "annealingSequence": annealing_sequence,
             "start": start,
             "end": end,
             "strand": -1 if int(primer.get("strand", 1)) < 0 else 1,
-            "overhang": normalize_dna(str(primer.get("overhang") or "")),
+            "overhang": overhang,
             "notes": str(primer.get("notes") or "")[:5000],
-            **primer_metrics(primer_sequence),
+            "cloningMethod": str(primer.get("cloningMethod") or "pcr"),
+            "targetTmCelsius": primer.get("targetTmCelsius"),
+            "tmDeltaCelsius": primer.get("tmDeltaCelsius"),
+            "withinGcLimits": primer.get("withinGcLimits"),
+            "selfDimer": primer.get("selfDimer"),
+            "heteroDimer": primer.get("heteroDimer"),
+            "fivePrimeShiftBases": int(primer.get("fivePrimeShiftBases", 0)),
+            **metrics,
         })
     return cleaned
 
@@ -523,36 +555,13 @@ def design_pcr_primers(
     sequence: str,
     start: int,
     end: int,
-    primer_length: int = 20,
+    primer_length: int | None = None,
+    **options: Any,
 ) -> list[dict[str, Any]]:
-    sequence = normalize_dna(sequence)
-    if start < 0 or end <= start or end > len(sequence):
-        raise ValueError("PCR region coordinates are outside the vector")
-    if primer_length < 15 or primer_length > 60 or end - start < primer_length:
-        raise ValueError("Primer length must be 15 to 60 bases and fit within the PCR region")
-    forward = sequence[start : start + primer_length]
-    reverse_binding = sequence[end - primer_length : end]
-    reverse = str(Seq(reverse_binding).reverse_complement())
-    return [
-        {
-            "id": f"primer-forward-{start}-{end}",
-            "name": "PCR forward",
-            "sequence": forward,
-            "start": start,
-            "end": start + primer_length,
-            "strand": 1,
-            **primer_metrics(forward),
-        },
-        {
-            "id": f"primer-reverse-{start}-{end}",
-            "name": "PCR reverse",
-            "sequence": reverse,
-            "start": end - primer_length,
-            "end": end,
-            "strand": -1,
-            **primer_metrics(reverse),
-        },
-    ]
+    if primer_length is not None:
+        options["min_length"] = primer_length
+        options["max_length"] = primer_length
+    return design_primers(sequence, start, end, **options)
 
 
 def apply_sequence_operation(vector: dict[str, Any], operation: dict[str, Any]) -> dict[str, Any]:
@@ -639,9 +648,14 @@ def parse_sequence_file(content: str, filename: str) -> dict[str, Any]:
     for index, feature in enumerate(record.features):
         if feature.type == "source":
             continue
-        start = int(feature.location.start)
-        end = int(feature.location.end)
-        if end <= start or end > len(sequence):
+        parts = list(feature.location.parts)
+        wraps_origin = (
+            len(parts) > 1
+            and int(parts[0].start) > int(parts[-1].start)
+        )
+        start = int(parts[0].start) if wraps_origin else int(feature.location.start)
+        end = int(parts[-1].end) if wraps_origin else int(feature.location.end)
+        if start == end or start > len(sequence) or end > len(sequence):
             continue
         qualifiers = feature.qualifiers
         name_values = (
@@ -656,6 +670,10 @@ def parse_sequence_file(content: str, filename: str) -> dict[str, Any]:
             "type": feature.type,
             "start": start,
             "end": end,
+            "wrapsOrigin": wraps_origin,
+            "parts": [
+                {"start": int(part.start), "end": int(part.end)} for part in parts
+            ],
             "strand": -1 if feature.location.strand == -1 else 1,
             "color": FEATURE_COLORS.get(feature.type, "#607D8B"),
             "notes": str((qualifiers.get("note") or [""])[0]),
@@ -681,7 +699,58 @@ def parse_sequence_file(content: str, filename: str) -> dict[str, Any]:
     }
 
 
+def _snapgene_packet(packet_type: int, data: bytes) -> bytes:
+    return struct.pack(">BI", packet_type, len(data)) + data
+
+
+def _snapgene_bytes(vector: dict[str, Any]) -> bytes:
+    """Write the documented packet subset understood by SnapGene/Biopython."""
+    sequence = normalize_dna(str(vector["sequence"]))
+    name = str(vector.get("name") or "vector")
+    cookie = _snapgene_packet(0x09, struct.pack(">8sHHH", b"SnapGene", 1, 1, 1))
+    dna = _snapgene_packet(
+        0x00,
+        bytes([1 if vector.get("circular") else 0]) + sequence.encode("ascii"),
+    )
+    feature_nodes = []
+    for feature in vector.get("features") or []:
+        start, end = int(feature["start"]), int(feature["end"])
+        location = f"{start + 1}-{end}"
+        directionality = 2 if int(feature.get("strand", 1)) < 0 else 1
+        qualifier_nodes = []
+        qualifiers = dict(feature.get("qualifiers") or {})
+        qualifiers.setdefault("label", [str(feature.get("name") or "feature")])
+        if feature.get("notes"):
+            qualifiers.setdefault("note", [str(feature["notes"])])
+        for key, values in qualifiers.items():
+            value_nodes = "".join(
+                f"<V text={quoteattr(str(value))}/>" for value in values
+            )
+            qualifier_nodes.append(f"<Q name={quoteattr(str(key))}>{value_nodes}</Q>")
+        feature_nodes.append(
+            f"<Feature name={quoteattr(str(feature.get('name') or 'feature'))} "
+            f"type={quoteattr(str(feature.get('type') or 'misc_feature'))} "
+            f"directionality={quoteattr(str(directionality))}>"
+            f"<Segment range={quoteattr(location)}/>"
+            f"{''.join(qualifier_nodes)}</Feature>"
+        )
+    features = _snapgene_packet(
+        0x0A, ("<Features>" + "".join(feature_nodes) + "</Features>").encode("utf-8")
+    )
+    notes = _snapgene_packet(
+        0x06,
+        (
+            "<Notes><Type>Synthetic</Type><Comments>"
+            + escape(name)
+            + "</Comments></Notes>"
+        ).encode("utf-8"),
+    )
+    return cookie + dna + features + notes
+
+
 def export_sequence(vector: dict[str, Any], file_format: str) -> str:
+    if file_format == "snapgene":
+        return base64.b64encode(_snapgene_bytes(vector)).decode("ascii")
     sequence = Seq(str(vector["sequence"]))
     name = str(vector.get("name") or "vector")
     safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_") or "vector"
@@ -693,6 +762,21 @@ def export_sequence(vector: dict[str, Any], file_format: str) -> str:
     )
     record.annotations["molecule_type"] = "DNA"
     record.annotations["topology"] = "circular" if vector.get("circular") else "linear"
+    provenance: list[str] = []
+    supplier = str(vector.get("supplier") or "").strip()
+    source_url = str(vector.get("sourceUrl") or "").strip()
+    license_name = str(vector.get("license") or "").strip()
+    license_url = str(vector.get("licenseUrl") or "").strip()
+    if supplier or source_url:
+        source = supplier or "Source record"
+        provenance.append(f"Source: {source}{f' ({source_url})' if source_url else ''}")
+    if license_name or license_url:
+        license_value = license_name or "See source licence"
+        provenance.append(
+            f"License: {license_value}{f' ({license_url})' if license_url else ''}"
+        )
+    if provenance:
+        record.annotations["comment"] = "\n".join(provenance)
     for feature in vector.get("features") or []:
         qualifiers = {
             str(key): [str(value) for value in values]
@@ -701,13 +785,20 @@ def export_sequence(vector: dict[str, Any], file_format: str) -> str:
         qualifiers["label"] = [str(feature.get("name") or "feature")]
         if str(feature.get("notes") or ""):
             qualifiers["note"] = [str(feature.get("notes"))]
+        start, end = int(feature["start"]), int(feature["end"])
+        if bool(feature.get("wrapsOrigin", False) or start > end):
+            location = CompoundLocation(
+                [
+                    FeatureLocation(start, len(sequence), strand=int(feature.get("strand", 1))),
+                    FeatureLocation(0, end, strand=int(feature.get("strand", 1))),
+                ],
+                operator="join",
+            )
+        else:
+            location = FeatureLocation(start, end, strand=int(feature.get("strand", 1)))
         record.features.append(
             SeqFeature(
-                FeatureLocation(
-                    int(feature["start"]),
-                    int(feature["end"]),
-                    strand=int(feature.get("strand", 1)),
-                ),
+                location,
                 type=str(feature.get("type") or "misc_feature"),
                 qualifiers=qualifiers,
             )

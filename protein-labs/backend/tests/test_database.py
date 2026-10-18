@@ -604,6 +604,26 @@ def test_expression_vector_simulates_linear_and_circular_digests(tmp_path):
     assert sorted(fragment["length"] for fragment in circular_result["fragments"]) == [9, 11]
 
 
+def test_expression_vector_gel_accepts_an_uncut_plasmid_lane(tmp_path):
+    service = planner(tmp_path)
+    created = service.create_protein({"name": "Uncut gel", "sequence": "ACDE"})
+    protein_id = created["protein"]["id"]
+    vector = service.save_expression_vector(
+        protein_id,
+        {"name": "Uncut plasmid", "sequence": "ATGC" * 750, "circular": True},
+    )
+
+    gel = service.simulate_expression_vector_gel(
+        protein_id,
+        {"lanes": [{"vectorId": vector["id"], "enzymeNames": []}]},
+    )
+
+    lane = gel["lanes"][1]
+    assert lane["bands"] == [{"sizeBp": 3000, "relativeMass": 1.0}]
+    assert lane["uncut"]["forms"] == ["supercoiled", "nicked/open-circle", "linear"]
+    assert "apparent mobilities" in lane["uncut"]["note"]
+
+
 def test_expression_vector_alignment_reports_identity_mismatches_and_gaps(tmp_path):
     service = planner(tmp_path)
     created = service.create_protein({"name": "Alignment", "sequence": "ACDE"})
