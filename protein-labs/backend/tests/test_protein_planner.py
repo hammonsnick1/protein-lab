@@ -80,7 +80,10 @@ def test_vector_catalogue_records_every_project_that_uses_a_vector(tmp_path):
         "sequence": sequence,
         "features": [{"name": "Target CDS", "type": "CDS", "start": 0, "end": 123, "isInsert": True}],
     })
-    catalogue = service.list_library_vectors()
+    catalogue = [
+        vector for vector in service.list_library_vectors()
+        if not vector["isStandard"]
+    ]
     assert len(catalogue) == 1
     assert catalogue[0]["insertName"] == "Target CDS"
     assert [use["proteinName"] for use in catalogue[0]["projects"]] == ["Project A"]
@@ -91,7 +94,10 @@ def test_vector_catalogue_records_every_project_that_uses_a_vector(tmp_path):
         "sequence": sequence,
         "features": [],
     })
-    catalogue = service.list_library_vectors()
+    catalogue = [
+        vector for vector in service.list_library_vectors()
+        if not vector["isStandard"]
+    ]
     assert len(catalogue) == 1
     assert catalogue[0]["projectCount"] == 2
     assert sorted(use["proteinName"] for use in catalogue[0]["projects"]) == ["Project A", "Project B"]
@@ -102,9 +108,12 @@ def test_copying_a_catalogued_vector_into_a_project_records_the_use(tmp_path):
     source = service.create_protein({"name": "Source", "sequence": "MKWVTFISLLLLFSSAYS"})["protein"]
     target = service.create_protein({"name": "Target", "sequence": "MKWVTFISLLLLFSSAYS"})["protein"]
     service.save_expression_vector(source["id"], {"name": "pUC19", "sequence": "ATGC" * 60})
-    entry = service.list_library_vectors()[0]
+    entry = next(
+        vector for vector in service.list_library_vectors()
+        if not vector["isStandard"]
+    )
 
     copied = service.copy_library_vector(target["id"], entry["id"])
     assert copied["name"] == "pUC19"
     assert [v["name"] for v in service.list_expression_vectors(target["id"])] == ["pUC19"]
-    assert service.list_library_vectors()[0]["projectCount"] == 2
+    assert service.get_library_vector(entry["id"])["projectCount"] == 2

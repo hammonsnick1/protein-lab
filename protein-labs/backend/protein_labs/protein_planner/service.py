@@ -579,19 +579,62 @@ class ProteinPlanner:
                 "enzymeNames": enzyme_names,
                 "minimumOrfAminoAcids": minimum_orf_amino_acids,
                 "history": history,
+                "libraryId": fields.get("sourceLibraryId") or fields.get("libraryId"),
             },
             vector_id,
         )
-        # Naming and saving a vector is what publishes it: the catalogue keeps
-        # one entry per distinct sequence and records this project against it.
-        self.database.record_vector_use(protein_id, value)
-        return vector_preview(value)
+        self.database.record_vector_use(
+            protein_id,
+            value,
+            source_library_id=str(fields.get("sourceLibraryId") or "") or None,
+        )
+        return vector_preview(
+            self.database.get_expression_vector(protein_id, value["id"])
+        )
 
     # ------------------------------------------------------------------
     # Shared vector library
     # ------------------------------------------------------------------
     def list_library_vectors(self) -> list[dict[str, Any]]:
         return self.database.list_library_vectors()
+
+    def search_library_vectors(
+        self,
+        *,
+        query: str = "",
+        filters: dict[str, list[str]] | None = None,
+        favorite: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        if limit < 1 or limit > 500:
+            raise ValueError("Vector library limit must be between 1 and 500")
+        if offset < 0:
+            raise ValueError("Vector library offset cannot be negative")
+        unknown = set(filters or {}) - set(self.database.VECTOR_LIBRARY_FACETS)
+        if unknown:
+            raise ValueError(
+                "Unknown vector library facet: " + ", ".join(sorted(unknown))
+            )
+        return self.database.search_library_vectors(
+            query=query,
+            filters=filters,
+            favorite=favorite,
+            limit=limit,
+            offset=offset,
+        )
+
+    def list_recent_library_vectors(self, limit: int = 10) -> list[dict[str, Any]]:
+        if limit < 1 or limit > 100:
+            raise ValueError("Recent vector limit must be between 1 and 100")
+        return self.database.list_recent_library_vectors(limit)
+
+    def set_library_favorite(
+        self, library_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        if "favorite" not in fields or not isinstance(fields["favorite"], bool):
+            raise ValueError("favorite must be a boolean")
+        return self.database.set_library_favorite(library_id, fields["favorite"])
 
     def get_library_vector(self, library_id: str) -> dict[str, Any]:
         return self.database.get_library_vector(library_id)
@@ -607,6 +650,7 @@ class ProteinPlanner:
             "sequence": source["sequence"],
             "circular": source["circular"],
             "features": source["features"],
+            "sourceLibraryId": source["id"],
         })
 
     def auto_annotate_expression_vector(
