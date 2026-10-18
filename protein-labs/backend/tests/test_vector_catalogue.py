@@ -324,6 +324,25 @@ def test_search_filters_facets_favorites_and_recent_usage(tmp_path):
     assert recent[0]["lastUsedAt"]
 
 
+def test_search_library_vectors_requires_each_query_token_and_normalizes_tag_x(tmp_path):
+    service = planner(tmp_path)
+
+    # His and TEV are separate library metadata fields on this known vector.
+    # The query must therefore use token AND semantics rather than substring
+    # matching the literal phrase "His TEV".
+    his_tev = service.search_library_vectors(query="His TEV")
+    assert [vector["name"] for vector in his_tev["vectors"]] == ["LIC-pPICZ-LC1"]
+
+    # Scientists often use ASCII x for a repeat count although the catalogue
+    # renders tags using the multiplication sign.
+    ascii_tag = service.search_library_vectors(query="6xHis")
+    assert {vector["name"] for vector in ascii_tag["vectors"]} == {
+        "LIC-pPICZ-LC1",
+        "pET28a-LIC",
+        "pQE30NST",
+    }
+
+
 def test_vector_library_api_query_contract(tmp_path):
     service = planner(tmp_path)
     request = parse_vector_library_search(

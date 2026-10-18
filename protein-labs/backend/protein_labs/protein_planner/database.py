@@ -846,20 +846,29 @@ class Database:
                 self._library_vector(connection, row, full=False) for row in rows
             ]
 
-        query_value = query.strip().casefold()
+        # Search terms are independently useful metadata (for example, "His"
+        # and "TEV" can be in separate tag and protease-site fields).  Match
+        # every whitespace-delimited term, rather than treating the full input
+        # as one contiguous substring.  Users commonly write ``6xHis`` even
+        # when the catalogue's typographically correct tag uses ``6×His``.
+        query_tokens = tuple(
+            token
+            for token in query.strip().casefold().replace("×", "x").split()
+            if token
+        )
 
         def matches(
             record: dict[str, Any], ignored_facet: str | None = None
         ) -> bool:
             if favorite is not None and record["favorite"] is not favorite:
                 return False
-            if query_value:
+            if query_tokens:
                 searchable = " ".join(
                     str(value)
                     for key, value in record.items()
                     if key != "projects"
-                ).casefold()
-                if query_value not in searchable:
+                ).casefold().replace("×", "x")
+                if not all(token in searchable for token in query_tokens):
                     return False
             for facet, selected in folded_filters.items():
                 if facet == ignored_facet:
