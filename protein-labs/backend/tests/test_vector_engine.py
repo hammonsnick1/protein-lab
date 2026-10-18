@@ -138,6 +138,23 @@ def test_restriction_ligation_rejects_incompatible_ends_before_product():
     assert any(warning["code"] == "incompatible_end" for warning in preview["warnings"])
 
 
+def test_restriction_ligation_rejects_a_multicut_backbone_as_ambiguous():
+    # Two BamHI sites leave no defined backbone fragment.  Selecting the first
+    # site would fabricate an arbitrary (and biologically invalid) construct.
+    preview = restriction_ligation_preview(
+        {
+            "sequence": "AAAAGGATCCAAAAAGGATCCAAAAAGAATTCTTTT",
+            "circular": False,
+            "features": [],
+        },
+        {"sequence": "GGATCCATGAAAGAATTC", "features": []},
+        backbone_enzymes=["BamHI", "EcoRI"],
+    )
+
+    assert preview["product"] is None
+    assert any(warning["code"] == "internal_sites" for warning in preview["warnings"])
+
+
 def test_gateway_preview_reports_lost_features_and_frame_loss():
     preview = gateway_preview(
         {

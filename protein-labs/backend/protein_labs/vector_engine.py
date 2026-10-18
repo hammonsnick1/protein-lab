@@ -424,26 +424,36 @@ def restriction_ligation_preview(
     backbone_sequence = _dna(backbone.get("sequence", ""))
     insert_sequence = _dna(insert.get("sequence", ""))
 
-    def cuts(sequence: str, names: list[str], circular: bool) -> tuple[list[int], list[dict[str, str]]]:
+    def cuts(
+        sequence: str, names: list[str], circular: bool
+    ) -> tuple[list[int], list[dict[str, str]], bool]:
+        """Return digest coordinates and whether every requested site is unique.
+
+        A double-digest preview represents one defined backbone fragment.  A
+        site that is absent or occurs more than once does not define that
+        fragment, even though its first coordinate is useful for reporting.
+        """
         batch = RestrictionBatch(names)
         hits = batch.search(Seq(sequence), linear=not circular)
         coordinates = []
         warnings = []
+        valid = True
         for name in names:
             enzyme = next(enzyme for enzyme in batch if str(enzyme) == name)
             positions = [int(position) - 1 for position in hits.get(enzyme, [])]
             if len(positions) != 1:
+                valid = False
                 warnings.append({
                     "code": "internal_sites" if len(positions) > 1 else "missing_site",
                     "message": f"{name} cuts {len(positions)} times; exactly one site is required.",
                 })
             coordinates.append(positions[0] if positions else -1)
-        return coordinates, warnings
+        return coordinates, warnings, valid
 
-    backbone_cuts, warnings = cuts(
+    backbone_cuts, warnings, backbone_is_defined = cuts(
         backbone_sequence, backbone_enzymes, bool(backbone.get("circular", True))
     )
-    insert_cuts, insert_warnings = cuts(insert_sequence, insert_enzymes, False)
+    insert_cuts, insert_warnings, insert_is_defined = cuts(insert_sequence, insert_enzymes, False)
     warnings.extend(insert_warnings)
     left_compatibility = compatible_ends(backbone_enzymes[0], insert_enzymes[0])
     right_compatibility = compatible_ends(backbone_enzymes[1], insert_enzymes[1])
@@ -452,7 +462,9 @@ def restriction_ligation_preview(
     if not right_compatibility["compatible"]:
         warnings.append({"code": "incompatible_end", "message": "The right insert and backbone ends cannot ligate."})
     can_assemble = (
-        all(coordinate >= 0 for coordinate in [*backbone_cuts, *insert_cuts])
+        backbone_is_defined
+        and insert_is_defined
+        and all(coordinate >= 0 for coordinate in [*backbone_cuts, *insert_cuts])
         and left_compatibility["compatible"]
         and right_compatibility["compatible"]
     )
