@@ -324,6 +324,20 @@ def test_search_filters_facets_favorites_and_recent_usage(tmp_path):
     assert recent[0]["lastUsedAt"]
 
 
+def test_standard_catalogue_uses_one_canonical_copy_number_facet(tmp_path):
+    service = planner(tmp_path)
+
+    result = service.search_library_vectors()
+
+    # The starter catalogue has six high-copy and two medium-copy vectors.
+    # Host-qualified labels such as "High in E. coli" must not split the
+    # copy-number filter into duplicate biological categories.
+    assert result["facets"]["copyNumber"] == [
+        {"value": "High", "count": 6},
+        {"value": "Medium", "count": 2},
+    ]
+
+
 def test_vector_library_api_query_contract(tmp_path):
     service = planner(tmp_path)
     request = parse_vector_library_search(
