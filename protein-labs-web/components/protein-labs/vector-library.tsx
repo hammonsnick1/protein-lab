@@ -441,7 +441,7 @@ export function VectorLibrary({
               <small>{[vector.promoter.join(", "), vectorTagline(vector), vector.selectionMarker].filter(Boolean).join(" · ") || vector.insertName || "No annotations recorded"}</small>
             </span>
             <span className="vl-row-meta">
-              <small>{vector.host.join(", ") || "Host not recorded"}</small>
+              <small title={vector.host.join(", ") || undefined}>{vector.host.join(", ") || "Host not recorded"}</small>
               <em className={vector.isStandard ? "standard" : ""}>{vector.isStandard ? "Standard" : vector.projectCount ? `${vector.projectCount} project${vector.projectCount === 1 ? "" : "s"}` : "Saved"}</em>
             </span>
           </button>)}
