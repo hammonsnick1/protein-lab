@@ -9366,17 +9366,15 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .suite-dashboard .dashboard-project-overview-card,
 .suite-dashboard .dashboard-tree-overview-card { min-height: 0; padding: 20px; overflow: visible; }
 .suite-dashboard .dashboard-project-overview-card {
-  --card-accent: #58a6ff;
   background:
-    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, #58a6ff 12%, transparent), transparent 55%),
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 55%),
     color-mix(in srgb, var(--card) 96%, transparent);
 }
 .suite-dashboard .dashboard-tree-overview-card {
-  --card-accent: #ef765f;
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, #ef765f 14%, transparent), transparent 55%),
+    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 55%),
     color-mix(in srgb, var(--card) 96%, transparent);
 }
 
@@ -9563,10 +9561,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .suite-dashboard .dashboard-current-job-card,
 .suite-dashboard .dashboard-reports-card,
 .suite-dashboard .dashboard-vector-card { padding: 20px; }
-.suite-dashboard .dashboard-activity-card { --card-accent: #36c7a5; min-height: 0; }
-.suite-dashboard .dashboard-calendar-card { --card-accent: #a78bfa; }
-.suite-dashboard .dashboard-team-card { --card-accent: #58a6ff; }
-.suite-dashboard .dashboard-account-card { --card-accent: #4285f4; }
+.suite-dashboard .dashboard-activity-card { min-height: 0; }
 .suite-dashboard .activity-line-chart > div small { font-size: 11.5px; }
 .suite-dashboard .activity-line-chart > div b { font-size: 13px; }
 .suite-dashboard .dashboard-activity-summary strong { font-size: 24px; }
@@ -10947,8 +10942,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   filter: grayscale(1);
 }
 
-/* Per-card accent hues and their background washes belong to the Graphic
-   novel appearance; the monochrome appearances use the ink colour instead. */
+/* Card icons and washes follow --primary; the monochrome appearances use
+   the ink colour instead. */
 .visual-mono-dark .suite-dashboard .dashboard-card,
 .visual-mono-light .suite-dashboard .dashboard-card {
   --card-accent: var(--foreground);
