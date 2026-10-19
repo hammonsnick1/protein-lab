@@ -3,34 +3,29 @@
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 @import "./vector-library.css";
 
-:root {
-  --background: #f2f5f7;
-  --foreground: #102027;
-  --card: #fff;
-  --card-foreground: #102027;
-  --popover: #fff;
-  --popover-foreground: #102027;
-  --primary: #087f73;
-  --primary-foreground: #f5fffd;
-  --secondary: #dff4ef;
-  --secondary-foreground: #075c55;
-  --muted: #e8eef0;
-  --muted-foreground: #61727a;
-  --accent: #dff4ef;
-  --accent-foreground: #075c55;
+/* Graphic novel is the default appearance, so its tokens also sit on :root:
+   dialogs portal into <body>, outside .app-shell, and read them from here. */
+:root,
+.app-shell.visual-paper {
+  --background: #e9e3d7;
+  --foreground: #181611;
+  --card: #f7f2e8;
+  --card-foreground: #181611;
+  --popover: #fffaf0;
+  --popover-foreground: #181611;
+  --primary: #dc5c48;
+  --primary-foreground: #fffaf0;
+  --secondary: #ead9c4;
+  --secondary-foreground: #3e261f;
+  --muted: #e4dccf;
+  --muted-foreground: #6d6255;
+  --accent: #f1c85d;
+  --accent-foreground: #2f2411;
   --destructive: #d04444;
-  --border: #d4dfe3;
-  --input: #c8d5da;
-  --ring: #2cc3b3;
+  --border: #cbbfab;
+  --input: #b8aa94;
+  --ring: #dc5c48;
   --radius: 0.8rem;
-  --sidebar: #e8eef0;
-  --sidebar-foreground: #16272e;
-  --sidebar-primary: #087f73;
-  --sidebar-primary-foreground: #fff;
-  --sidebar-accent: #d8e5e7;
-  --sidebar-accent-foreground: #102027;
-  --sidebar-border: #cad7db;
-  --sidebar-ring: #2cc3b3;
 }
 @theme inline {
   --color-background: var(--background);
@@ -102,31 +97,6 @@ small {
     var(--background);
   color: var(--foreground);
 }
-.app-shell.dark {
-  --background: #071217;
-  --foreground: #edf7f6;
-  --card: #0d1c22;
-  --card-foreground: #edf7f6;
-  --popover: #0d1c22;
-  --popover-foreground: #edf7f6;
-  --primary: #61e1cf;
-  --primary-foreground: #06231f;
-  --secondary: #163a38;
-  --secondary-foreground: #baf6ec;
-  --muted: #15262d;
-  --muted-foreground: #91a5ad;
-  --accent: #17363a;
-  --accent-foreground: #c9fff6;
-  --border: #20343c;
-  --input: #344950;
-  --ring: #61e1cf;
-  --sidebar: #0a171d;
-  --sidebar-foreground: #e7f2f1;
-  --sidebar-accent: #15272e;
-  --sidebar-accent-foreground: #fff;
-  --sidebar-border: #20343c;
-}
-
 /* Theme packs drive every major surface, project background, and protein
    hologram. Midnight Ink is the high-contrast theme based on the supplied
    reference; the other packs preserve the same layout with different art. */
@@ -142,7 +112,9 @@ small {
     linear-gradient(145deg, color-mix(in srgb, var(--card) 88%, #061115), var(--background));
   --project-pattern: radial-gradient(circle, color-mix(in srgb, var(--foreground) 8%, transparent) 1px, transparent 1.5px);
 }
-/* Monochrome dark: black surfaces, white type and rules, no hue anywhere. */
+/* Monochrome dark: black surfaces, white type and rules, no hue anywhere.
+   Mirrored onto :root while active so portalled dialogs follow it too. */
+:root:has(.app-shell.visual-mono-dark),
 .app-shell.visual-mono-dark {
   --background: #09090a;
   --foreground: #fafafa;
@@ -178,6 +150,7 @@ small {
   --project-pattern: radial-gradient(circle, rgba(255,255,255,.055) 1px, transparent 1.8px);
 }
 /* Monochrome light: white page, black type and rules. */
+:root:has(.app-shell.visual-mono-light),
 .app-shell.visual-mono-light {
   --background: #f4f4f5;
   --foreground: #0b0b0c;
@@ -233,23 +206,6 @@ small {
   background: var(--foreground);
 }
 .app-shell.visual-paper {
-  --background: #e9e3d7;
-  --foreground: #181611;
-  --card: #f7f2e8;
-  --card-foreground: #181611;
-  --popover: #fffaf0;
-  --popover-foreground: #181611;
-  --primary: #dc5c48;
-  --primary-foreground: #fffaf0;
-  --secondary: #ead9c4;
-  --secondary-foreground: #3e261f;
-  --muted: #e4dccf;
-  --muted-foreground: #6d6255;
-  --accent: #f1c85d;
-  --accent-foreground: #2f2411;
-  --border: #cbbfab;
-  --input: #b8aa94;
-  --ring: #dc5c48;
   --structure-0: #ef765f;
   --structure-1: #efc456;
   --structure-2: #5da5da;
