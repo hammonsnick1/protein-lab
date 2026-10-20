@@ -85,6 +85,43 @@ def test_alignment_reports_hand_checked_residue_edits(tmp_path):
     assert result["sequenceAlignment"]["before"] == "ACD-EFGHIK"
     assert result["sequenceAlignment"]["after"] == "ACDWEFGHVK"
 
+    ui_result = service.project_diff_for_ui(before["id"], after["id"])
+    assert ui_result["fromProjectId"] == before["id"]
+    assert ui_result["toProjectId"] == after["id"]
+    assert ui_result["sequence"] == {
+        "identityPercent": 80.0,
+        "lengthBefore": 9,
+        "lengthAfter": 10,
+        "alignedBefore": "ACD-EFGHIK",
+        "alignedAfter": "ACDWEFGHVK",
+        "edits": [
+            {
+                "kind": "insertion",
+                "position": 4,
+                "before": "",
+                "after": "W",
+                "label": "+W after residue 3",
+            },
+            {
+                "kind": "substitution",
+                "position": 8,
+                "before": "I",
+                "after": "V",
+                "label": "I8V",
+            },
+        ],
+    }
+    assert len(ui_result["sequence"]["alignedBefore"]) == len(
+        ui_result["sequence"]["alignedAfter"]
+    )
+    assert all(
+        change["category"] in {
+            "sequence", "vector", "host", "tag", "purification", "assay",
+            "protparam", "notes", "other",
+        }
+        for change in ui_result["changes"]
+    )
+
 
 def test_alignment_distinguishes_deletion_and_terminal_truncation(tmp_path):
     database = Database(tmp_path / "deletions.sqlite3")
@@ -215,6 +252,15 @@ def test_tree_graph_integrity_and_deleted_projects_remain_readable(tmp_path):
     assert missing == {"projectId": child["id"], "project": None, "missing": True}
     assert cached["diffSummary"] == "E4F"
     assert reloaded["relationships"] == reloaded["links"]
+    assert reloaded["branches"][0] == {
+        "id": first["id"],
+        "fromProjectId": root["id"],
+        "toProjectId": child["id"],
+        "summary": "E4F",
+        "categories": ["sequence", "protparam", "notes"],
+        "changeCount": 4,
+        "note": "",
+    }
     with pytest.raises(LookupError, match="was not found"):
         service.create_link(tree["id"], {
             "fromProjectId": root["id"],
@@ -233,6 +279,15 @@ def test_branch_summary_cache_refreshes_when_a_vector_changes(tmp_path):
         "toProjectId": child["id"],
     })
     assert link["diffSummary"] == "Name changed"
+
+    # Existing installations add this cache column with zero. A tree read must
+    # populate it without requiring any user edit or losing the cached summary.
+    with database.connect() as connection:
+        connection.execute(
+            "UPDATE project_tree_links SET diff_change_count = 0 WHERE id = ?",
+            (link["id"],),
+        )
+    assert service.get_tree(tree["id"])["branches"][0]["changeCount"] == 1
 
     database.save_expression_vector(child["id"], {
         "name": "pET-28a — target",
@@ -332,6 +387,49 @@ def test_http_api_exposes_tree_crud_links_reparent_diff_and_import(tmp_path):
         assert status == 201
         assert link["diffSummary"] == "E4F"
 
+        status, ui_diff = request(
+            port,
+            "GET",
+            "/v1/protein-planner/project-diff"
+            f"?from={root['id']}&to={child['id']}",
+        )
+        assert status == 200
+        assert ui_diff["sequence"]["alignedBefore"] == "ACDE"
+        assert ui_diff["sequence"]["alignedAfter"] == "ACDF"
+        assert ui_diff["sequence"]["edits"][0]["position"] == 4
+
+        status, tree_with_branch = request(
+            port,
+            "POST",
+            f"/v1/protein-planner/project-trees/{tree['id']}/branches",
+            {
+                "fromProjectId": root["id"],
+                "toProjectId": other["id"],
+                "note": "Alternative construct",
+            },
+        )
+        assert status == 201
+        ui_branch = next(
+            branch for branch in tree_with_branch["branches"]
+            if branch["toProjectId"] == other["id"]
+        )
+        assert ui_branch["note"] == "Alternative construct"
+        assert ui_branch["summary"] == "E4G"
+        assert ui_branch["changeCount"] > 0
+
+        status, patched_tree = request(
+            port,
+            "PATCH",
+            f"/v1/protein-planner/project-trees/{tree['id']}"
+            f"/branches/{ui_branch['id']}",
+            {"note": "Updated note"},
+        )
+        assert status == 200
+        assert next(
+            branch for branch in patched_tree["branches"]
+            if branch["id"] == ui_branch["id"]
+        )["note"] == "Updated note"
+
         status, diff = request(
             port,
             "GET",
@@ -367,10 +465,24 @@ def test_http_api_exposes_tree_crud_links_reparent_diff_and_import(tmp_path):
             port,
             "POST",
             "/v1/protein-planner/project-trees/import",
-            {"sourceKey": IMPORT_SOURCE_KEY, "trees": []},
+            {"trees": []},
         )
         assert status == 200
         assert imported["confirmed"] is True
+        assert imported["imported"] == 0
+        assert imported["skipped"] == 0
+
+        status, tree_without_branch = request(
+            port,
+            "DELETE",
+            f"/v1/protein-planner/project-trees/{tree['id']}"
+            f"/branches/{ui_branch['id']}",
+        )
+        assert status == 200
+        assert all(
+            branch["id"] != ui_branch["id"]
+            for branch in tree_without_branch["branches"]
+        )
 
         status, deleted_link = request(
             port,

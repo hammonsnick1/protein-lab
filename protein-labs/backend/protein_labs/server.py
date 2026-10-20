@@ -104,6 +104,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                     from_id, to_id
                 ))
                 return
+            if path == "/v1/protein-planner/project-diff":
+                from_id = (query.get("from") or [""])[0]
+                to_id = (query.get("to") or [""])[0]
+                if not from_id or not to_id:
+                    raise ValueError("from and to query parameters are required")
+                self._send(200, self.planner.project_trees.project_diff_for_ui(
+                    from_id, to_id
+                ))
+                return
             tree_match = re.fullmatch(
                 r"/v1/protein-planner/project-trees/([^/]+)", path
             )
@@ -233,6 +242,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(201, self.planner.project_trees.create_link(
                     tree_link_match.group(1), body
                 ))
+                return
+            tree_branch_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)/branches", path
+            )
+            if tree_branch_match:
+                tree_id = tree_branch_match.group(1)
+                fields = dict(body)
+                if "note" in fields and "description" not in fields:
+                    fields["description"] = fields["note"]
+                self.planner.project_trees.create_link(tree_id, fields)
+                self._send(201, self.planner.project_trees.get_tree(tree_id))
                 return
             if path == "/v1/gel/analyze":
                 self._send(200, analyze_gel(body))
@@ -434,6 +454,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                     self._read_json(),
                 ))
                 return
+            tree_branch_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)/branches/([^/]+)",
+                path,
+            )
+            if tree_branch_match:
+                tree_id, branch_id = tree_branch_match.groups()
+                fields = self._read_json()
+                if "note" in fields and "description" not in fields:
+                    fields["description"] = fields["note"]
+                self.planner.project_trees.update_link(
+                    tree_id, branch_id, fields
+                )
+                self._send(200, self.planner.project_trees.get_tree(tree_id))
+                return
             tree_match = re.fullmatch(
                 r"/v1/protein-planner/project-trees/([^/]+)", path
             )
@@ -485,6 +519,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                     tree_link_match.group(1), tree_link_match.group(2)
                 )
                 self._send(200, {"deleted": tree_link_match.group(2)})
+                return
+            tree_branch_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)/branches/([^/]+)",
+                path,
+            )
+            if tree_branch_match:
+                tree_id, branch_id = tree_branch_match.groups()
+                self.planner.project_trees.delete_link(tree_id, branch_id)
+                self._send(200, self.planner.project_trees.get_tree(tree_id))
                 return
             tree_match = re.fullmatch(
                 r"/v1/protein-planner/project-trees/([^/]+)", path
