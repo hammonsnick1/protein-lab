@@ -12,7 +12,7 @@ import { DashboardStats, type BundlesState } from "@/components/protein-labs/das
 import { FlipTile, TileHeadline } from "@/components/protein-labs/dashboard-flip-tile";
 import type { ProteinBundle, ProteinRecord } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
-import type { SavedProjectTree } from "@/lib/project-trees";
+import type { ProjectTree } from "@/lib/project-tree-types";
 import { projectTreeStats } from "@/lib/project-trees";
 
 const mascots = [
@@ -47,7 +47,7 @@ const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleCon
 const MASCOT_VISIBLE_KEY = "protein-labs-mascot-visible";
 const reportPages = ["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"];
 
-export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onVectors, onCreate }: { proteins: ProteinRecord[]; trees: SavedProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onVectors: () => void; onCreate: () => void }) {
+export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onVectors, onCreate }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onVectors: () => void; onCreate: () => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
   // Which project list the bundles were loaded for, so a newer list reads as loading.
@@ -112,7 +112,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   const activeProjectId = selectedProject || roots[0]?.id || "";
   const completedJobs = bundles.flatMap((bundle) => bundle.projectJobs).filter((job) => job.status === "complete").length;
   const totalJobs = bundles.reduce((sum, bundle) => sum + bundle.projectJobs.length, 0);
-  const projectIdsInTrees = new Set(trees.flatMap((tree) => [tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]));
+  const projectIdsInTrees = new Set(trees.flatMap((tree) => [tree.rootProjectId, ...tree.branches.flatMap((link) => [link.fromProjectId, link.toProjectId])]));
   const upcoming = events.filter((event) => event.date >= dateKey(now)).sort((a, b) => a.date.localeCompare(b.date));
   const workspaceHours = useWorkspaceHours();
   // The job touched most recently across every project, with its project's
@@ -239,8 +239,8 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </>}
           back={<>
             <button className="tree-stat-strip" onClick={onTrees}><span><strong>{treeStats.trees}</strong><small>Tree{treeStats.trees === 1 ? "" : "s"}</small></span><span><strong>{treeStats.branches}</strong><small>Branch{treeStats.branches === 1 ? "" : "es"}</small></span><span><strong>{projectIdsInTrees.size}</strong><small>Linked project{projectIdsInTrees.size === 1 ? "" : "s"}</small></span></button>
-            {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].relationships.length} branch{trees[0].relationships.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
-            <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.relationships.length} branch{tree.relationships.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
+            {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].branches.length} branch{trees[0].branches.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
+            <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.branches.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.branches.length} branch{tree.branches.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
           </>}
         />
       </div>
@@ -555,11 +555,11 @@ function ProjectTile({ protein, index, complete, total, linked, onOpen }: { prot
 /* Draws a saved tree as a left-to-right branch diagram: the root on the left,
    each relationship one generation further right. With no tree it draws a
    decorative sample so the empty state still previews the feature. */
-function TreePreview({ tree, names }: { tree?: SavedProjectTree; names?: ProteinRecord[] }) {
+function TreePreview({ tree, names }: { tree?: ProjectTree; names?: ProteinRecord[] }) {
   // Labelled diagrams compress the generations to leave room for names on the right.
   const span = names ? 74 : 96;
   const layout = useMemo(() => {
-    const links = tree ? tree.relationships.map((link) => [link.fromProjectId, link.toProjectId] as const) : [["r", "a"], ["r", "b"], ["a", "c"], ["a", "d"]] as const;
+    const links = tree ? tree.branches.map((link) => [link.fromProjectId, link.toProjectId] as const) : [["r", "a"], ["r", "b"], ["a", "c"], ["a", "d"]] as const;
     const root = tree?.rootProjectId ?? "r";
     const depth = new Map<string, number>([[root, 0]]);
     const queue = [root];

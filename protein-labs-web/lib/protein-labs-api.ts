@@ -180,7 +180,9 @@ export const proteinLabsApi = {
   createProjectBranch: (treeId: string, fromProjectId: string, toProjectId: string, note: string) => post<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches`, { fromProjectId, toProjectId, note }),
   updateProjectBranch: (treeId: string, branchId: string, fields: { fromProjectId?: string; note?: string }) => patch<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches/${branchId}`, fields),
   deleteProjectBranch: (treeId: string, branchId: string) => request<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches/${branchId}`, { method: "DELETE" }),
-  importProjectTrees: (trees: JsonObject[]) => post<{ trees: ProjectTree[]; imported: number; skipped: number }>("/v1/protein-planner/project-trees/import", { trees }),
+  // `confirmed` is the engine's durability handshake: only then may the
+  // browser stop treating its localStorage copy as authoritative.
+  importProjectTrees: (trees: JsonObject[]) => post<{ trees?: ProjectTree[]; imported?: number; skipped?: number; confirmed?: boolean }>("/v1/protein-planner/project-trees/import", { trees }),
   projectDiff: (fromProjectId: string, toProjectId: string) => request<ProjectDiff>(`/v1/protein-planner/project-diff?from=${encodeURIComponent(fromProjectId)}&to=${encodeURIComponent(toProjectId)}`),
 };
 
