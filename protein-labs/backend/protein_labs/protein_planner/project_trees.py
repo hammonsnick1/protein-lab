@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from copy import deepcopy
+import json
 from typing import Any
 import uuid
 
@@ -38,6 +39,16 @@ _IGNORED_METADATA_KEYS = {
     "updatedat",
     "analyzedat",
     "savedbyuser",
+}
+_UI_CATEGORY = {
+    "sequence": "sequence",
+    "construct": "tag",
+    "vector": "vector",
+    "host": "host",
+    "purification": "purification",
+    "assay": "assay",
+    "protparam": "protparam",
+    "metadata": "notes",
 }
 
 
@@ -292,6 +303,73 @@ def _format_value(value: float, unit: str) -> str:
     return f"{value:.2f}"
 
 
+def _ui_category(category: str) -> str:
+    return _UI_CATEGORY.get(category, "other")
+
+
+def _ui_field(change: dict[str, Any]) -> str:
+    if change["category"] == "sequence":
+        return "Amino-acid sequence"
+    if change["category"] == "construct":
+        return "Tags & fusion partners"
+    if change["category"] == "vector":
+        return "Expression vector / backbone"
+    if change["category"] == "host":
+        return "Expression host / system"
+    if change["category"] == "purification":
+        return "Purification plan"
+    if change["category"] == "assay":
+        return "Assays & jobs"
+    if change["category"] == "protparam":
+        return {
+            "molecular_weight": "Molecular weight",
+            "isoelectric_point": "Theoretical pI",
+            "extinction_coefficient_280": "Extinction coefficient",
+        }.get(change["kind"], "ProtParam")
+    field = str(change.get("details", {}).get("field") or change["kind"])
+    return {
+        "geneName": "Gene name",
+        "notebook": "Notes/report",
+    }.get(field, field.replace("_", " ").capitalize())
+
+
+def _ui_value(change: dict[str, Any], key: str) -> str:
+    value = change[key]
+    if value is None or value == "":
+        return "—"
+    category = change["category"]
+    if category == "construct" and isinstance(value, dict):
+        items = [*(value.get("tags") or []), *(value.get("fusionPartners") or [])]
+        return ", ".join(str(item) for item in items) or "—"
+    if category == "vector" and isinstance(value, list):
+        return ", ".join(
+            str(item.get("backbone") or item.get("name") or "")
+            for item in value
+            if isinstance(item, dict)
+        ) or "—"
+    if category == "host" and isinstance(value, dict):
+        system = str(value.get("expressionSystem") or "").strip()
+        jobs = value.get("jobs") or []
+        job_names = [
+            str(job.get("name") or "") for job in jobs if isinstance(job, dict)
+        ]
+        return ", ".join(item for item in [system, *job_names] if item) or "—"
+    if category in {"purification", "assay"} and isinstance(value, list):
+        return ", ".join(
+            str(item.get("name") or "")
+            for item in value
+            if isinstance(item, dict)
+        ) or "—"
+    if category == "protparam" and isinstance(value, (int, float)):
+        unit = str(change.get("details", {}).get("unit") or "")
+        return _format_value(float(value), unit)
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return str(value)
+
+
 class ProjectTreeService:
     """Stable service boundary used by both the REST API and focused tests."""
 
@@ -340,6 +418,7 @@ class ProjectTreeService:
             description=_clean_text(fields.get("description"), "Description"),
             diff_summary=diff["summary"],
             diff_categories=diff["changeCategories"],
+            diff_change_count=len(diff["changes"]),
             from_project_updated_at=self.database.project_diff_revision(
                 from_project["id"]
             ),
@@ -377,6 +456,7 @@ class ProjectTreeService:
             ),
             diff_summary=diff["summary"],
             diff_categories=diff["changeCategories"],
+            diff_change_count=len(diff["changes"]),
             from_project_updated_at=self.database.project_diff_revision(from_id),
             to_project_updated_at=self.database.project_diff_revision(to_id),
         ))
@@ -386,7 +466,9 @@ class ProjectTreeService:
 
     def import_local_trees(self, fields: dict[str, Any]) -> dict[str, Any]:
         source_key = _clean_text(
-            fields.get("sourceKey"), "Import source key", required=True
+            fields.get("sourceKey", IMPORT_SOURCE_KEY),
+            "Import source key",
+            required=True,
         )
         if source_key != IMPORT_SOURCE_KEY:
             raise ValueError(f"Unsupported project-tree import source {source_key!r}")
@@ -401,6 +483,8 @@ class ProjectTreeService:
             "confirmed": True,
             "importedTreeIds": imported,
             "existingTreeIds": existing,
+            "imported": len(imported),
+            "skipped": len(existing),
             "trees": self.list_trees(),
         }
 
@@ -606,6 +690,101 @@ class ProjectTreeService:
             "changes": changes,
         }
 
+    def project_diff_for_ui(
+        self, from_project_id: str, to_project_id: str
+    ) -> dict[str, Any]:
+        """Return the compact frontend contract without weakening the detailed API."""
+        detailed = self.project_diff(from_project_id, to_project_id)
+        alignment = detailed["sequenceAlignment"]
+        aligned_before = alignment["before"]
+        aligned_after = alignment["after"]
+        sequence_changes = [
+            change
+            for change in detailed["changes"]
+            if change["category"] == "sequence"
+        ]
+        sequence = None
+        if sequence_changes:
+            matches = sum(
+                old == new
+                for old, new in zip(aligned_before, aligned_after, strict=True)
+            )
+            columns = len(aligned_before)
+            edits = []
+            before_length = len(aligned_before.replace("-", ""))
+            for change in sequence_changes:
+                details = change["details"]
+                kind = change["kind"]
+                position = int(details["beforeStart"])
+                if kind == "insertion":
+                    position += 1
+                    if int(details["beforeStart"]) == before_length:
+                        kind = "extension"
+                edits.append({
+                    "kind": kind,
+                    "position": max(position, 1),
+                    "before": (
+                        "" if change["before"] is None
+                        else str(change["before"])
+                    ),
+                    "after": (
+                        "" if change["after"] is None
+                        else str(change["after"])
+                    ),
+                    "label": change["summary"],
+                })
+            sequence = {
+                "identityPercent": round(matches * 1000 / columns) / 10
+                if columns else 0.0,
+                "lengthBefore": before_length,
+                "lengthAfter": len(aligned_after.replace("-", "")),
+                "alignedBefore": aligned_before,
+                "alignedAfter": aligned_after,
+                "edits": edits,
+            }
+
+        changes = []
+        protparam = []
+        for index, change in enumerate(detailed["changes"]):
+            before = _ui_value(change, "before")
+            after = _ui_value(change, "after")
+            field = _ui_field(change)
+            changes.append({
+                "id": f"{change['category']}:{change['kind']}:{index}",
+                "category": _ui_category(change["category"]),
+                "field": field,
+                "before": before,
+                "after": after,
+                "summary": change["summary"],
+            })
+            if change["category"] == "protparam":
+                old_value = float(change["before"])
+                new_value = float(change["after"])
+                protparam.append({
+                    "label": field,
+                    "before": before,
+                    "after": after,
+                    "direction": (
+                        "up" if new_value > old_value
+                        else "down" if new_value < old_value
+                        else "flat"
+                    ),
+                })
+
+        categories = list(dict.fromkeys(
+            _ui_category(category)
+            for category in detailed["changeCategories"]
+        ))
+        return {
+            "fromProjectId": detailed["fromProject"]["id"],
+            "toProjectId": detailed["toProject"]["id"],
+            "summary": detailed["summary"],
+            "categories": categories,
+            "changes": changes,
+            "sequence": sequence,
+            "protparam": protparam,
+        }
+
     @staticmethod
     def _branch_summary(changes: list[dict[str, Any]]) -> str:
         if not changes:
@@ -693,16 +872,22 @@ class ProjectTreeService:
                 cache.get("fromProjectUpdatedAt") == before_revision
                 and cache.get("toProjectUpdatedAt") == after_revision
                 and link["diffSummary"]
+                and (
+                    link["changeCount"] > 0
+                    or link["diffSummary"] == "No experimental changes"
+                )
             ):
                 continue
             diff = self.project_diff(before["id"], after["id"])
             link["diffSummary"] = diff["summary"]
             link["changeCategories"] = diff["changeCategories"]
+            link["changeCount"] = len(diff["changes"])
             self.database.update_project_tree_link_cache(
                 tree["id"],
                 link["id"],
                 diff_summary=diff["summary"],
                 diff_categories=diff["changeCategories"],
+                diff_change_count=len(diff["changes"]),
                 from_project_updated_at=before_revision,
                 to_project_updated_at=after_revision,
             )
@@ -720,6 +905,21 @@ class ProjectTreeService:
         links = [cls._present_link(link) for link in value["links"]]
         value["links"] = links
         value["relationships"] = deepcopy(links)
+        value["branches"] = [
+            {
+                "id": link["id"],
+                "fromProjectId": link["fromProjectId"],
+                "toProjectId": link["toProjectId"],
+                "summary": link["diffSummary"],
+                "categories": list(dict.fromkeys(
+                    _ui_category(category)
+                    for category in link["changeCategories"]
+                )),
+                "changeCount": link["changeCount"],
+                "note": link["description"],
+            }
+            for link in links
+        ]
         return value
 
     @classmethod
@@ -739,7 +939,10 @@ class ProjectTreeService:
             root_id = _clean_text(
                 raw_tree.get("rootProjectId"), "Root project id", required=True
             )
-            raw_links = raw_tree.get("relationships", raw_tree.get("links", []))
+            raw_links = raw_tree.get(
+                "relationships",
+                raw_tree.get("links", raw_tree.get("branches", [])),
+            )
             if not isinstance(raw_links, list):
                 raise ValueError("Tree relationships must be an array")
             if len(raw_links) > 5_000:
@@ -781,7 +984,8 @@ class ProjectTreeService:
                         raw_link.get("changeType"), "Change type"
                     ),
                     "description": _clean_text(
-                        raw_link.get("description"), "Description"
+                        raw_link.get("description", raw_link.get("note")),
+                        "Description",
                     ),
                 })
             if cls._has_cycle(edges):

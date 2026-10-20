@@ -16,6 +16,14 @@ routes use the `/v1/protein-planner/project-trees` base path and JSON bodies.
 | `PATCH` | `/project-trees/{treeId}/links/{linkId}` | Any link fields; changing either endpoint re-parents it → `TreeLink` |
 | `DELETE` | `/project-trees/{treeId}/links/{linkId}` | `{ "deleted": linkId }` |
 | `GET` | `/project-trees/diff?fromProjectId=...&toProjectId=...` | `ProjectDiff` |
+| `POST` | `/project-trees/{treeId}/branches` | `{ "fromProjectId", "toProjectId", "note"? }` → updated `Tree` |
+| `PATCH` | `/project-trees/{treeId}/branches/{branchId}` | `{ "fromProjectId"?, "toProjectId"?, "note"? }` → updated `Tree` |
+| `DELETE` | `/project-trees/{treeId}/branches/{branchId}` | updated `Tree` |
+| `GET` | `/project-diff?from=...&to=...` | compact UI `ProjectDiff` |
+
+The `branches` routes and `/project-diff` are presentation aliases used by the
+Lineage UI. The original `links` routes and detailed diff stay stable for
+existing clients.
 
 Links are directed. The service rejects self-links, duplicate directed links,
 cycles, and new links to projects that do not exist. A project deleted after a
@@ -45,11 +53,23 @@ the last computed branch summary remains available.
       "description": "Optional user note",
       "diffSummary": "K73A · Vector: pET-28a → pMAL-c5X",
       "changeCategories": ["sequence", "vector"],
+      "changeCount": 2,
       "createdAt": "2026-10-20T12:00:00+00:00",
       "updatedAt": "2026-10-20T12:00:00+00:00"
     }
   ],
   "relationships": ["compatibility alias containing the same link objects"],
+  "branches": [
+    {
+      "id": "link-id",
+      "fromProjectId": "project-1",
+      "toProjectId": "project-2",
+      "summary": "K73A · Vector: pET-28a → pMAL-c5X",
+      "categories": ["sequence", "vector"],
+      "changeCount": 2,
+      "note": "Optional user note"
+    }
+  ],
   "createdAt": "2026-10-20T12:00:00+00:00",
   "updatedAt": "2026-10-20T12:00:00+00:00"
 }
@@ -64,6 +84,52 @@ Sequence edits come from a Needleman–Wunsch global alignment with affine gap
 penalties (match `2`, mismatch `-1`, gap-open `-4`, gap-extend `-0.5`). Public
 residue coordinates and summaries are 1-based. `sequenceAlignment` includes the
 aligned before/after strings and a match bar for the branch diff panel.
+
+The compact `/project-diff` response maps `construct` to the UI category `tag`
+and `metadata` to `notes`; unknown future categories map to `other`. Its
+`sequence.alignedBefore` and `sequence.alignedAfter` are equal-length gapped
+strings, and every item in `sequence.edits` has a 1-based parent-sequence
+`position`. Its stable shape is:
+
+```json
+{
+  "fromProjectId": "project-1",
+  "toProjectId": "project-2",
+  "summary": "K73A · Vector: pET-28a → pMAL-c5X",
+  "categories": ["sequence", "vector"],
+  "changes": [
+    {
+      "id": "sequence:substitution:0",
+      "category": "sequence",
+      "field": "Amino-acid sequence",
+      "before": "K",
+      "after": "A",
+      "summary": "K73A"
+    }
+  ],
+  "sequence": {
+    "identityPercent": 99.9,
+    "lengthBefore": 1000,
+    "lengthAfter": 1000,
+    "alignedBefore": "...K...",
+    "alignedAfter": "...A...",
+    "edits": [
+      {
+        "kind": "substitution",
+        "position": 73,
+        "before": "K",
+        "after": "A",
+        "label": "K73A"
+      }
+    ]
+  },
+  "protparam": []
+}
+```
+
+`sequence` is `null` when the amino-acid sequences are identical. UI category
+values are `sequence`, `vector`, `host`, `tag`, `purification`, `assay`,
+`protparam`, `notes`, or `other`.
 
 ## One-time localStorage import
 
@@ -93,13 +159,16 @@ aligned before/after strings and a match bar for the branch diff panel.
 }
 ```
 
-The response is:
+`sourceKey` may be omitted; it defaults to
+`protein-labs-project-trees-v1`. The response is:
 
 ```json
 {
   "confirmed": true,
   "importedTreeIds": ["legacy-tree-id"],
   "existingTreeIds": [],
+  "imported": 1,
+  "skipped": 0,
   "trees": []
 }
 ```

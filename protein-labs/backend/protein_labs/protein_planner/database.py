@@ -176,6 +176,7 @@ class Database:
                     description TEXT NOT NULL DEFAULT '',
                     diff_summary TEXT NOT NULL DEFAULT '',
                     diff_categories_json TEXT NOT NULL DEFAULT '[]',
+                    diff_change_count INTEGER NOT NULL DEFAULT 0,
                     from_project_updated_at TEXT,
                     to_project_updated_at TEXT,
                     created_at TEXT NOT NULL,
@@ -289,6 +290,17 @@ class Database:
             if "library_id" not in vector_columns:
                 connection.execute(
                     "ALTER TABLE expression_vectors ADD COLUMN library_id TEXT"
+                )
+            project_tree_link_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(project_tree_links)"
+                ).fetchall()
+            }
+            if "diff_change_count" not in project_tree_link_columns:
+                connection.execute(
+                    "ALTER TABLE project_tree_links ADD COLUMN "
+                    "diff_change_count INTEGER NOT NULL DEFAULT 0"
                 )
             library_columns = {
                 row["name"]
@@ -694,6 +706,7 @@ class Database:
         description: str = "",
         diff_summary: str = "",
         diff_categories: list[str] | None = None,
+        diff_change_count: int = 0,
         from_project_updated_at: str | None = None,
         to_project_updated_at: str | None = None,
         created_at: str | None = None,
@@ -722,9 +735,10 @@ class Database:
                     INSERT INTO project_tree_links (
                         id, tree_id, from_project_id, to_project_id,
                         change_type, description, diff_summary,
-                        diff_categories_json, from_project_updated_at,
+                        diff_categories_json, diff_change_count,
+                        from_project_updated_at,
                         to_project_updated_at, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         link_id,
@@ -735,6 +749,7 @@ class Database:
                         description,
                         diff_summary,
                         json.dumps(diff_categories or []),
+                        diff_change_count,
                         from_project_updated_at,
                         to_project_updated_at,
                         created_at,
@@ -777,6 +792,7 @@ class Database:
         description: str,
         diff_summary: str,
         diff_categories: list[str],
+        diff_change_count: int,
         from_project_updated_at: str | None,
         to_project_updated_at: str | None,
     ) -> dict[str, Any]:
@@ -806,7 +822,7 @@ class Database:
                     UPDATE project_tree_links SET
                         from_project_id = ?, to_project_id = ?,
                         change_type = ?, description = ?, diff_summary = ?,
-                        diff_categories_json = ?,
+                        diff_categories_json = ?, diff_change_count = ?,
                         from_project_updated_at = ?,
                         to_project_updated_at = ?, updated_at = ?
                     WHERE tree_id = ? AND id = ?
@@ -818,6 +834,7 @@ class Database:
                         description,
                         diff_summary,
                         json.dumps(diff_categories),
+                        diff_change_count,
                         from_project_updated_at,
                         to_project_updated_at,
                         timestamp,
@@ -843,6 +860,7 @@ class Database:
         *,
         diff_summary: str,
         diff_categories: list[str],
+        diff_change_count: int,
         from_project_updated_at: str,
         to_project_updated_at: str,
     ) -> None:
@@ -851,12 +869,14 @@ class Database:
                 """
                 UPDATE project_tree_links SET
                     diff_summary = ?, diff_categories_json = ?,
-                    from_project_updated_at = ?, to_project_updated_at = ?
+                    diff_change_count = ?, from_project_updated_at = ?,
+                    to_project_updated_at = ?
                 WHERE tree_id = ? AND id = ?
                 """,
                 (
                     diff_summary,
                     json.dumps(diff_categories),
+                    diff_change_count,
                     from_project_updated_at,
                     to_project_updated_at,
                     tree_id,
@@ -975,8 +995,9 @@ class Database:
                         INSERT INTO project_tree_links (
                             id, tree_id, from_project_id, to_project_id,
                             change_type, description, diff_summary,
-                            diff_categories_json, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)
+                            diff_categories_json, diff_change_count,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 0, ?, ?)
                         """,
                         (
                             link["id"],
@@ -1882,6 +1903,7 @@ class Database:
             "description": row["description"],
             "diffSummary": row["diff_summary"],
             "changeCategories": _loads(row["diff_categories_json"], []),
+            "changeCount": row["diff_change_count"],
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
             "_cache": {
