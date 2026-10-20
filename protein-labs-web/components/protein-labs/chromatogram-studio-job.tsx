@@ -39,6 +39,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
+import { clientToViewBox, plotRole, plotViewBox, screenTextSize, withSvgNamespace, type StudioTab } from "@/lib/plot-geometry";
 import { secColumns } from "@/lib/sec-column-catalog";
 
 type Point = { x: number; y: number };
@@ -202,7 +203,6 @@ type FigureConfig = {
   panelBadgeY: number;
   panelBadgeSize: number;
 };
-type StudioTab = "data" | "analysis" | "standard" | "figure" | "export";
 type Tool = "select" | "peak" | "adjust" | "fraction" | "zoom" | "annotation" | "arrow";
 type Drag = {
   kind: "selection" | "adjust" | "zoom" | "fraction" | "callout" | "annotation";
@@ -542,10 +542,7 @@ export function ChromatogramStudioJob({
   function svgPoint(event: PointerEvent<SVGSVGElement>) {
     const svg = event.currentTarget;
     const viewBox = svg.viewBox.baseVal;
-    const matrix = svg.getScreenCTM();
-    const point = matrix
-      ? new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
-      : { x: 0, y: 0 };
+    const point = clientToViewBox(event.clientX, event.clientY, svg.getScreenCTM());
     return { x: point.x, y: point.y, width: viewBox.width, height: viewBox.height };
   }
   function plotX(event: PointerEvent<SVGSVGElement>) {
@@ -923,7 +920,7 @@ export function ChromatogramStudioJob({
     ]);
   }
   function exportSvg() {
-    const source = plotRef.current?.outerHTML;
+    const source = plotRef.current && withSvgNamespace(plotRef.current.outerHTML);
     if (source)
       downloadText("chromatogram-figure.svg", source, "image/svg+xml");
   }
@@ -1138,7 +1135,7 @@ export function ChromatogramStudioJob({
               dragKind={drag?.kind ?? null}
               selectedPeakId={selectedPeakId}
               selectedAnnotationId={selectedAnnotationId}
-              figureMode={tab === "figure" || tab === "export"}
+              figureMode={plotRole(tab) !== "interactive"}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={pointerUp}
@@ -3328,10 +3325,8 @@ function forwardRefPlot() {
       observer.observe(svgNode);
       return () => observer.disconnect();
     }, [svgNode, figureMode]);
-    const live = !figureMode && plotBox !== null;
-    const W = live ? Math.round(Math.min(1000, plotBox.width)) : 1000,
-      H = figureMode ? 700 : live ? Math.round((W * plotBox.height) / plotBox.width) : 590,
-      left = 92,
+    const { width: W, height: H } = plotViewBox(plotBox, figureMode);
+    const left = 92,
       right = 32,
       top = figureMode ? 72 : 34,
       bottom = 70,
@@ -3339,7 +3334,7 @@ function forwardRefPlot() {
       plotH = H - top - bottom;
     // On screen, plot text never drops below the app's 12px floor. Exported
     // figures keep the sizes chosen in the figure settings.
-    const screenText = (size: number) => (figureMode ? size : Math.max(12, size));
+    const screenText = (size: number) => screenTextSize(size, figureMode);
     const callout = figureMode ? 1 : 1.2;
     const panels =
       figureMode && figure.layout === "stacked"
@@ -4530,7 +4525,7 @@ function errorText(value: unknown) {
   return value instanceof Error ? value.message : String(value);
 }
 async function rasterizeSvg(element: SVGSVGElement | null, width: number, height: number, dpi: number, background: string) {
-  const source = element?.outerHTML;
+  const source = element && withSvgNamespace(element.outerHTML);
   if (!source) return null;
   const blob = new Blob([source], { type: "image/svg+xml" }), url = URL.createObjectURL(blob), image = new window.Image();
   return await new Promise<HTMLCanvasElement>((resolve, reject) => {
