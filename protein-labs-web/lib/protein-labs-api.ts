@@ -2,6 +2,8 @@
 // undefined and falls back to the environment variable.
 declare const __PROTEIN_LABS_API__: string | undefined;
 
+import type { RegionsResponse, StructureDetail, StructureListResponse, StructureSource } from "./structure-regions.ts";
+
 // An empty bundled value is meaningful: it means same-origin requests, so the
 // chain tests for a defined string rather than a truthy one.
 const bundledApi = typeof __PROTEIN_LABS_API__ === "string" ? __PROTEIN_LABS_API__ : undefined;
@@ -124,6 +126,10 @@ export const proteinLabsApi = {
   alphaFoldServer: (proteinId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/server-job`),
   importAlphaFold: (proteinId: string, path: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/import`, { path }),
   getAlphaFoldModel: (proteinId: string, modelId: string) => request<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/models/${encodeURIComponent(modelId)}`),
+  // Structure Viewer (HOM-126): AlphaFold and experimental PDB entries, mmCIF + residue mapping, regions of interest.
+  listStructures: (proteinId: string, limit = 10) => request<StructureListResponse>(`/v1/protein-planner/proteins/${proteinId}/structures?limit=${limit}`),
+  getStructure: (proteinId: string, source: StructureSource, structureId: string) => request<StructureDetail>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}`),
+  getStructureRegions: (proteinId: string, source: StructureSource, structureId: string) => request<RegionsResponse>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}/regions`),
   createJob: (proteinId: string, name: string, appType: string, config: JsonObject = {}) => post<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs`, { name, appType, config }),
   updateJob: (proteinId: string, jobId: string, name: string, status: ProjectJob["status"], config: JsonObject) => patch<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { name, status, config }),
   deleteJob: (proteinId: string, jobId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { method: "DELETE" }),
