@@ -14,7 +14,9 @@ import { PurificationRoadmapWorkspace } from "@/components/protein-labs/purifica
 import { VectorLibrary } from "@/components/protein-labs/vector-library";
 import { JsonObject, ProteinBundle, ProteinRecord, proteinLabsApi } from "@/lib/protein-labs-api";
 import { definitionFor } from "@/lib/workflow";
-import { readProjectTrees, writeProjectTrees, type SavedProjectTree } from "@/lib/project-trees";
+import { writeProjectTrees } from "@/lib/project-trees";
+import type { ProjectTree } from "@/lib/project-tree-types";
+import { loadProjectTrees, type StorageMode } from "@/lib/project-tree-store";
 import { useProteinLabsWebMcp } from "@/hooks/use-protein-labs-webmcp";
 import { runViewTransition } from "@/lib/view-transition";
 
@@ -56,7 +58,9 @@ export default function Home() {
   const [splashLeaving, setSplashLeaving] = useState(false);
   const [view, setViewState] = useState<View>("home");
   const [proteins, setProteins] = useState<ProteinRecord[]>([]);
-  const [projectTrees, setProjectTrees] = useState<SavedProjectTree[]>([]);
+  const [projectTrees, setProjectTrees] = useState<ProjectTree[]>([]);
+  const [treeStorage, setTreeStorage] = useState<StorageMode>("local");
+  const [treesLoading, setTreesLoading] = useState(true);
   const [bundles, setBundles] = useState<Record<string, ProteinBundle>>({});
   const [selectedId, setSelectedId] = useState("");
   const [activeJob, setActiveJob] = useState("sequence");
@@ -91,7 +95,9 @@ export default function Home() {
 
   const refreshBundle = useCallback(async (preferredId?: string) => { const id = preferredId || selectedId; if (id) await loadProject(id); }, [loadProject, selectedId]);
 
-  useEffect(() => { proteinLabsApi.health().then(async () => { setEngineOnline(true); const projects = await refreshProjects(); setProjectTrees(readProjectTrees(projects)); }).catch((reason) => { setEngineOnline(false); setError(reason instanceof Error ? reason.message : String(reason)); }); }, [refreshProjects]);
+  // Project trees come from the engine when it serves them and from this
+  // computer otherwise, so the screen knows which store it is editing.
+  useEffect(() => { proteinLabsApi.health().then(async () => { setEngineOnline(true); const projects = await refreshProjects(); const trees = await loadProjectTrees(projects); setTreeStorage(trees.mode); setProjectTrees(trees.trees); }).catch((reason) => { setEngineOnline(false); setError(reason instanceof Error ? reason.message : String(reason)); }).finally(() => setTreesLoading(false)); }, [refreshProjects]);
   useEffect(() => {
     queueMicrotask(() => setSplashMounted(true));
     const timer = window.setTimeout(() => setSplashReady(true), 1150);
@@ -109,7 +115,9 @@ export default function Home() {
   function setView(next: View, update?: () => void) { runViewTransition(() => { update?.(); setViewState(next); }, viewDepth[next] < viewDepth[view] ? "back" : "forward"); }
   async function openProject(id: string, destination: View = "dashboard") { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView(destination, () => { setSelectedId(id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   async function createProject() { const sequence = newSequence.replace(/\s+/g, "").toUpperCase(); if (!sequence) { setError("Paste an amino-acid sequence before creating the project."); return; } setBusy(true); setError(""); try { const created = await proteinLabsApi.createProtein({ name: newName.trim() || `Protein project ${proteins.length + 1}`, sequence }); setNewName(""); setNewSequence(""); setCreateOpen(false); await loadProject(created.protein.id, undefined, false); setView("dashboard", () => { setSelectedId(created.protein.id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
-  function updateProjectTrees(next: SavedProjectTree[]) { setProjectTrees(next); writeProjectTrees(next); }
+  // The store already persisted the change; this keeps the dashboard count in
+  // step, and mirrors engine-held trees locally as an offline read cache.
+  function updateProjectTrees(next: ProjectTree[]) { setProjectTrees(next); if (treeStorage === "engine") writeProjectTrees(next); }
   async function openProjectJob(id: string, job: string) { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView("job", () => { setSelectedId(id); setActiveJob(definitionFor(job).id); setJobReturn("planning"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   function openJob(value: string, returnTo: "planning" | "roadmap" = "planning") { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }); }
   function chooseVisualTheme(theme: VisualTheme) { setVisualTheme(theme); localStorage.setItem("protein-labs-visual-theme", theme); }
@@ -153,7 +161,7 @@ export default function Home() {
       {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} onVectors={() => setView("vectors")} onCreate={() => setCreateOpen(true)}/>
         : view === "projects" ? <ProjectGallery proteins={proteins} onOpen={(id) => void openProject(id)} onCreate={() => { setError(""); setCreateOpen(true); }}/>
         : view === "vectors" ? <VectorLibrary mode="page" proteins={proteins} onOpenProject={(id) => void openProjectJob(id, "expression-vector")}/>
-        : view === "project-trees" ? <ProjectTrees proteins={proteins} trees={projectTrees} onChange={updateProjectTrees} onOpenProject={(id) => void openProject(id)}/>
+        : view === "project-trees" ? <ProjectTrees proteins={proteins} trees={projectTrees} storageMode={treeStorage} loading={treesLoading} onChange={updateProjectTrees} onOpenProject={(id) => void openProject(id)}/>
         : bundle ? <>{view === "dashboard" && <ProjectDashboard bundle={bundle} onResume={() => setView("workflow")} onRoadmap={() => setView("roadmap")} onReports={() => setView("reports")}/>} {view === "workflow" && <ProjectWorkflow bundle={bundle} onOpenJob={(id) => openJob(id, "planning")} onRoadmap={() => setView("roadmap")} onRefresh={() => refreshBundle(selectedId)}/>} {view === "roadmap" && <PurificationRoadmapWorkspace bundle={bundle} onOpenJob={(id) => openJob(id, "roadmap")} onBackToWorkflow={() => setView("workflow")} onChanged={() => refreshBundle(selectedId)}/>} {view === "job" && <JobWorkspace key={`${selectedId}:${activeJob}:${jobReturn}`} jobId={activeJob} bundle={bundle} returnTo={jobReturn} onBack={() => setView(jobReturn === "roadmap" ? "roadmap" : "workflow")} onOpenJob={(id) => openJob(id, "planning")} onReports={() => setView("reports")} onRoadmap={() => setView("roadmap")} onChanged={() => refreshBundle(selectedId)}/>} {view === "reports" && <ReportsWorkspace bundle={bundle} onChanged={() => refreshBundle(selectedId)}/>}</>
         : <main className="gallery"><p>Select a saved protein project.</p></main>}
     </div>
