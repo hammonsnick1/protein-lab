@@ -31,7 +31,7 @@ export const workflowJobs: WorkflowJobDefinition[] = [
   { id: "properties", appType: "protparam", label: "Protein properties", description: "Calculate the complete ProtParam molecular and stability profile.", stage: "understand", color: "#7e9cff" },
   { id: "research", appType: "database-research", label: "Sequence research", description: "Collect BLAST, UniProt, PDB, PTM, and condition evidence.", stage: "understand", color: "#ffa84a" },
   { id: "reference-match", appType: "reference-match", label: "Choose reference match", description: "Select the closest biological reference so cofactors and PTMs come from one traceable UniProt record.", stage: "understand", color: "#f2c14e", requiredKey: "selectedAccession" },
-  { id: "structure", appType: "alphafold", label: "Structure prediction", description: "Retrieve, import, and inspect an AlphaFold model.", stage: "understand", color: "#37dce8" },
+  { id: "structure", appType: "alphafold", label: "Structure Viewer", description: "View the AlphaFold model or an experimental PDB entry and highlight regions of interest.", stage: "understand", color: "#37dce8" },
   { id: "readiness", appType: "protein-readiness", label: "Protein readiness check", description: "Review membrane, cysteine, location, A₂₈₀, disorder, and cofactor risks.", stage: "understand", color: "#45c6a7", requiredKey: "reviewStatus" },
   // Purification is designed from the protein outwards: capture, cleanup and
   // polishing first, then the host, vector and lysis that have to feed them.
