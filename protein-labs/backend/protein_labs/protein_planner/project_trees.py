@@ -207,7 +207,8 @@ def _without_noise(value: Any) -> Any:
             key: _without_noise(item)
             for key, item in sorted(value.items())
             if key.casefold() not in _IGNORED_METADATA_KEYS
-            and not key.casefold().endswith("id")
+            and not key.casefold().endswith("_id")
+            and not key.endswith("Id")
         }
     if isinstance(value, list):
         return [_without_noise(item) for item in value]

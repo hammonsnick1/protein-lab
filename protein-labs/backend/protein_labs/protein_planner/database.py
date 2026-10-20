@@ -556,8 +556,11 @@ class Database:
                 ).fetchall(),
                 "vectors": connection.execute(
                     """
-                    SELECT id, updated_at FROM expression_vectors
-                    WHERE protein_id = ? ORDER BY id
+                    SELECT v.id, v.updated_at, v.library_id,
+                           l.updated_at AS library_updated_at
+                    FROM expression_vectors v
+                    LEFT JOIN vector_library l ON l.id = v.library_id
+                    WHERE v.protein_id = ? ORDER BY v.id
                     """,
                     (protein_id,),
                 ).fetchall(),
