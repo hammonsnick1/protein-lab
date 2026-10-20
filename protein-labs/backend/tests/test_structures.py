@@ -233,7 +233,46 @@ def test_real_alphafold_p53_values_keep_low_plddt_separate_from_uniprot_disorder
     annotated = next(group for group in result["groups"] if group["type"] == "disorder_uniprot")
     assert {row["uniprotPosition"] for row in low["residues"]} == {1, 2}
     assert {row["uniprotPosition"] for row in annotated["residues"]} == {1, 2}
+    assert annotated["metadata"]["unmappedPositions"] == [3]
     assert result["parameters"]["lowPlddtThreshold"] == 50.0
+
+
+def test_sequence_regions_report_partial_and_fully_unmapped_uniprot_positions():
+    reference = "A" * 9
+    mapping, parsed = build_residue_mapping(
+        reference,
+        reference,
+        P53_CONFIDENCE,
+        accession="P04637",
+        source="alphafold_db",
+    )
+    result = compute_regions(mapping, parsed, reference, {
+        "disorderedRegions": [{"description": "Partial disorder", "location": {"start": 2, "end": 3}}],
+        "postTranslationalModifications": [{"description": "Mapped PTM", "location": {"start": 1}}],
+        "domains": [{"description": "Partial domain", "location": {"start": 1, "end": 3}}],
+        "bindingSites": [{"description": "Unmodelled site", "location": {"start": 7, "end": 8}}],
+    })
+    by_type = {group["type"]: group for group in result["groups"]}
+
+    hydrophobic = by_type["hydrophobic_sequence"]
+    assert {row["uniprotPosition"] for row in hydrophobic["residues"]} == {1, 2}
+    assert hydrophobic["metadata"]["unmappedPositions"] == [3, 4, 5, 6, 7, 8, 9]
+
+    disorder = by_type["disorder_uniprot"]
+    assert {row["uniprotPosition"] for row in disorder["residues"]} == {2}
+    assert disorder["metadata"]["unmappedPositions"] == [3]
+
+    ptm = by_type["reference_ptm"]
+    assert {row["uniprotPosition"] for row in ptm["residues"]} == {1}
+    assert ptm["metadata"]["unmappedPositions"] == []
+
+    domain = by_type["reference_domain"]
+    assert {row["uniprotPosition"] for row in domain["residues"]} == {1, 2}
+    assert domain["metadata"]["unmappedPositions"] == [3]
+
+    binding_site = by_type["reference_binding_site"]
+    assert binding_site["residues"] == []
+    assert binding_site["metadata"]["unmappedPositions"] == [7, 8]
 
 
 def test_pdbe_all_isoforms_normalization_and_cache():
