@@ -3,6 +3,7 @@
 import {
   forwardRef,
   PointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -535,13 +536,23 @@ export function ChromatogramStudioJob({
     setSelection(range);
   }
 
+  // Pointer position in the plot's viewBox units. Going through the SVG's own
+  // screen transform stays right when the viewBox follows the window size or
+  // the drawing is letterboxed inside its box.
+  function svgPoint(event: PointerEvent<SVGSVGElement>) {
+    const svg = event.currentTarget;
+    const viewBox = svg.viewBox.baseVal;
+    const matrix = svg.getScreenCTM();
+    const point = matrix
+      ? new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
+      : { x: 0, y: 0 };
+    return { x: point.x, y: point.y, width: viewBox.width, height: viewBox.height };
+  }
   function plotX(event: PointerEvent<SVGSVGElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
     const bounds = plotBounds(traces, allProcessed, zoom, figure);
-    const svgWidth = 1000;
+    const { x: svgX, width: svgWidth } = svgPoint(event);
     const plotLeft = 92;
     const plotRight = 32;
-    const svgX = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * svgWidth;
     const plotFraction = Math.max(
       0,
       Math.min(1, (svgX - plotLeft) / (svgWidth - plotLeft - plotRight)),
@@ -552,11 +563,9 @@ export function ChromatogramStudioJob({
     );
   }
   function plotY(event: PointerEvent<SVGSVGElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const svgHeight = tab === "figure" ? 700 : 590;
+    const { y: svgY, height: svgHeight } = svgPoint(event);
     const plotTop = tab === "figure" ? 72 : 34;
     const plotBottom = 70;
-    const svgY = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * svgHeight;
     return (
       Math.max(
         0,
@@ -969,6 +978,7 @@ export function ChromatogramStudioJob({
               key={id}
               onClick={() => {
                 setTab(id);
+                setMessage("");
                 if (id === "figure") setInspector("figure");
               }}
             >
@@ -1160,7 +1170,7 @@ export function ChromatogramStudioJob({
         {message && (
           <div className="chrom-message">
             {message}
-            <button onClick={() => setMessage("")}>×</button>
+            <button aria-label="Dismiss message" onClick={() => setMessage("")}>×</button>
           </div>
         )}
       </section>
@@ -3292,14 +3302,39 @@ function forwardRefPlot() {
   ) {
     const visible = traces.filter((value) => value.visible);
     const bounds = plotBounds(traces, processed, zoom, figure);
-    const W = 1000,
-      H = figureMode ? 700 : 590,
+    // The figure is drawn at its fixed export size. The interactive plot
+    // follows its box instead, at no more than 1000 units wide, so on narrow
+    // windows its text keeps its real pixel size instead of shrinking with the
+    // drawing, and the plot fills the box without letterboxing.
+    const [svgNode, setSvgNode] = useState<SVGSVGElement | null>(null);
+    const [plotBox, setPlotBox] = useState<{ width: number; height: number } | null>(null);
+    const svgRef = useCallback((node: SVGSVGElement | null) => {
+      setSvgNode(node);
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+    }, [ref]);
+    useEffect(() => {
+      if (!svgNode || figureMode) return;
+      const observer = new ResizeObserver(([entry]) => {
+        const { width, height } = entry.contentRect;
+        setPlotBox(width > 0 && height > 0 ? { width, height } : null);
+      });
+      observer.observe(svgNode);
+      return () => observer.disconnect();
+    }, [svgNode, figureMode]);
+    const live = !figureMode && plotBox !== null;
+    const W = live ? Math.round(Math.min(1000, plotBox.width)) : 1000,
+      H = figureMode ? 700 : live ? Math.round((W * plotBox.height) / plotBox.width) : 590,
       left = 92,
       right = 32,
       top = figureMode ? 72 : 34,
       bottom = 70,
       plotW = W - left - right,
       plotH = H - top - bottom;
+    // On screen, plot text never drops below the app's 12px floor. Exported
+    // figures keep the sizes chosen in the figure settings.
+    const screenText = (size: number) => (figureMode ? size : Math.max(12, size));
+    const callout = figureMode ? 1 : 1.2;
     const panels =
       figureMode && figure.layout === "stacked"
         ? Math.max(1, visible.length)
@@ -3347,7 +3382,7 @@ function forwardRefPlot() {
     );
     return (
       <svg
-        ref={ref}
+        ref={svgRef}
         className={`chromatogram-canvas ${figureMode ? "figure-mode" : ""}`}
         viewBox={`0 0 ${W} ${H}`}
         style={{
@@ -3405,7 +3440,7 @@ function forwardRefPlot() {
                 x={x}
                 y={top + plotH + 25}
                 textAnchor="middle"
-                fontSize={figure.tickSize}
+                fontSize={screenText(figure.tickSize)}
                 fill={figure.foreground}
               >
                 {formatTick(value, xMajorValues)}
@@ -3528,7 +3563,7 @@ function forwardRefPlot() {
                         x={left - 11}
                         y={y + 4}
                         textAnchor="end"
-                        fontSize={figure.tickSize}
+                        fontSize={screenText(figure.tickSize)}
                         fill={figure.foreground}
                       >
                         {formatTick(value, yMajorValues)}
@@ -3597,7 +3632,7 @@ function forwardRefPlot() {
                 y={pTop + 15}
                 textAnchor="end"
                 fill={trace.color}
-                fontSize={figure.legendSize}
+                fontSize={screenText(figure.legendSize)}
               >
                 {figureMode && figure.layout === "stacked" && figure.showPanelLabels ? trace.name : ""}
               </text>
@@ -3613,8 +3648,8 @@ function forwardRefPlot() {
                       id: peak.id,
                       cx: sx(peak.calloutX + alignShift),
                       cy: pTop + (peak.calloutY / 100) * panelH,
-                      width: Math.max(96, ...lines.map((line) => line.length * 5.4)) + 16,
-                      height: lines.length * 16 + 10,
+                      width: (Math.max(96, ...lines.map((line) => line.length * 5.4)) + 16) * callout,
+                      height: (lines.length * 16 + 10) * callout,
                     };
                   })
                   .sort((a, b) => a.cx - b.cx);
@@ -3644,7 +3679,7 @@ function forwardRefPlot() {
                   const calloutX = box?.cx ?? sx(peak.calloutX + alignShift),
                     calloutY = box?.cy ?? pTop + (peak.calloutY / 100) * panelH;
                   const lines = peakLines(peak);
-                  const calloutW = box?.width ?? Math.max(96, ...lines.map((line) => line.length * 5.4)) + 16;
+                  const calloutW = box?.width ?? (Math.max(96, ...lines.map((line) => line.length * 5.4)) + 16) * callout;
                   return (
                     <g
                       key={peak.id}
@@ -3676,9 +3711,9 @@ function forwardRefPlot() {
                         >
                           <rect
                             x={-calloutW / 2}
-                            y={-lines.length * 8 - 8}
+                            y={(-lines.length * 8 - 8) * callout}
                             width={calloutW}
-                            height={lines.length * 16 + 10}
+                            height={(lines.length * 16 + 10) * callout}
                             rx="6"
                             fill={
                               figure.background === "transparent"
@@ -3691,10 +3726,10 @@ function forwardRefPlot() {
                             <text
                               key={i}
                               x="0"
-                              y={-lines.length * 8 + 4 + i * 14}
+                              y={(-lines.length * 8 + 4 + i * 14) * callout}
                               textAnchor="middle"
                               fill={peak.color}
-                              fontSize="10"
+                              fontSize={10 * callout}
                             >
                               {line}
                             </text>
@@ -3784,7 +3819,7 @@ function forwardRefPlot() {
           x={figure.xLabelX * W}
           y={figure.xLabelY * H}
           textAnchor={figure.xLabelAlignment}
-          fontSize={figure.labelSize}
+          fontSize={screenText(figure.labelSize)}
           fill={figure.foreground}
           transform={`rotate(${figure.xLabelRotation} ${figure.xLabelX * W} ${figure.xLabelY * H})`}
           onClick={onAxis}
@@ -3796,7 +3831,7 @@ function forwardRefPlot() {
           y={figure.yLabelY * H}
           transform={`rotate(${figure.yLabelRotation} ${figure.yLabelX * W} ${figure.yLabelY * H})`}
           textAnchor={figure.yLabelAlignment}
-          fontSize={figure.labelSize}
+          fontSize={screenText(figure.labelSize)}
           fill={figure.foreground}
           onClick={onAxis}
         >
@@ -3850,7 +3885,7 @@ function forwardRefPlot() {
                   x="32"
                   y="4"
                   fill={figure.foreground}
-                  fontSize={figure.legendSize}
+                  fontSize={screenText(figure.legendSize)}
                 >
                   {trace.name}
                 </text>

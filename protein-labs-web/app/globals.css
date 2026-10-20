@@ -4556,12 +4556,23 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 
 /* Interactive SDS-PAGE / Native PAGE analysis. */
+/* The gel and chromatogram studios fill the window under the top bar and job
+   header, whatever height the header takes, so the page itself never scrolls. */
+.job-workspace:has(.gel-analysis-full),
+.job-workspace:has(.chrom-studio) {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 62px);
+}
 .job-surface:has(.gel-analysis-full) {
   max-width: none;
   padding: 0;
-  height: calc(100vh - 181px);
+  flex: 1;
+  min-height: 0;
+  width: 100%;
 }
 .gel-analysis-full {
+  position: relative;
   height: 100%;
   display: grid;
   grid-template-columns: 235px minmax(500px, 1fr) 285px;
@@ -5013,7 +5024,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   .gel-results-panel {
     position: absolute;
     right: 0;
-    top: 181px;
+    top: 0;
     bottom: 0;
     width: 285px;
     z-index: 8;
@@ -5028,9 +5039,12 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .job-surface:has(.chrom-studio) {
   max-width: none;
   padding: 0;
-  height: calc(100vh - 181px);
+  flex: 1;
+  min-height: 0;
+  width: 100%;
 }
 .chrom-studio {
+  position: relative;
   height: 100%;
   display: grid;
   grid-template-columns: 220px minmax(560px, 1fr) 285px;
@@ -5140,7 +5154,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .chromatogram-canvas {
   display: block;
   width: 100%;
-  min-height: 500px;
+  min-height: 320px;
   flex: 1;
   touch-action: none;
   user-select: none;
@@ -5160,11 +5174,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .peak-callout:active {
   cursor: grabbing;
 }
+/* The last item in the centre column: it takes its own space below the plot
+   or form instead of covering it, and stays in view while the column scrolls. */
 .chrom-message {
-  position: absolute;
-  left: 16px;
+  position: sticky;
   bottom: 14px;
-  right: 16px;
+  flex: none;
+  margin: 0 16px 14px;
+  z-index: 2;
   border: 1px solid var(--border);
   border-left: 3px solid var(--primary);
   border-radius: 8px;
@@ -5401,6 +5418,16 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   grid-template-columns: minmax(400px, 0.9fr) minmax(500px, 1.1fr);
   gap: 14px;
 }
+/* The standards table and the calibration figure sit side by side only when
+   the centre column has room for both; otherwise they stack. */
+.chrom-center {
+  container-type: inline-size;
+}
+@container (max-width: 1100px) {
+  .standard-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .sec-settings {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -5564,6 +5591,16 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .standard-table > div:first-of-type {
   color: var(--muted-foreground);
   font-weight: 750;
+}
+/* Every row is its own grid, so inputs must not widen their tracks past the
+   header row's: they take the shared column widths, and below the rows'
+   minimum width the table scrolls sideways instead of squeezing them. */
+.standard-table > div {
+  min-width: 680px;
+}
+.standard-table > div > input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
 }
 .sec-plot svg {
   width: 100%;
@@ -5733,7 +5770,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   .chrom-inspector {
     position: absolute;
     right: 0;
-    top: 181px;
+    top: 0;
     bottom: 0;
     width: 285px;
     z-index: 9;
@@ -11048,6 +11085,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   padding: 0;
   width: 100%;
 }
+/* Headings are one-row textareas that grow to fit, so long titles wrap. */
+.report-title-input, .report-page-title, .report-page-subtitle { display: block; resize: none; overflow: hidden; field-sizing: content; }
 .report-title-input:focus, .report-summary-input:focus, .report-page-title:focus, .report-page-subtitle:focus { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 3px; border-radius: 4px; }
 .report-title-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; margin: auto 0 0; }
 .report-title-facts > div, .report-property-grid > div {
