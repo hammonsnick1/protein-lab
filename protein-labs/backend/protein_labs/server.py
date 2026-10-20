@@ -18,6 +18,7 @@ from .protein_planner.integrations import (
     AlphaFoldDBClient,
     HttpClient,
     NCBIBlastClient,
+    PDBeSIFTSClient,
     RCSBClient,
     RemoteServiceError,
     UniProtClient,
@@ -141,6 +142,28 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(200, self.planner.export_expression_vector(
                     match.group(1), match.group(2), query.get("format", ["genbank"])[0]
                 ))
+                return
+            match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/structures", path
+            )
+            if match:
+                self._send(200, self.planner.list_structures(
+                    match.group(1), limit=int((query.get("limit") or ["10"])[0])
+                ))
+                return
+            match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/structures/(alphafold_db|pdb)/([^/]+)/regions",
+                path,
+            )
+            if match:
+                self._send(200, self.planner.get_structure_regions(*match.groups()))
+                return
+            match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/structures/(alphafold_db|pdb)/([^/]+)",
+                path,
+            )
+            if match:
+                self._send(200, self.planner.get_structure(*match.groups()))
                 return
             match = re.fullmatch(r"/v1/protein-planner/proteins/([^/]+)", path)
             if match:
@@ -511,6 +534,7 @@ def make_planner(database_path: str | Path, email: str = "") -> ProteinPlanner:
         UniProtClient(http),
         RCSBClient(http),
         AlphaFoldDBClient(http),
+        PDBeSIFTSClient(http),
         email=email,
     )
 
