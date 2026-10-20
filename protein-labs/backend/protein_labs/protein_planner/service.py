@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -15,6 +16,7 @@ from .database import Database, utc_now
 from .integrations import (
     AlphaFoldDBClient,
     NCBIBlastClient,
+    PDBeSIFTSClient,
     RCSBClient,
     RemoteServiceError,
     UniProtClient,
@@ -22,6 +24,7 @@ from .integrations import (
     parse_structure_geometry,
     structure_preview,
 )
+from .structures import build_residue_mapping, compute_regions, summarize_structure
 from .protparam import analyze_sequence, normalize_sequence
 from ..expression_planner import (
     COMMON_ENZYMES,
@@ -70,6 +73,7 @@ class ProteinPlanner:
         uniprot: UniProtClient,
         rcsb: RCSBClient,
         alphafold: AlphaFoldDBClient | None = None,
+        sifts: PDBeSIFTSClient | None = None,
         email: str = "",
     ):
         self.database = database
@@ -77,6 +81,7 @@ class ProteinPlanner:
         self.uniprot = uniprot
         self.rcsb = rcsb
         self.alphafold = alphafold
+        self.sifts = sifts
         self.email = email
 
     def create_protein(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -306,6 +311,299 @@ class ProteinPlanner:
         for record in records:
             self.database.save_pdb_match(protein_id, record)
         return records
+
+    @staticmethod
+    def _source_error(source: str, error: Exception) -> dict[str, Any]:
+        return {
+            "source": source,
+            "code": error.__class__.__name__,
+            "message": str(error),
+            "retryable": isinstance(error, RemoteServiceError),
+        }
+
+    @staticmethod
+    def _best_reference_match(bundle: dict[str, Any], accession: str = "") -> dict[str, Any] | None:
+        accession = accession.strip().upper()
+        matches = bundle.get("uniprotMatches") or []
+        if accession:
+            return next(
+                (item for item in matches if str(item.get("accession") or "").upper() == accession),
+                None,
+            )
+        return max(
+            matches,
+            key=lambda item: float(item.get("identity") or 0) * float(item.get("queryCoverage") or 0),
+            default=None,
+        )
+
+    def list_structures(self, protein_id: str, *, limit: int = 10) -> dict[str, Any]:
+        """List AlphaFold DB and accession-linked experimental structures.
+
+        Each optional upstream is isolated so a partial list remains usable.
+        Client-level TTL caches avoid repeating RCSB coordinate and SIFTS calls.
+        """
+        bundle = self.database.get_bundle(protein_id)
+        reference = self._best_reference_match(bundle)
+        errors: list[dict[str, Any]] = []
+        structures: list[dict[str, Any]] = []
+        accession = str(reference.get("accession") or "") if reference else ""
+        for model in bundle.get("alphaFoldModels") or []:
+            if str(model.get("source") or "").lower() != "alphafold db":
+                continue
+            if accession and model.get("accession") and str(model["accession"]).upper() != accession:
+                continue
+            metadata = model.get("metadata") or {}
+            structures.append({
+                "id": model["modelId"],
+                "source": "alphafold_db",
+                "format": model.get("format") or "cif",
+                "title": model.get("name") or model["modelId"],
+                "method": "AlphaFold prediction",
+                "resolutionAngstrom": None,
+                "chains": [{
+                    "chainId": "A",
+                    "labelChainId": "A",
+                    "residueCount": metadata.get("residueCount"),
+                    "modeledResidueCount": metadata.get("residueCount"),
+                }],
+                "ligands": [],
+                "accession": model.get("accession") or accession,
+                "sourceUrl": metadata.get("entryUrl"),
+            })
+        if not reference:
+            errors.append({
+                "source": "UniProt",
+                "code": "reference_missing",
+                "message": "No saved UniProt reference match is available.",
+                "retryable": False,
+            })
+            return {
+                "proteinId": protein_id,
+                "referenceAccession": None,
+                "structures": structures,
+                "errors": errors,
+            }
+        if self.sifts is None:
+            errors.append({
+                "source": "PDBe SIFTS",
+                "code": "not_configured",
+                "message": "PDBe SIFTS client is not configured.",
+                "retryable": False,
+            })
+            sifts_segments: list[dict[str, Any]] = []
+        else:
+            try:
+                sifts_segments = self.sifts.mappings_for_accession(accession)
+            except (RemoteServiceError, LookupError, ValueError) as error:
+                errors.append(self._source_error("PDBe SIFTS", error))
+                sifts_segments = []
+        try:
+            rcsb_ids = self.rcsb.entry_ids_for_accession(accession, limit=limit)
+        except (RemoteServiceError, LookupError, ValueError) as error:
+            errors.append(self._source_error("RCSB PDB", error))
+            rcsb_ids = []
+        sifts_ids = [
+            str(segment.get("pdbId") or "").upper()
+            for segment in sifts_segments
+            if segment.get("pdbId")
+        ]
+        entry_ids = list(dict.fromkeys([*rcsb_ids, *sifts_ids]))[: max(1, min(limit, 50))]
+        def load_entry(pdb_id: str) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+            entry_errors: list[dict[str, Any]] = []
+            try:
+                metadata = self.rcsb.entry_metadata(pdb_id)
+            except (RemoteServiceError, LookupError, ValueError) as error:
+                entry_errors.append(self._source_error(f"RCSB PDB {pdb_id}", error))
+                metadata = {
+                    "id": pdb_id,
+                    "source": "pdb",
+                    "format": "cif",
+                    "title": "",
+                    "method": None,
+                    "resolutionAngstrom": None,
+                    "sourceUrl": f"https://www.rcsb.org/structure/{pdb_id}",
+                }
+            try:
+                summary = summarize_structure(self.rcsb.fetch_mmcif(pdb_id))
+            except (RemoteServiceError, LookupError, ValueError) as error:
+                entry_errors.append(self._source_error(f"RCSB PDB {pdb_id} coordinates", error))
+                summary = {"chains": [], "ligands": []}
+            return metadata, summary, entry_errors
+
+        # Entry metadata and coordinates are independent. Loading them in a
+        # bounded pool makes one slow entry cost one timeout window, not N.
+        with ThreadPoolExecutor(max_workers=min(8, max(1, len(entry_ids)))) as executor:
+            loaded = {
+                pdb_id: executor.submit(load_entry, pdb_id)
+                for pdb_id in entry_ids
+            }
+            entry_results = {
+                pdb_id: loaded[pdb_id].result()
+                for pdb_id in entry_ids
+            }
+        for pdb_id in entry_ids:
+            metadata, summary, entry_errors = entry_results[pdb_id]
+            errors.extend(entry_errors)
+            entry_segments = [
+                segment for segment in sifts_segments
+                if str(segment.get("pdbId") or "").upper() == pdb_id
+            ]
+            structures.append({
+                **metadata,
+                **summary,
+                "accession": accession,
+                "siftsAvailable": bool(entry_segments),
+                "mappedChains": list(dict.fromkeys(
+                    str(segment.get("chainId") or segment.get("structAsymId") or "")
+                    for segment in entry_segments
+                    if segment.get("chainId") or segment.get("structAsymId")
+                )),
+            })
+        return {
+            "proteinId": protein_id,
+            "referenceAccession": accession,
+            "structures": structures,
+            "errors": errors,
+        }
+
+    def get_structure(self, protein_id: str, source: str, structure_id: str) -> dict[str, Any]:
+        bundle = self.database.get_bundle(protein_id)
+        source = source.strip().lower()
+        errors: list[dict[str, Any]] = []
+        if source == "alphafold_db":
+            stored = self.database.get_alphafold_model(protein_id, structure_id)
+            if str(stored.get("source") or "").lower() != "alphafold db":
+                raise LookupError(f"AlphaFold DB model {structure_id!r} was not found")
+            structure_text = str(stored.pop("structureText"))
+            accession = str(stored.get("accession") or "")
+            reference = self._best_reference_match(bundle, accession)
+            metadata = {
+                "id": structure_id,
+                "source": source,
+                "format": stored.get("format") or "cif",
+                "title": stored.get("name") or structure_id,
+                "method": "AlphaFold prediction",
+                "resolutionAngstrom": None,
+                **summarize_structure(structure_text),
+            }
+            segments: list[dict[str, Any]] = []
+        elif source == "pdb":
+            structure_id = structure_id.strip().upper()
+            reference = self._best_reference_match(bundle)
+            if reference is None:
+                raise LookupError("No saved UniProt reference match is available")
+            accession = str(reference["accession"])
+            structure_text = self.rcsb.fetch_mmcif(structure_id)
+            try:
+                entry_metadata = self.rcsb.entry_metadata(structure_id)
+            except (RemoteServiceError, LookupError, ValueError) as error:
+                errors.append(self._source_error(f"RCSB PDB {structure_id}", error))
+                entry_metadata = {
+                    "id": structure_id,
+                    "source": "pdb",
+                    "format": "cif",
+                    "title": "",
+                    "method": None,
+                    "resolutionAngstrom": None,
+                    "sourceUrl": f"https://www.rcsb.org/structure/{structure_id}",
+                }
+            metadata = {**entry_metadata, **summarize_structure(structure_text)}
+            if self.sifts is None:
+                segments = []
+                errors.append({
+                    "source": "PDBe SIFTS", "code": "not_configured",
+                    "message": "PDBe SIFTS client is not configured.", "retryable": False,
+                })
+            else:
+                try:
+                    segments = [
+                        segment for segment in self.sifts.mappings_for_accession(accession)
+                        if str(segment.get("pdbId") or "").upper() == structure_id
+                    ]
+                except (RemoteServiceError, LookupError, ValueError) as error:
+                    errors.append(self._source_error("PDBe SIFTS", error))
+                    segments = []
+        else:
+            raise ValueError("source must be alphafold_db or pdb")
+        if reference is None:
+            raise LookupError(f"UniProt reference {accession!r} was not found for this protein")
+        reference_record = reference.get("record") or {}
+        reference_sequence = str((reference_record.get("sequence") or {}).get("value") or "")
+        if not reference_sequence:
+            raise LookupError(f"UniProt reference {accession!r} has no saved sequence")
+        mapping, _ = build_residue_mapping(
+            str(bundle["protein"]["sequence"]),
+            reference_sequence,
+            structure_text,
+            accession=accession,
+            source=source,
+            sifts_segments=segments,
+        )
+        return {
+            "proteinId": protein_id,
+            "referenceAccession": accession,
+            "structure": metadata,
+            "structureText": structure_text,
+            "format": "cif",
+            "mapping": {
+                "numbering": {
+                    "positionsAreOneBased": True,
+                    "construct": "user construct residue position",
+                    "uniprot": "UniProt reference residue position",
+                    "labelSeqId": "mmCIF label_seq_id",
+                    "authSeqId": "mmCIF auth_seq_id; insertionCode is separate",
+                    "unmappedValues": None,
+                },
+                "residues": mapping,
+            },
+            "errors": errors,
+        }
+
+    def get_structure_regions(self, protein_id: str, source: str, structure_id: str) -> dict[str, Any]:
+        structure = self.get_structure(protein_id, source, structure_id)
+        bundle = self.database.get_bundle(protein_id)
+        reference = self._best_reference_match(bundle, str(structure["referenceAccession"]))
+        assert reference is not None
+        reference_record = reference.get("record") or {}
+        reference_sequence = str((reference_record.get("sequence") or {}).get("value") or "")
+        mapping, parsed = build_residue_mapping(
+            str(bundle["protein"]["sequence"]),
+            reference_sequence,
+            str(structure["structureText"]),
+            accession=str(structure["referenceAccession"]),
+            source=source,
+            sifts_segments=(),
+        )
+        # PDB UniProt positions have already been resolved in get_structure.
+        # Reuse them rather than performing or guessing a second SIFTS mapping.
+        if source == "pdb":
+            mapped_by_structure = {
+                (row.get("labelChainId"), row.get("labelSeqId")): row
+                for row in structure["mapping"]["residues"]
+                if row.get("labelChainId") is not None
+            }
+            for row in mapping:
+                saved = mapped_by_structure.get((row.get("labelChainId"), row.get("labelSeqId")))
+                if saved:
+                    row.update({
+                        key: saved.get(key)
+                        for key in ("constructPosition", "uniprotPosition", "constructResidue", "uniprotResidue", "mismatch")
+                    })
+        computed = compute_regions(
+            mapping,
+            parsed,
+            reference_sequence,
+            reference_record,
+            model_confidence=source == "alphafold_db",
+        )
+        return {
+            "proteinId": protein_id,
+            "referenceAccession": structure["referenceAccession"],
+            "structure": structure["structure"],
+            "numbering": structure["mapping"]["numbering"],
+            **computed,
+            "errors": structure["errors"],
+        }
 
     def fetch_alphafold_db(
         self, protein_id: str, accession: str = ""
