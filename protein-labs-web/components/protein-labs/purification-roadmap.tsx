@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ensureProjectJob, fileToBase64, type JsonObject, type ProjectJob, type ProteinBundle } from "@/lib/protein-labs-api";
 import { bandQuantification, formatSignalFraction, gelReportLanes, readGelJobConfig, SIGNAL_FRACTION_CAVEAT } from "@/lib/gel-quantification";
 import { type BufferIngredient, type ComponentType, config, liveSteps, mergeSavedSteps, object, type RoadmapComponent, type RoadmapStep } from "@/lib/roadmap-steps";
+import { dismissesMenu, menuAnchor, placeMenu } from "@/lib/context-menu";
 
 type SavedBuffer = { key: string; jobId: string; title: string; purpose: string; pH: string; ingredients: BufferIngredient[]; source: string };
 type ContextMenu = { kind: "board" | "step" | "record" | "component"; stepId?: string; componentId?: string; x: number; y: number };
@@ -172,12 +173,8 @@ function RoadmapItem({ value, onOpen, onContextMenu }: { value: RoadmapComponent
   />}<span className="roadmap-item-icon"><Icon/></span><span><strong>{value.title}</strong><small>{itemSummary(value)}</small>{value.fileName && <em>{value.fileName}</em>}</span><MoreHorizontal/></button>;
 }
 
-// A keyboard-activated click carries no pointer position, so the menu opens
-// under the control that was activated instead of at the window's corner.
 function menuPoint(event: MouseEvent) {
-  if (event.detail > 0) return { x: event.clientX, y: event.clientY };
-  const rect = event.currentTarget.getBoundingClientRect();
-  return { x: rect.left, y: rect.bottom };
+  return menuAnchor(event, event.currentTarget.getBoundingClientRect());
 }
 
 function RoadmapContextMenu({ value, steps, onAddComponent, onEditComponent, onDeleteComponent, onInsert, onEditStep, onDeleteStep, onClose }: { value: ContextMenu; steps: RoadmapStep[]; onAddComponent: (stepId: string, type: ComponentType) => void; onEditComponent: (stepId: string, componentId: string) => void; onDeleteComponent: (stepId: string, componentId: string) => void; onInsert: (index: number) => void; onEditStep: (stepId: string) => void; onDeleteStep: (stepId: string) => void; onClose: () => void }) {
@@ -188,14 +185,14 @@ function RoadmapContextMenu({ value, steps, onAddComponent, onEditComponent, onD
   useLayoutEffect(() => {
     const menu = ref.current;
     if (!menu) return;
-    const { width, height } = menu.getBoundingClientRect();
-    const floor = (document.querySelector(".topbar")?.getBoundingClientRect().bottom ?? 0) + 8;
-    const top = value.y + height > window.innerHeight - 8 ? value.y - height : value.y;
-    menu.style.left = `${Math.max(8, Math.min(value.x, window.innerWidth - width - 8))}px`;
-    menu.style.top = `${Math.max(floor, Math.min(top, window.innerHeight - height - 8))}px`;
+    const floor = document.querySelector(".topbar")?.getBoundingClientRect().bottom ?? 0;
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const { left, top } = placeMenu({ x: value.x, y: value.y }, menu.getBoundingClientRect(), viewport, floor);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
   }, [value.x, value.y, value.kind]);
   useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const close = (event: KeyboardEvent) => { if (dismissesMenu(event.key)) onClose(); };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [onClose]);

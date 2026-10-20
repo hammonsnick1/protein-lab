@@ -80,6 +80,10 @@ export type BackendHealth ={ service: string; version: number; apps: string[]; d
 
 // Exported so feature-specific engine clients (chromatography, gels) share one
 // transport, one error shape and one base URL instead of hand-rolling fetch.
+// Shown when the engine cannot be reached at all. "connection" keeps the
+// vector library's offline classification working.
+export const ENGINE_UNREACHABLE_MESSAGE = "No connection to the local Protein Lab engine. Restart Protein Lab and try again.";
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
@@ -90,7 +94,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     // fetch rejects only when no response arrived at all, so the local engine
     // is not running. Say that instead of the browser's "Failed to fetch".
-    throw new Error("No connection to the local Protein Lab engine. Restart Protein Lab and try again.");
+    throw new Error(ENGINE_UNREACHABLE_MESSAGE);
   }
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) throw new Error(String(body.error ?? `Protein Lab returned ${response.status}`));

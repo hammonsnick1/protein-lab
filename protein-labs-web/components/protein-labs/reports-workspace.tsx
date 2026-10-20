@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import { gelFigureNote, readGelJobConfig } from "@/lib/gel-quantification";
+import { headingIgnoresKey, singleLineHeading } from "@/lib/report-headings";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 
 /**
@@ -304,7 +305,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
 // An editable heading. It wraps on narrow windows instead of clipping, but
 // stays one line of text: Enter is ignored and pasted line breaks become spaces.
 function HeadingField({ className, value, placeholder, onChange }: { className: string; value: string; placeholder?: string; onChange: (value: string) => void }) {
-  return <textarea className={className} rows={1} value={value} placeholder={placeholder} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} onChange={(event) => onChange(event.target.value.replace(/\s*\n\s*/g, " "))}/>;
+  return <textarea className={className} rows={1} value={value} placeholder={placeholder} onKeyDown={(event) => { if (headingIgnoresKey(event.key)) event.preventDefault(); }} onChange={(event) => onChange(singleLineHeading(event.target.value))}/>;
 }
 
 function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometry: JsonObject | null }) {
