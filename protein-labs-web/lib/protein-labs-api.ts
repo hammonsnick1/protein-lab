@@ -1,3 +1,5 @@
+import type { ProjectDiff, ProjectTree } from "@/lib/project-tree-types";
+
 // The desktop build substitutes this at bundle time; the web build leaves it
 // undefined and falls back to the environment variable.
 declare const __PROTEIN_LABS_API__: string | undefined;
@@ -168,6 +170,20 @@ export const proteinLabsApi = {
   insertIntoVector: (proteinId: string, vectorId: string, fields: JsonObject) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/insert`, fields),
   digestVector: (proteinId: string, vectorId: string, enzymeNames: string[]) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/digest`, { enzymeNames }),
   alignVectors: (proteinId: string, vectorId: string, queryVectorId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/align`, { queryVectorId }),
+  // Project trees and the project diff service (HOM-136). The tree response
+  // embeds a one-line summary per branch so the tree view draws in one call;
+  // the full diff is fetched lazily when a branch is selected.
+  listProjectTrees: () => request<{ trees: ProjectTree[] }>("/v1/protein-planner/project-trees"),
+  createProjectTree: (name: string, rootProjectId: string) => post<ProjectTree>("/v1/protein-planner/project-trees", { name, rootProjectId }),
+  renameProjectTree: (treeId: string, name: string) => patch<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}`, { name }),
+  deleteProjectTree: (treeId: string) => request<{ deleted: string }>(`/v1/protein-planner/project-trees/${treeId}`, { method: "DELETE" }),
+  createProjectBranch: (treeId: string, fromProjectId: string, toProjectId: string, note: string) => post<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches`, { fromProjectId, toProjectId, note }),
+  updateProjectBranch: (treeId: string, branchId: string, fields: { fromProjectId?: string; note?: string }) => patch<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches/${branchId}`, fields),
+  deleteProjectBranch: (treeId: string, branchId: string) => request<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches/${branchId}`, { method: "DELETE" }),
+  // `confirmed` is the engine's durability handshake: only then may the
+  // browser stop treating its localStorage copy as authoritative.
+  importProjectTrees: (trees: JsonObject[]) => post<{ trees?: ProjectTree[]; imported?: number; skipped?: number; confirmed?: boolean }>("/v1/protein-planner/project-trees/import", { trees }),
+  projectDiff: (fromProjectId: string, toProjectId: string) => request<ProjectDiff>(`/v1/protein-planner/project-diff?from=${encodeURIComponent(fromProjectId)}&to=${encodeURIComponent(toProjectId)}`),
 };
 
 export async function ensureProjectJob(proteinId: string, jobs: ProjectJob[], appType: string, name: string, config: JsonObject, status: ProjectJob["status"] = "complete") {
