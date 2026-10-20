@@ -3,7 +3,7 @@ from io import BytesIO
 import json
 import math
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 import pytest
 
 from protein_labs.gel_analysis import analyze_gel
@@ -24,6 +24,27 @@ def _gel_base64(image_format: str = "PNG", *, saturated_lane: bool = False) -> s
         draw.rectangle((92, 88, 126, 97), fill=0)
     buffer = BytesIO()
     image.save(buffer, format=image_format)
+    return b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _mixed_loading_gel_base64() -> str:
+    """Six separated lanes with intentionally unequal band loading."""
+    width, height = 600, 400
+    image = Image.new("L", (width, height), 235)
+    draw = ImageDraw.Draw(image)
+    lane_width = 60
+    gap = (width - 6 * lane_width) / 7
+    ladder = [60, 100, 140, 190, 250, 320]
+    for index in range(6):
+        x0 = gap + index * (lane_width + gap)
+        x1 = x0 + lane_width
+        positions = ladder if index == 0 else [150, 230] if index % 2 else [150, 200, 280]
+        for band_index, y in enumerate(positions):
+            shade = 60 if index == 0 or band_index == 0 else 140
+            draw.rectangle((x0, y - 5, x1, y + 5), fill=shade)
+    image = image.filter(ImageFilter.GaussianBlur(2))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
     return b64encode(buffer.getvalue()).decode("ascii")
 
 
@@ -57,6 +78,24 @@ def test_can_propose_lanes_automatically():
     assert result["polarity"] == "dark"
     assert len(result["lanes"]) >= 2
     assert result["bands"]
+
+
+@pytest.mark.parametrize("sensitivity", [0.52, 1.0])
+def test_auto_lanes_keep_mixed_loading_lanes_separate(sensitivity: float):
+    result = analyze_gel({
+        "imageBase64": _mixed_loading_gel_base64(),
+        "sensitivity": sensitivity,
+    })
+    lanes = result["lanes"]
+    assert len(lanes) == 6
+    assert all(
+        float(left["xEnd"]) < float(right["xStart"])
+        for left, right in zip(lanes, lanes[1:])
+    )
+    # Each returned lane remains centered within 3% of the known 60 px lane.
+    expected_centers = [center / 600 for center in (64, 159, 253, 347, 441, 536)]
+    actual_centers = [(lane["xStart"] + lane["xEnd"]) / 2 for lane in lanes]
+    assert actual_centers == pytest.approx(expected_centers, abs=0.03)
 
 
 def test_imports_tiff_and_returns_flutter_compatible_png_preview():
