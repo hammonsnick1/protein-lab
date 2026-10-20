@@ -41,6 +41,12 @@ export type SequenceDiff = {
   alignedBefore: string;
   alignedAfter: string;
   edits: SequenceEdit[];
+  /**
+   * Only ever set by the browser fallback, when the pair is too long to align
+   * here. The lengths stay exact; the alignment and edits are empty and the
+   * view must not imply any residue-level fact. The engine never sets it.
+   */
+  alignmentUnavailable?: boolean;
 };
 
 export type ProjectDiffChange = {

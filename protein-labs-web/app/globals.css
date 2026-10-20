@@ -2544,6 +2544,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .project-tree-diff-table td.arrow svg.up { color: var(--change-host); }
 .project-tree-diff-table td.arrow svg.down { color: var(--destructive); }
 .project-tree-diff-table td.now { font-weight: 600; }
+.project-tree-diff-note { display: flex; align-items: flex-start; gap: 7px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); color: var(--muted-foreground); margin: 0; padding: 9px 11px; font-size: 12px; line-height: 1.45; }
+.project-tree-diff-note svg { width: 14px; color: var(--accent-foreground); flex: none; margin-top: 1px; }
 .project-tree-diff-loading, .project-tree-diff-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted-foreground); padding: 26px 10px; text-align: center; font-size: 12px; }
 .project-tree-diff-loading { flex-direction: row; justify-content: center; }
 .project-tree-diff-loading svg, .project-tree-diff-empty > svg { width: 26px; color: var(--primary); }
