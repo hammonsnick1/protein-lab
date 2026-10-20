@@ -75,7 +75,7 @@ export function StructureJob({ bundle, onChanged }: JobProps) {
       <section className="lab-panel structure-picker">
         <div className="panel-heading"><div><h2>Structure</h2><p>{list.value?.accession ? `Entries for UniProt ${list.value.accession}` : "AlphaFold model and experimental PDB entries"}</p></div></div>
         {list.state === "loading" && <p className="structure-note"><LoaderCircle className="spin"/> Looking up AlphaFold and PDB entries…</p>}
-        {list.state === "error" && <Notice error message={`Experimental structures could not be listed: ${list.message} The saved AlphaFold model is shown instead.`}/>}
+        {list.state === "error" && <Notice error message={`Experimental structures could not be listed: ${sentence(list.message)} The saved AlphaFold model is shown instead.`}/>}
         {list.state === "ready" && (structures.length
           ? <label className="lab-field"><span>Show structure</span><select value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)}>
               {(["alphafold_db", "pdb"] as const).map((source) => { const items = structures.filter((entry) => entry.source === source); return items.length ? <optgroup key={source} label={source === "pdb" ? `Experimental (PDB) · ${items.length}` : "Predicted (AlphaFold)"}>{items.map((entry) => <option key={keyOf(entry)} value={keyOf(entry)}>{structureOptionLabel(entry)}</option>)}</optgroup> : null; })}
@@ -84,7 +84,7 @@ export function StructureJob({ bundle, onChanged }: JobProps) {
         {selected && <StructureFacts entry={selected}/>}
         {(list.value?.errors ?? []).map((error, index) => <Notice key={index} error message={`${error.source} is unavailable: ${error.message}${error.retryable ? " Try again later." : ""}`}/>)}
       </section>
-      <RegionsPanel state={regions} sections={sections} region={region} selection={selection} showAdditives={showAdditives} disabled={!selected || detail.state !== "ready"}
+      <RegionsPanel state={legacy ? { state: "error", value: null, message: "the local engine has no structure service yet." } : regions} sections={sections} region={region} selection={selection} showAdditives={showAdditives} disabled={!selected || detail.state !== "ready"}
         onChoose={setRegionId} onStep={step} onToggleAdditives={setShowAdditives}/>
       <AlphaFoldActions bundle={bundle} onChanged={onChanged}/>
     </div>
@@ -188,4 +188,5 @@ function LegacyPreview({ bundle }: { bundle: ProteinBundle }) {
 function Notice({ message, error = false }: { message: string; error?: boolean }) { return message ? <div className={`inline-message ${error ? "error" : ""}`}>{error ? <CircleAlert/> : <CircleCheck/>} {message}</div> : null; }
 function text(value: unknown, fallback: unknown = "—") { return String(value === null || value === undefined || value === "" ? fallback : value); }
 function object(value: unknown): JsonObject { return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}; }
+function sentence(value: string) { return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`; }
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
