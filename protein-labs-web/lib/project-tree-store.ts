@@ -53,10 +53,12 @@ async function importLocalTrees(engineTrees: ProjectTree[]): Promise<LoadResult 
   }
   try {
     const result = await proteinLabsApi.importProjectTrees(local as unknown as Record<string, unknown>[]);
-    localStorage.setItem(PROJECT_TREES_IMPORTED_KEY, now());
-    return { mode: "engine", trees: result.trees, imported: result.imported };
+    // The engine answers `confirmed: true` only once the trees are durably
+    // stored (HOM-136). Without that exact acknowledgement the local record
+    // stays authoritative and the import is retried on the next launch.
+    if (result.confirmed === true) localStorage.setItem(PROJECT_TREES_IMPORTED_KEY, now());
+    return { mode: "engine", trees: result.trees ?? engineTrees, imported: result.imported ?? 0 };
   } catch {
-    // Leave the flag unset so the import is retried next launch.
     return { mode: "engine", trees: engineTrees, imported: 0 };
   }
 }
