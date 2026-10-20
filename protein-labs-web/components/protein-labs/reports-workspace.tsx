@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import { gelFigureNote, readGelJobConfig } from "@/lib/gel-quantification";
+import { headingIgnoresKey, singleLineHeading } from "@/lib/report-headings";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 
 /**
@@ -211,7 +212,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
       <article className="report-sheet report-title-sheet">
         <div className="report-sheet-inner">
           <span className="report-kicker">PROTEIN LAB · PURIFICATION RECORD</span>
-          <input className="report-title-input" value={title} onChange={(event) => { setTitle(event.target.value); setDirty(true); }}/>
+          <HeadingField className="report-title-input" value={title} onChange={(value) => { setTitle(value); setDirty(true); }}/>
           <textarea className="report-summary-input" rows={2} value={summary} onChange={(event) => { setSummary(event.target.value); setDirty(true); }}/>
           <dl className="report-title-facts">
             <div><dt>Construct</dt><dd>{bundle.protein.name}</dd></div>
@@ -232,8 +233,8 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
           <div className="report-sheet-inner">
             <header className="report-sheet-header">
               <span>
-                <input className="report-page-title" value={page.title} onChange={(event) => updatePage(page.id, { title: event.target.value })}/>
-                <input className="report-page-subtitle" value={page.subtitle} placeholder="Optional subtitle" onChange={(event) => updatePage(page.id, { subtitle: event.target.value })}/>
+                <HeadingField className="report-page-title" value={page.title} onChange={(value) => updatePage(page.id, { title: value })}/>
+                <HeadingField className="report-page-subtitle" value={page.subtitle} placeholder="Optional subtitle" onChange={(value) => updatePage(page.id, { subtitle: value })}/>
               </span>
               <span className="report-page-number">{pageNumber ? `Page ${pageNumber}` : "Not included"}</span>
             </header>
@@ -299,6 +300,12 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
       </DialogContent>
     </Dialog>
   </main>;
+}
+
+// An editable heading. It wraps on narrow windows instead of clipping, but
+// stays one line of text: Enter is ignored and pasted line breaks become spaces.
+function HeadingField({ className, value, placeholder, onChange }: { className: string; value: string; placeholder?: string; onChange: (value: string) => void }) {
+  return <textarea className={className} rows={1} value={value} placeholder={placeholder} onKeyDown={(event) => { if (headingIgnoresKey(event.key)) event.preventDefault(); }} onChange={(event) => onChange(singleLineHeading(event.target.value))}/>;
 }
 
 function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometry: JsonObject | null }) {
