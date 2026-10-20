@@ -162,22 +162,42 @@ def _auto_lanes(signal: list[list[float]], sensitivity: float) -> list[dict[str,
     ]
     radius = max(2, width // 140)
     smooth = _smooth(profile, radius)
-    baseline = _percentile(smooth, 0.35)
+    # The lower fifth of columns is the gel background.  A higher percentile
+    # treats lightly loaded lanes as background whenever strongly loaded lanes
+    # are present in the same image.
+    baseline = _percentile(smooth, 0.20)
     high = _percentile(smooth, 0.90)
-    fraction = 0.48 - max(0.0, min(1.0, sensitivity)) * 0.20
-    threshold = baseline + max(2.0, (high - baseline) * fraction)
+    sensitivity = max(0.0, min(1.0, sensitivity))
+    # Keep a small absolute contrast floor for detector noise, while allowing
+    # faint lanes to survive beside a heavily stained ladder.
+    fraction = 0.12 - sensitivity * 0.08
+    threshold = baseline + max(1.0, (high - baseline) * fraction)
     regions = _regions_above(smooth, threshold, max(3, width // 100))
-    padded: list[tuple[int, int]] = []
-    for start, end in regions:
-        pad = max(2, round((end - start + 1) * 0.32))
-        padded.append((max(0, start - pad), min(width - 1, end + pad)))
+    # A profile region describes where a lane contains visible bands.  It is
+    # normally narrower than the physical lane, so expand it for a useful
+    # editing geometry.  Crucially, do not let that cosmetic expansion cross
+    # the valley between neighbouring regions: doing so used to merge sparsely
+    # loaded lanes into a single lane at high sensitivity.
+    join_gap = max(2, width // 150)
     merged: list[tuple[int, int]] = []
-    for start, end in padded:
-        if merged and start <= merged[-1][1] + max(2, width // 150):
+    for start, end in regions:
+        if merged and start <= merged[-1][1] + join_gap:
             previous = merged.pop()
             merged.append((previous[0], max(previous[1], end)))
         else:
             merged.append((start, end))
+    padded: list[tuple[int, int]] = []
+    minimum_gap = max(2, width // 300)
+    for index, (start, end) in enumerate(merged):
+        requested_pad = max(2, round((end - start + 1) * 0.32))
+        left_gap = start - (merged[index - 1][1] if index else -1) - 1
+        right_gap = (
+            (merged[index + 1][0] if index + 1 < len(merged) else width) - end - 1
+        )
+        left_pad = min(requested_pad, max(0, (left_gap - minimum_gap) // 2))
+        right_pad = min(requested_pad, max(0, (right_gap - minimum_gap) // 2))
+        padded.append((max(0, start - left_pad), min(width - 1, end + right_pad)))
+    merged = padded
     if not merged:
         lane_count = max(1, min(12, round(width / max(45, height * 0.13))))
         step = width / lane_count
