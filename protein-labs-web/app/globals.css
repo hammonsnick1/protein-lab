@@ -2371,7 +2371,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .project-tree-storage small { color: var(--muted-foreground); font-size: 12px; line-height: 1.35; }
 
 .project-tree-main { min-width: 0; display: flex; flex-direction: column; padding: 20px 22px 22px; }
-.project-tree-main > header { display: flex; align-items: center; gap: 18px; margin-bottom: 14px; }
+.project-tree-main > header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-bottom: 14px; }
 .project-tree-main > header > span { flex: 1; min-width: 0; }
 .project-tree-main > header h2 { font-size: 23px; margin: 4px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-tree-main > header > div { display: flex; gap: 6px; flex: none; }
@@ -2436,7 +2436,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .project-tree-node-actions > button svg { width: 12px; }
 
 .project-tree-branch {
-  position: absolute; max-width: 190px; display: flex; flex-direction: column; gap: 3px;
+  /* Width and height come from LABEL_WIDTH / LABEL_HEIGHT as inline styles:
+     the layout reserves the band between two layers from the same numbers. */
+  position: absolute; display: flex; flex-direction: column; gap: 3px; overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--category, var(--change-other)) 40%, var(--border));
   border-left: 3px solid var(--category, var(--change-other));
   border-radius: 9px; background: var(--card); color: var(--foreground);
@@ -2581,16 +2583,32 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 @media (max-width: 1200px) {
   .dashboard-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .single-project-workflow .workflow-card-section > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .project-trees-workspace.with-panel { grid-template-columns: 240px minmax(0, 1fr) 330px; }
+  .project-trees-workspace.with-panel { grid-template-columns: 240px minmax(0, 1fr) 340px; }
   .project-tree-legend { max-width: calc(100% - 150px); }
+}
+/* Narrower than this the graph and a docked panel cannot both be useful, so
+   the panel floats over the graph instead of stealing its width. The 900px
+   minimum desktop window lands here. */
+@media (max-width: 1120px) {
+  .project-trees-workspace, .project-trees-workspace.with-panel { position: relative; grid-template-columns: 236px minmax(0, 1fr); }
+  /* The panel is a sibling of the graph column, so the workspace — not that
+     column — is what it is positioned against. */
+  .project-tree-diff-panel {
+    position: absolute; inset: 0 0 0 auto; width: min(344px, 100%); z-index: 6;
+    border-radius: 16px 0 0 16px; box-shadow: -14px 0 34px rgba(0, 0, 0, .2);
+  }
+  .project-tree-main > header h2 { font-size: 20px; }
+  /* The overview is larger than the stage it summarises at this width. */
+  .project-tree-minimap { display: none; }
+  .project-tree-legend { max-width: calc(100% - 120px); }
 }
 @media (max-width: 800px) {
   .dashboard-stat-grid { grid-template-columns: 1fr 1fr; }
-  /* Below the 900px minimum width the library collapses to a strip above
-     the graph and the diff panel floats over it, so nothing is cut off. */
+  /* Narrower than the 900px minimum window the library collapses to a strip
+     above the graph, so the graph keeps the full width. */
   .project-trees-workspace, .project-trees-workspace.with-panel { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-  .project-tree-library { max-height: 190px; border-right: 0; border-bottom: 1px solid var(--border); }
-  .project-tree-diff-panel { position: absolute; inset: 62px 0 0 auto; width: min(376px, 100%); z-index: 6; box-shadow: -12px 0 32px rgba(0, 0, 0, .22); }
+  .project-tree-library { max-height: 176px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .project-tree-main { padding: 14px; }
   .single-project-workflow .workflow-card-section > div { grid-template-columns: 1fr 1fr; }
   .top-google-account small { display: none; }
 }

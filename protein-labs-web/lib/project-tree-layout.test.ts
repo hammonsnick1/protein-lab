@@ -3,7 +3,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { canReparent, DEFAULT_LAYOUT, descendantsOf, fitToViewport, layoutProjectTree, type GraphEdgeInput } from "./project-tree-layout.ts";
+import {
+  DEFAULT_LAYOUT, LABEL_HEIGHT, LABEL_WIDTH,
+  canReparent, descendantsOf, fitToViewport, labelRowOffset, layoutProjectTree, type GraphEdgeInput,
+} from "./project-tree-layout.ts";
 
 const edge = (id: string, from: string, to: string): GraphEdgeInput => ({ id, fromProjectId: from, toProjectId: to });
 
@@ -186,5 +189,50 @@ describe("fitToViewport", () => {
   it("survives an empty tree", () => {
     const fit = fitToViewport({ width: 0, height: 0 }, { width: 900, height: 650 });
     assert.equal(fit.scale, 1);
+  });
+});
+
+describe("labels never cover anything", () => {
+  /** Rendered geometry of one branch label, matching the view's inline style. */
+  function labelBox(edge: { labelX: number; labelY: number; labelRow: number }, rows: number) {
+    const top = edge.labelY + labelRowOffset(edge.labelRow, rows) - LABEL_HEIGHT / 2;
+    return { left: edge.labelX - LABEL_WIDTH / 2, right: edge.labelX + LABEL_WIDTH / 2, top, bottom: top + LABEL_HEIGHT };
+  }
+  const overlaps = (a: { left: number; right: number; top: number; bottom: number },
+                    b: { left: number; right: number; top: number; bottom: number }) =>
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+  // A tree with a bushy middle, a two-parent node and a layer-skipping link —
+  // all three are what used to push a label onto a node.
+  const branches = [
+    edge("1", "root", "a"), edge("2", "root", "b"), edge("3", "root", "c"),
+    edge("4", "a", "d"), edge("5", "b", "d"), edge("6", "b", "e"), edge("7", "c", "f"),
+    edge("8", "root", "f"), edge("9", "d", "g"), edge("10", "e", "g"),
+  ];
+  const layout = layoutProjectTree("root", branches);
+
+  it("keeps every label clear of every node", () => {
+    for (const item of layout.edges) {
+      const box = labelBox(item, layout.labelRows);
+      for (const node of layout.nodes) {
+        const nodeBox = {
+          left: node.x, right: node.x + DEFAULT_LAYOUT.nodeWidth,
+          top: node.y, bottom: node.y + DEFAULT_LAYOUT.nodeHeight,
+        };
+        assert.ok(!overlaps(box, nodeBox), `label ${item.id} covers node ${node.id}`);
+      }
+    }
+  });
+
+  it("keeps labels in the same band clear of each other", () => {
+    for (const a of layout.edges) {
+      for (const b of layout.edges) {
+        if (a.id >= b.id) continue;
+        assert.ok(
+          !overlaps(labelBox(a, layout.labelRows), labelBox(b, layout.labelRows)),
+          `labels ${a.id} and ${b.id} overlap`,
+        );
+      }
+    }
   });
 });
