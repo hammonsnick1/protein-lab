@@ -11108,6 +11108,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .report-page-title { border: none; background: none; padding: 0; font: 700 21px/1.2 var(--font-sans); color: inherit; width: 100%; }
 .report-page-subtitle { border: none; background: none; padding: 0; font: 400 12.5px/1.4 var(--font-sans); color: #6d767c; width: 100%; }
 .report-page-number { font: 600 12px var(--font-mono); letter-spacing: .1em; color: #8c9398; white-space: nowrap; padding-top: 4px; }
+.report-sheet-header > .report-page-number { flex: none; }
 .report-sheet h3 { margin: 0 0 7px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #7b848a; }
 .report-facts dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; margin: 0; }
 .report-facts dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; border-bottom: 1px solid #e6e8ea; padding: 6px 0; }
@@ -11141,7 +11142,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .report-property-grid { margin: 0; }
 .report-construct table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 .report-construct th, .report-construct td { text-align: left; font-size: 12px; padding: 7px 8px; border-bottom: 1px solid #e6e8ea; }
-.report-construct th { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: #7b848a; border-bottom-width: 2px; border-color: #14181b; }
+/* No uppercase: these headings carry units (Da, M⁻¹cm⁻¹) and ε. */
+.report-construct th { font-size: 12px; letter-spacing: .02em; color: #7b848a; border-bottom-width: 2px; border-color: #14181b; }
 .report-construct td:not(:first-child), .report-construct th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 .report-figures { display: flex; flex-direction: column; gap: 16px; }
 .report-figures figure { margin: 0; }
@@ -11186,6 +11188,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   .report-sheet-inner { overflow: visible; }
   .report-notes textarea { border: none; background: none; padding: 0; resize: none; }
   .report-figures figcaption input { border: none; }
+  /* Writing prompts are for the screen; on paper they would read as content. */
+  .report-sheet ::placeholder { color: transparent; }
 }
 
 /* The vector page: a full annotated map above the vector's facts. */
