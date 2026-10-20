@@ -26,6 +26,7 @@ from .integrations import (
 )
 from .structures import build_residue_mapping, compute_regions, summarize_structure
 from .protparam import analyze_sequence, normalize_sequence
+from .project_trees import ProjectTreeService
 from ..expression_planner import (
     COMMON_ENZYMES,
     align_dna_sequences,
@@ -83,6 +84,7 @@ class ProteinPlanner:
         self.alphafold = alphafold
         self.sifts = sifts
         self.email = email
+        self.project_trees = ProjectTreeService(database)
 
     def create_protein(self, fields: dict[str, Any]) -> dict[str, Any]:
         sequence = normalize_sequence(str(fields.get("sequence") or ""))
