@@ -129,7 +129,13 @@ scheme preserves unmodelled residues and insertion codes.
 ```
 
 Every region residue uses the same mapping row shape as the structure endpoint.
-Only modelled residues are returned for highlighting. Region `type` values are:
+Only modelled residues are returned for highlighting. Sequence-derived groups
+(`hydrophobic_sequence`, `disorder_uniprot`, and the `reference_*` types) are
+still returned when some or all of their positions cannot be highlighted. Their
+`metadata.unmappedPositions` is the sorted list of one-based UniProt positions
+that have no modelled structure residue; it is `[]` when the region is fully
+mapped. A fully unmapped group therefore has `residues: []` rather than being
+omitted. Region `type` values are:
 
 - `cysteines` and `disulfide` (geometry, SG–SG ≤ 2.3 Å)
 - `hydrophobic_sequence` and `hydrophobic_surface`

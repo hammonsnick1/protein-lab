@@ -439,6 +439,21 @@ def _mapped_positions(mapping: list[dict[str, Any]], positions: Iterable[int]) -
     ]
 
 
+def _region_mapping(
+    mapping: list[dict[str, Any]],
+    positions: Iterable[int],
+) -> tuple[list[dict[str, Any]], list[int]]:
+    """Return modeled residues and explicitly unmapped UniProt positions."""
+    requested = sorted(set(positions))
+    residues = _mapped_positions(mapping, requested)
+    mapped = {
+        residue["uniprotPosition"]
+        for residue in residues
+        if residue.get("uniprotPosition") is not None
+    }
+    return residues, [position for position in requested if position not in mapped]
+
+
 def compute_regions(
     mapping: list[dict[str, Any]],
     parsed: dict[str, Any],
@@ -503,18 +518,21 @@ def compute_regions(
         if score >= HYDROPHOBIC_THRESHOLD:
             hydrophobic_centers.append(center)
     for number, centers in enumerate(_contiguous(hydrophobic_centers), 1):
-        positions = range(max(1, centers[0] - half_window), min(len(reference_sequence), centers[-1] + half_window) + 1)
-        residues = _mapped_positions(mapping, positions)
-        if residues:
-            groups.append({
-                "id": f"hydrophobic-sequence:{number}",
-                "type": "hydrophobic_sequence",
-                "label": f"Hydrophobic sequence {min(positions)}–{max(positions)}",
-                "description": f"Kyte–Doolittle mean ≥ {HYDROPHOBIC_THRESHOLD:.1f} in a {HYDROPHOBIC_WINDOW}-residue window.",
-                "defaultVisible": False,
-                "residues": residues,
-                "metadata": {"maxWindowScore": round(max(scores[position] for position in centers), 3)},
-            })
+        start = max(1, centers[0] - half_window)
+        end = min(len(reference_sequence), centers[-1] + half_window)
+        residues, unmapped_positions = _region_mapping(mapping, range(start, end + 1))
+        groups.append({
+            "id": f"hydrophobic-sequence:{number}",
+            "type": "hydrophobic_sequence",
+            "label": f"Hydrophobic sequence {start}–{end}",
+            "description": f"Kyte–Doolittle mean ≥ {HYDROPHOBIC_THRESHOLD:.1f} in a {HYDROPHOBIC_WINDOW}-residue window.",
+            "defaultVisible": False,
+            "residues": residues,
+            "metadata": {
+                "maxWindowScore": round(max(scores[position] for position in centers), 3),
+                "unmappedPositions": unmapped_positions,
+            },
+        })
 
     surface_candidates: list[dict[str, Any]] = []
     ca_rows = [
@@ -547,17 +565,20 @@ def compute_regions(
         start, end = _integer(location.get("start")), _integer(location.get("end"))
         if start is None or end is None:
             continue
-        residues = _mapped_positions(mapping, range(start, end + 1))
-        if residues:
-            groups.append({
-                "id": f"uniprot-disorder:{number}",
-                "type": "disorder_uniprot",
-                "label": feature.get("description") or f"UniProt disorder {start}–{end}",
-                "description": "Disordered region annotated by UniProt; separate from model confidence.",
-                "defaultVisible": False,
-                "residues": residues,
-                "metadata": {"source": "UniProt", "location": {"start": start, "end": end}},
-            })
+        residues, unmapped_positions = _region_mapping(mapping, range(start, end + 1))
+        groups.append({
+            "id": f"uniprot-disorder:{number}",
+            "type": "disorder_uniprot",
+            "label": feature.get("description") or f"UniProt disorder {start}–{end}",
+            "description": "Disordered region annotated by UniProt; separate from model confidence.",
+            "defaultVisible": False,
+            "residues": residues,
+            "metadata": {
+                "source": "UniProt",
+                "location": {"start": start, "end": end},
+                "unmappedPositions": unmapped_positions,
+            },
+        })
 
     low_confidence = []
     if model_confidence:
@@ -618,9 +639,7 @@ def compute_regions(
             if start is None:
                 continue
             end = end or start
-            residues = _mapped_positions(mapping, range(start, end + 1))
-            if not residues:
-                continue
+            residues, unmapped_positions = _region_mapping(mapping, range(start, end + 1))
             description = str(feature.get("description") or feature.get("type") or source_key)
             groups.append({
                 "id": f"{region_type}:{feature_index}",
@@ -629,7 +648,11 @@ def compute_regions(
                 "description": f"UniProt {feature.get('type') or source_key} annotation at {start}–{end}.",
                 "defaultVisible": False,
                 "residues": residues,
-                "metadata": {"source": "UniProt", "feature": feature},
+                "metadata": {
+                    "source": "UniProt",
+                    "feature": feature,
+                    "unmappedPositions": unmapped_positions,
+                },
             })
 
     return {
