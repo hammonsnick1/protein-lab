@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import copy
 from io import StringIO
 import json
 import re
@@ -382,6 +383,109 @@ class RCSBClient:
 
     def __init__(self, http: HttpClient):
         self.http = http
+        self._cache: dict[str, tuple[float, Any]] = {}
+
+    def _cached(self, key: str) -> Any | None:
+        item = self._cache.get(key)
+        if item is None or item[0] <= time.monotonic():
+            self._cache.pop(key, None)
+            return None
+        return copy.deepcopy(item[1])
+
+    def _store(self, key: str, value: Any, ttl_seconds: float = 900) -> Any:
+        self._cache[key] = (time.monotonic() + ttl_seconds, copy.deepcopy(value))
+        return value
+
+    def entry_ids_for_accession(self, accession: str, *, limit: int = 20) -> list[str]:
+        """Return experimental entries cross-referenced to a UniProt accession."""
+        accession = accession.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{1,19}", accession):
+            raise ValueError("A valid UniProt accession is required")
+        limit = max(1, min(int(limit), 50))
+        key = f"accession:{accession}:{limit}"
+        cached = self._cached(key)
+        if cached is not None:
+            return cached
+        raw = self.http.json(
+            "POST",
+            self.search_url,
+            json_body={
+                "query": {
+                    "type": "terminal",
+                    "service": "text",
+                    "parameters": {
+                        "attribute": "rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_accession",
+                        "operator": "exact_match",
+                        "value": accession,
+                    },
+                },
+                "return_type": "entry",
+                "request_options": {
+                    "paginate": {"start": 0, "rows": limit},
+                    "results_content_type": ["experimental"],
+                    "sort": [{"sort_by": "score", "direction": "desc"}],
+                },
+            },
+            service="RCSB PDB accession search",
+            timeout=10,
+        )
+        identifiers = [
+            str(result.get("identifier") or "").upper()
+            for result in raw.get("result_set") or []
+            if re.fullmatch(r"[0-9A-Za-z]{4}", str(result.get("identifier") or ""))
+        ]
+        return self._store(key, identifiers)
+
+    def entry_metadata(self, pdb_id: str) -> dict[str, Any]:
+        pdb_id = pdb_id.strip().upper()
+        if not re.fullmatch(r"[0-9A-Z]{4}", pdb_id):
+            raise ValueError("A valid four-character PDB ID is required")
+        key = f"entry:{pdb_id}"
+        cached = self._cached(key)
+        if cached is not None:
+            return cached
+        entry = self.http.json(
+            "GET",
+            f"{self.data_url}/entry/{pdb_id}",
+            service="RCSB PDB data",
+            timeout=10,
+        )
+        experimental = entry.get("exptl") or []
+        info = entry.get("rcsb_entry_info") or {}
+        identifiers = entry.get("rcsb_entry_container_identifiers") or {}
+        value = {
+            "id": pdb_id,
+            "source": "pdb",
+            "format": "cif",
+            "title": str((entry.get("struct") or {}).get("title") or ""),
+            "method": "; ".join(
+                str(item.get("method")) for item in experimental if item.get("method")
+            ) or None,
+            "resolutionAngstrom": min(info.get("resolution_combined") or [], default=None),
+            "polymerEntityIds": [str(value) for value in identifiers.get("polymer_entity_ids") or []],
+            "nonpolymerEntityIds": [str(value) for value in identifiers.get("non_polymer_entity_ids") or []],
+            "sourceUrl": f"https://www.rcsb.org/structure/{pdb_id}",
+        }
+        return self._store(key, value)
+
+    def fetch_mmcif(self, pdb_id: str) -> str:
+        pdb_id = pdb_id.strip().upper()
+        if not re.fullmatch(r"[0-9A-Z]{4}", pdb_id):
+            raise ValueError("A valid four-character PDB ID is required")
+        key = f"mmcif:{pdb_id}"
+        cached = self._cached(key)
+        if cached is not None:
+            return cached
+        response = self.http.request(
+            "GET",
+            f"{self.files_url}/{pdb_id}.cif",
+            accept="text/plain",
+            service="RCSB PDB files",
+            timeout=15,
+        )
+        if not response.text.lstrip().startswith("data_"):
+            raise RemoteServiceError("RCSB PDB files", "returned an invalid mmCIF record")
+        return self._store(key, response.text)
 
     def search_sequence(
         self,
@@ -457,13 +561,7 @@ class RCSBClient:
             f"{self.data_url}/polymer_entity/{pdb_id}/{entity_id}",
             service="RCSB PDB data",
         )
-        cif_response = self.http.request(
-            "GET",
-            f"{self.files_url}/{pdb_id}.cif",
-            accept="text/plain",
-            service="RCSB PDB files",
-        )
-        conditions = parse_mmcif_conditions(cif_response.text)
+        conditions = parse_mmcif_conditions(self.fetch_mmcif(pdb_id))
         experimental = entry.get("exptl") or []
         entry_info = entry.get("rcsb_entry_info") or {}
         struct = entry.get("struct") or {}
@@ -518,11 +616,15 @@ class AlphaFoldDBClient:
 
     def __init__(self, http: HttpClient):
         self.http = http
+        self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def fetch(self, accession: str) -> dict[str, Any]:
         accession = accession.strip().upper()
         if not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{1,19}", accession):
             raise ValueError("A valid UniProt accession is required")
+        cached = self._cache.get(accession)
+        if cached is not None and cached[0] > time.monotonic():
+            return copy.deepcopy(cached[1])
         response = self.http.request(
             "GET",
             f"{self.api_url}/{accession}",
@@ -558,7 +660,7 @@ class AlphaFoldDBClient:
         model_id = str(
             prediction.get("entryId") or f"AF-{accession}-F1"
         ).strip()
-        return {
+        value = {
             "modelId": model_id,
             "accession": str(prediction.get("uniprotAccession") or accession),
             "name": str(
@@ -577,6 +679,82 @@ class AlphaFoldDBClient:
                 "residueCount": geometry["residueCount"],
                 "chainCount": geometry["chainCount"],
                 "previewGeometry": structure_preview(geometry),
+            },
+        }
+        self._cache[accession] = (time.monotonic() + 900, copy.deepcopy(value))
+        return value
+
+
+class PDBeSIFTSClient:
+    """Small fail-fast client for accession-to-residue SIFTS segments."""
+
+    mappings_url = "https://www.ebi.ac.uk/pdbe/api/mappings/all_isoforms"
+
+    def __init__(self, http: HttpClient):
+        self.http = http
+        self._cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+    def mappings_for_accession(self, accession: str) -> list[dict[str, Any]]:
+        accession = accession.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{1,19}", accession):
+            raise ValueError("A valid UniProt accession is required")
+        cached = self._cache.get(accession)
+        if cached is not None and cached[0] > time.monotonic():
+            return copy.deepcopy(cached[1])
+        raw = self.http.json(
+            "GET",
+            f"{self.mappings_url}/{accession}",
+            service="PDBe SIFTS mappings",
+            timeout=10,
+        )
+        segments: list[dict[str, Any]] = []
+        # Accession-oriented all_isoforms response:
+        # {accession: {"PDB": {pdb_id: [mapping, ...]}}}
+        accession_entry = raw.get(accession) or raw.get(accession.lower())
+        if isinstance(accession_entry, dict) and isinstance(accession_entry.get("PDB"), dict):
+            for pdb_id, mappings in accession_entry["PDB"].items():
+                for mapping in mappings or []:
+                    if isinstance(mapping, dict):
+                        segments.append(self._segment(pdb_id, accession, mapping))
+        # Retain compatibility with the entry-oriented SIFTS response used by
+        # older PDBe deployments and offline fixtures.
+        for pdb_id, entry in raw.items():
+            if not isinstance(entry, dict):
+                continue
+            uniprot_records = entry.get("UniProt") or entry.get("uniprot") or {}
+            if isinstance(uniprot_records, dict):
+                records = uniprot_records.items()
+            else:
+                records = []
+            for mapped_accession, record in records:
+                if str(mapped_accession).upper() != accession or not isinstance(record, dict):
+                    continue
+                for mapping in record.get("mappings") or []:
+                    if not isinstance(mapping, dict):
+                        continue
+                    segments.append(self._segment(pdb_id, accession, mapping))
+        self._cache[accession] = (time.monotonic() + 900, copy.deepcopy(segments))
+        return segments
+
+    @staticmethod
+    def _segment(pdb_id: str, accession: str, mapping: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "pdbId": str(pdb_id).upper(),
+            "accession": accession,
+            "entityId": str(mapping.get("entity_id") or ""),
+            "chainId": str(mapping.get("chain_id") or ""),
+            "structAsymId": str(mapping.get("struct_asym_id") or ""),
+            "uniprotStart": mapping.get("unp_start"),
+            "uniprotEnd": mapping.get("unp_end"),
+            "start": {
+                "residueNumber": (mapping.get("start") or {}).get("residue_number"),
+                "authorResidueNumber": (mapping.get("start") or {}).get("author_residue_number"),
+                "authorInsertionCode": (mapping.get("start") or {}).get("author_insertion_code") or None,
+            },
+            "end": {
+                "residueNumber": (mapping.get("end") or {}).get("residue_number"),
+                "authorResidueNumber": (mapping.get("end") or {}).get("author_residue_number"),
+                "authorInsertionCode": (mapping.get("end") or {}).get("author_insertion_code") or None,
             },
         }
 
@@ -923,6 +1101,20 @@ def normalize_uniprot(raw: dict[str, Any]) -> dict[str, Any]:
             for feature in features
             if feature.get("type") == "Disordered"
             or (
+                feature.get("type") == "Region"
+                and "disorder" in str(feature.get("description") or "").lower()
+            )
+        ],
+        "bindingSites": [
+            normalized_feature(feature)
+            for feature in features
+            if feature.get("type") in {"Binding site", "Active site", "Metal binding"}
+        ],
+        "domains": [
+            normalized_feature(feature)
+            for feature in features
+            if feature.get("type") in {"Domain", "Repeat", "Region", "Motif"}
+            and not (
                 feature.get("type") == "Region"
                 and "disorder" in str(feature.get("description") or "").lower()
             )
