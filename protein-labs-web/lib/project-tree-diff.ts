@@ -196,7 +196,11 @@ export function sequenceDiff(before: string, after: string): SequenceDiff | null
 
 // --- project facets ---------------------------------------------------------
 
-type Facet = { key: string; category: ChangeCategory; field: string; value: string };
+type Facet = {
+  key: string; category: ChangeCategory; field: string; value: string;
+  /** Compact form for the one-line branch label, when `value` is a list. */
+  short?: string;
+};
 
 function text(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -255,7 +259,12 @@ export function projectFacets(source: DiffSource): Facet[] {
     .filter((job) => job.appType === "chromatogram-studio" || job.appType === "gel-analysis" || job.appType === "transformation-expression")
     .map((job) => `${job.name} (${job.status.replace("_", " ")})`)
     .sort();
-  facets.push({ key: "assays", category: "assay", field: "Assays and analyses", value: assays.join(", ") });
+  facets.push({
+    key: "assays", category: "assay", field: "Assays and analyses",
+    value: assays.join(", "),
+    // The branch label gets the count; the panel row keeps the names.
+    short: `${assays.length} assay${assays.length === 1 ? "" : "s"}`,
+  });
   return facets;
 }
 
@@ -305,6 +314,12 @@ function format(value: number) {
 // --- the diff ---------------------------------------------------------------
 
 const MAX_SUMMARY_PARTS = 2;
+/** The branch label clamps at two lines; a part longer than this never fits. */
+const MAX_SUMMARY_PART = 26;
+
+function shorten(value: string) {
+  return value.length > MAX_SUMMARY_PART ? `${value.slice(0, MAX_SUMMARY_PART - 1).trimEnd()}…` : value;
+}
 
 /**
  * `K73A · pET-28a → pMAL-c5X` — the one line a branch shows in the tree.
@@ -324,8 +339,8 @@ export function branchSummary(sequence: SequenceDiff | null, changes: ProjectDif
   for (const change of changes) {
     if (parts.length >= MAX_SUMMARY_PARTS) break;
     parts.push(change.before !== "—" && change.after !== "—"
-      ? `${change.before} → ${change.after}`
-      : change.after !== "—" ? change.after : `${change.field} cleared`);
+      ? `${shorten(change.before)} → ${shorten(change.after)}`
+      : change.after !== "—" ? shorten(change.after) : `${change.field} cleared`);
     used += 1;
   }
   const line = parts.join(" · ");
@@ -346,10 +361,17 @@ export function localProjectDiff(from: DiffSource, to: DiffSource): ProjectDiff 
     summary: describeSequence(sequence),
   }] : [];
   const facetChanges: ProjectDiffChange[] = [];
+  // The label and the panel disagree on purpose for list-valued facets: the
+  // label shows the compact form, the panel the full before/after.
+  const summaryChanges: ProjectDiffChange[] = [];
   const after = new Map(projectFacets(to).map((facet) => [facet.key, facet]));
   for (const facet of projectFacets(from)) {
     const next = after.get(facet.key);
     if (!next || next.value === facet.value) continue;
+    summaryChanges.push({
+      id: facet.key, category: facet.category, field: facet.field,
+      before: facet.short || facet.value || "—", after: next.short || next.value || "—", summary: "",
+    });
     facetChanges.push({
       id: facet.key,
       category: facet.category,
@@ -381,7 +403,7 @@ export function localProjectDiff(from: DiffSource, to: DiffSource): ProjectDiff 
   return {
     fromProjectId: from.protein.id,
     toProjectId: to.protein.id,
-    summary: branchSummary(sequence, facetChanges),
+    summary: branchSummary(sequence, summaryChanges),
     categories,
     changes: [...sequenceChange, ...facetChanges, ...protparamChanges],
     sequence,

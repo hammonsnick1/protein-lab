@@ -15,7 +15,8 @@ import {
   type ChangeCategory, type ProjectDiff, type ProjectTree, type ProjectTreeBranch, type SequenceDiff,
 } from "@/lib/project-tree-types";
 import {
-  DEFAULT_LAYOUT, canReparent, fitToViewport, layoutProjectTree,
+  DEFAULT_LAYOUT, LABEL_HEIGHT, LABEL_WIDTH,
+  canReparent, fitToViewport, labelRowOffset, layoutProjectTree,
   type LayoutEdge, type LayoutNode, type TreeLayout,
 } from "@/lib/project-tree-layout";
 import {
@@ -34,8 +35,6 @@ const MINIMAP_WIDTH = 164;
 const MINIMAP_HEIGHT = 100;
 /** Residues shown either side of a change when the strip is windowed. */
 const STRIP_FLANK = 9;
-/** Vertical offset between branch-label stagger rows. */
-const LABEL_ROW_HEIGHT = 34;
 
 type Props = {
   proteins: ProteinRecord[];
@@ -500,11 +499,15 @@ function TreeCanvas({
           onDragStart={setDragging}
           onDragEnd={() => { setDragging(""); setDropTarget(""); }}
           onDragOverNode={(targetId) => {
+            // While dragging, only React state knows the source: the browser
+            // hides the payload from dragover. This drives the highlight only.
             const branchId = parentBranchOf(dragging);
             setDropTarget(branchId && canDrop(branchId, targetId) ? targetId : "");
           }}
-          onDropNode={(targetId) => {
-            const branchId = parentBranchOf(dragging);
+          onDropNode={(targetId, sourceId) => {
+            // The drop reads the payload, which is authoritative and does not
+            // depend on a state update having landed between the two events.
+            const branchId = parentBranchOf(sourceId || dragging);
             if (branchId && canDrop(branchId, targetId)) onReparent(branchId, targetId);
             setDragging("");
             setDropTarget("");
@@ -513,7 +516,7 @@ function TreeCanvas({
 
         {layout.edges.map((edge) => {
           const branch = branchById.get(edge.id);
-          return branch ? <BranchLabel key={edge.id} edge={edge} branch={branch}
+          return branch ? <BranchLabel key={edge.id} edge={edge} branch={branch} rows={layout.labelRows}
             selected={edge.id === selectedBranchId} onSelect={onSelectBranch}/> : null;
         })}
       </div>
@@ -556,7 +559,7 @@ function ProjectNode({
   onDragStart: (projectId: string) => void;
   onDragEnd: () => void;
   onDragOverNode: (projectId: string) => void;
-  onDropNode: (projectId: string) => void;
+  onDropNode: (projectId: string, sourceId: string) => void;
 }) {
   const box = { left: node.x, top: node.y, width: DEFAULT_LAYOUT.nodeWidth, height: DEFAULT_LAYOUT.nodeHeight };
   if (!project) {
@@ -578,7 +581,7 @@ function ProjectNode({
     }}
     onDragEnd={onDragEnd}
     onDragOver={(event) => { event.preventDefault(); onDragOverNode(node.id); }}
-    onDrop={(event) => { event.preventDefault(); onDropNode(node.id); }}
+    onDrop={(event) => { event.preventDefault(); onDropNode(node.id, event.dataTransfer.getData("text/plain")); }}
   >
     <button className="project-tree-node-open" onClick={() => onOpen(project.id)} title={`Open ${project.name}`}>
       <Dna/>
@@ -594,9 +597,10 @@ function ProjectNode({
   </article>;
 }
 
-function BranchLabel({ edge, branch, selected, onSelect }: {
+function BranchLabel({ edge, branch, rows, selected, onSelect }: {
   edge: LayoutEdge;
   branch: ProjectTreeBranch;
+  rows: number;
   selected: boolean;
   onSelect: (branchId: string) => void;
 }) {
@@ -604,7 +608,12 @@ function BranchLabel({ edge, branch, selected, onSelect }: {
   const category = primaryCategory(categories);
   return <button
     className={`project-tree-branch category-${category}${selected ? " selected" : ""}`}
-    style={{ left: edge.labelX, top: edge.labelY + (edge.labelRow - 1) * LABEL_ROW_HEIGHT }}
+    // The box is sized from the same constants the layout reserves space
+    // with, so the CSS and the band height can never drift apart.
+    style={{
+      left: edge.labelX, top: edge.labelY + labelRowOffset(edge.labelRow, rows),
+      width: LABEL_WIDTH, minHeight: LABEL_HEIGHT,
+    }}
     onClick={() => onSelect(branch.id)}
     aria-pressed={selected}
   >
