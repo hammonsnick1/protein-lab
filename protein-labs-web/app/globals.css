@@ -5159,6 +5159,10 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   touch-action: none;
   user-select: none;
 }
+/* On the Export tab the figure stays mounted for the exports to read. */
+.chrom-center:has(.export-workspace) .chromatogram-canvas {
+  display: none;
+}
 .chromatogram-canvas:not(.figure-mode) {
   cursor: crosshair;
 }

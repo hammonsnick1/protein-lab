@@ -927,6 +927,9 @@ export function ChromatogramStudioJob({
     if (source)
       downloadText("chromatogram-figure.svg", source, "image/svg+xml");
   }
+  function exportFailed(error: unknown) {
+    setMessage(error instanceof Error ? error.message : "The figure could not be exported.");
+  }
   const renderPlotCanvas = () => rasterizeSvg(plotRef.current, figure.width, figure.height, figure.exportDpi, figure.background);
   async function exportPng(copy = false) {
     const canvas = await renderPlotCanvas(); if (!canvas) return;
@@ -1046,24 +1049,25 @@ export function ChromatogramStudioJob({
               setStandards(standards.filter((value) => value.id !== id))
             }
           />
-        ) : tab === "export" ? (
-          <ExportWorkspace
-            projectName={projectName}
-            onProjectName={setProjectName}
-            onNew={newProject}
-            onOpen={importProject}
-            onProjectSave={exportProject}
-            onProcessed={exportProcessed}
-            onStandards={exportStandards}
-            onPeaks={exportPeaks}
-            onSvg={exportSvg}
-            onPng={() => void exportPng()}
-            onPdf={() => void exportPdf()}
-            onTiff={() => void exportTiff()}
-            onCopy={() => void exportPng(true)}
-          />
         ) : (
           <>
+            {tab === "export" && (
+              <ExportWorkspace
+                projectName={projectName}
+                onProjectName={setProjectName}
+                onNew={newProject}
+                onOpen={importProject}
+                onProjectSave={exportProject}
+                onProcessed={exportProcessed}
+                onStandards={exportStandards}
+                onPeaks={exportPeaks}
+                onSvg={exportSvg}
+                onPng={() => exportPng().catch(exportFailed)}
+                onPdf={() => exportPdf().catch(exportFailed)}
+                onTiff={() => exportTiff().catch(exportFailed)}
+                onCopy={() => exportPng(true).catch(exportFailed)}
+              />
+            )}
             {tab === "analysis" && (
               <div className="pointer-toolbar">
                 <Button
@@ -1114,6 +1118,8 @@ export function ChromatogramStudioJob({
                 </Button>
               </div>
             )}
+            {/* Mounted on the Export tab too, hidden there by CSS: the SVG,
+                PNG, TIFF, PDF and clipboard exports serialize this figure. */}
             <ChromPlot
               ref={plotRef}
               traces={traces}
@@ -1132,7 +1138,7 @@ export function ChromatogramStudioJob({
               dragKind={drag?.kind ?? null}
               selectedPeakId={selectedPeakId}
               selectedAnnotationId={selectedAnnotationId}
-              figureMode={tab === "figure"}
+              figureMode={tab === "figure" || tab === "export"}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={pointerUp}
@@ -3385,6 +3391,7 @@ function forwardRefPlot() {
         ref={svgRef}
         className={`chromatogram-canvas ${figureMode ? "figure-mode" : ""}`}
         viewBox={`0 0 ${W} ${H}`}
+        xmlns="http://www.w3.org/2000/svg"
         style={{
           background: figure.background,
           color: figure.foreground,
