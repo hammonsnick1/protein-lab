@@ -137,7 +137,7 @@ def test_diff_orders_experiment_changes_and_hides_ids_and_timestamps(tmp_path):
         before["id"],
         "Ni-NTA capture",
         "purification-affinity",
-        {"column": "HisTrap", "sourceJobId": "noise-before"},
+        {"column": "HisTrap", "valid": True, "sourceJobId": "noise-before"},
     )
     database.create_project_job(
         after["id"],
@@ -168,6 +168,7 @@ def test_diff_orders_experiment_changes_and_hides_ids_and_timestamps(tmp_path):
     assert "noise-before" not in serialized
     assert "noise-after" not in serialized
     assert '"updatedAt": "noise"' not in serialized
+    assert '"valid": true' in serialized
     assert all(
         {"category", "kind", "before", "after", "summary", "details"}
         <= change.keys()
