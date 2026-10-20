@@ -320,7 +320,7 @@ function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometr
         <div className="report-structure-frame">
           {geometry
             ? <StructureViewer geometry={geometry} compact paletteKey={bundle.protein.id} label=""/>
-            : <p className="report-missing">No predicted structure has been saved. Run the Structure prediction job to include it.</p>}
+            : <p className="report-missing">No predicted structure has been saved. Run the Structure Viewer job to include it.</p>}
         </div>
         <small>{model ? `${text(model.name, text(model.modelId))} · ${text(model.source, "AlphaFold")}${geometry?.meanPlddt ? ` · mean pLDDT ${text(geometry.meanPlddt)}` : ""}` : "Predicted structure"}</small>
       </div>
