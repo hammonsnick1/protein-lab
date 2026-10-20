@@ -29,107 +29,143 @@ export function diffSourceFromBundle(bundle: ProteinBundle): DiffSource {
 
 // --- sequence alignment ------------------------------------------------------
 
-const MATCH = 1;
+// The engine aligns with Biopython's PairwiseAligner in global mode (HOM-136
+// `_sequence_diff`). The browser fallback has to produce the *same* alignment,
+// not merely a plausible one: gap placement decides the 1-based edit
+// positions, the mutation labels, the identity figure and the branch summary,
+// and the view presents all of those as fact. So this is Gotoh affine
+// Needleman-Wunsch with the engine's exact scoring, and
+// lib/project-tree-diff.test.ts checks it against alignments dumped from the
+// engine itself rather than against this implementation.
+const MATCH = 2;
 const MISMATCH = -1;
-const GAP = -2;
-/** Above this the quadratic aligner is replaced by prefix/suffix trimming. */
-const ALIGN_LIMIT = 4000;
+/** Cost of a gap's first residue. A gap of length L costs OPEN + (L-1) * EXTEND. */
+const GAP_OPEN = -4;
+const GAP_EXTEND = -0.5;
+
+/** Traceback predecessor states, two bits each inside one byte per cell. */
+const FROM_M = 0;
+const FROM_X = 1;
+const FROM_Y = 2;
+
+/**
+ * Largest alignment the browser will attempt, as a cell count. The traceback
+ * needs one byte per cell, so this caps it at ~4 MB — about 2000x2000
+ * residues. The engine has no such limit, so beyond this the fallback reports
+ * the alignment as unavailable instead of inventing a cheaper one.
+ */
+export const MAX_ALIGNMENT_CELLS = 4_000_000;
 
 export type Alignment = { alignedBefore: string; alignedAfter: string };
 
-/** Length of the shared leading run of two strings. */
-function commonPrefix(a: string, b: string) {
-  let index = 0;
-  while (index < a.length && index < b.length && a[index] === b[index]) index += 1;
-  return index;
-}
-
-function commonSuffix(a: string, b: string, limit: number) {
-  let index = 0;
-  while (index < limit && a[a.length - 1 - index] === b[b.length - 1 - index]) index += 1;
-  return index;
+export function alignmentFitsInBrowser(before: string, after: string) {
+  return (before.length + 1) * (after.length + 1) <= MAX_ALIGNMENT_CELLS;
 }
 
 /**
- * Global alignment with a linear gap penalty. Protein Lab sequences are a few
- * hundred residues, so a full Needleman-Wunsch is cheap and gives the honest
- * residue-by-residue picture the strip needs; very long pairs degrade to a
- * prefix/suffix trim rather than allocating a huge matrix.
+ * Global alignment with affine gap penalties, matching the engine's scoring.
+ * Callers must check `alignmentFitsInBrowser` first; this allocates a
+ * traceback byte per cell.
  */
 export function alignSequences(before: string, after: string): Alignment {
   if (before === after) return { alignedBefore: before, alignedAfter: after };
+  // The engine's aligner rejects an empty sequence outright; the only sensible
+  // alignment is one whole-length gap, so the fallback answers that directly.
   if (!before.length || !after.length) {
     return {
       alignedBefore: before || "-".repeat(after.length),
       alignedAfter: after || "-".repeat(before.length),
     };
   }
-  if (before.length > ALIGN_LIMIT || after.length > ALIGN_LIMIT) return trimAlign(before, after);
 
   const rows = before.length + 1;
   const columns = after.length + 1;
-  // 0 = diagonal, 1 = up (gap in `after`), 2 = left (gap in `before`).
   const trace = new Uint8Array(rows * columns);
-  let previous = new Int32Array(columns);
-  let current = new Int32Array(columns);
+  // `m` ends on an aligned pair, `x` on a gap in `after`, `y` on a gap in `before`.
+  let previousM = new Float64Array(columns);
+  let previousX = new Float64Array(columns);
+  let previousY = new Float64Array(columns);
+  let currentM = new Float64Array(columns);
+  let currentX = new Float64Array(columns);
+  let currentY = new Float64Array(columns);
+
+  previousM[0] = 0;
+  previousX[0] = -Infinity;
+  previousY[0] = -Infinity;
   for (let column = 1; column < columns; column += 1) {
-    previous[column] = column * GAP;
-    trace[column] = 2;
+    previousM[column] = -Infinity;
+    previousX[column] = -Infinity;
+    previousY[column] = GAP_OPEN + (column - 1) * GAP_EXTEND;
+    trace[column] = FROM_Y << 4;
   }
+
   for (let row = 1; row < rows; row += 1) {
-    current[0] = row * GAP;
-    trace[row * columns] = 1;
+    currentM[0] = -Infinity;
+    currentY[0] = -Infinity;
+    currentX[0] = GAP_OPEN + (row - 1) * GAP_EXTEND;
+    trace[row * columns] = FROM_X << 2;
     for (let column = 1; column < columns; column += 1) {
-      const diagonal = previous[column - 1] + (before[row - 1] === after[column - 1] ? MATCH : MISMATCH);
-      const up = previous[column] + GAP;
-      const left = current[column - 1] + GAP;
-      let best = diagonal;
-      let move = 0;
-      if (up > best) { best = up; move = 1; }
-      if (left > best) { best = left; move = 2; }
-      current[column] = best;
-      trace[row * columns + column] = move;
+      const score = before[row - 1] === after[column - 1] ? MATCH : MISMATCH;
+      // Every tie resolves in the same M, then X, then Y order — including
+      // inside the gap states, where preferring the extend candidate instead
+      // picks a different (equally optimal) alignment from the engine's. The
+      // corpus test in the sibling test file is what pins this down.
+      let bestM = previousM[column - 1];
+      let fromM = FROM_M;
+      if (previousX[column - 1] > bestM) { bestM = previousX[column - 1]; fromM = FROM_X; }
+      if (previousY[column - 1] > bestM) { bestM = previousY[column - 1]; fromM = FROM_Y; }
+      currentM[column] = bestM + score;
+
+      let bestX = previousM[column] + GAP_OPEN;
+      let fromX = FROM_M;
+      if (previousX[column] + GAP_EXTEND > bestX) { bestX = previousX[column] + GAP_EXTEND; fromX = FROM_X; }
+      if (previousY[column] + GAP_OPEN > bestX) { bestX = previousY[column] + GAP_OPEN; fromX = FROM_Y; }
+      currentX[column] = bestX;
+
+      let bestY = currentM[column - 1] + GAP_OPEN;
+      let fromY = FROM_M;
+      if (currentX[column - 1] + GAP_OPEN > bestY) { bestY = currentX[column - 1] + GAP_OPEN; fromY = FROM_X; }
+      if (currentY[column - 1] + GAP_EXTEND > bestY) { bestY = currentY[column - 1] + GAP_EXTEND; fromY = FROM_Y; }
+      currentY[column] = bestY;
+
+      trace[row * columns + column] = fromM | (fromX << 2) | (fromY << 4);
     }
-    const swap = previous;
-    previous = current;
-    current = swap;
+    [previousM, currentM] = [currentM, previousM];
+    [previousX, currentX] = [currentX, previousX];
+    [previousY, currentY] = [currentY, previousY];
   }
 
   let row = rows - 1;
   let column = columns - 1;
+  let state = FROM_M;
+  if (previousX[column] > previousM[column]) state = FROM_X;
+  if (previousY[column] > Math.max(previousM[column], previousX[column])) state = FROM_Y;
+
   const left: string[] = [];
   const right: string[] = [];
   while (row > 0 || column > 0) {
-    const move = row === 0 ? 2 : column === 0 ? 1 : trace[row * columns + column];
-    if (move === 0) {
+    if (row === 0) state = FROM_Y;
+    else if (column === 0) state = FROM_X;
+    const cell = trace[row * columns + column];
+    if (state === FROM_M) {
       left.push(before[row - 1]);
       right.push(after[column - 1]);
+      state = cell & 0b11;
       row -= 1;
       column -= 1;
-    } else if (move === 1) {
+    } else if (state === FROM_X) {
       left.push(before[row - 1]);
       right.push("-");
+      state = (cell >> 2) & 0b11;
       row -= 1;
     } else {
       left.push("-");
       right.push(after[column - 1]);
+      state = (cell >> 4) & 0b11;
       column -= 1;
     }
   }
   return { alignedBefore: left.reverse().join(""), alignedAfter: right.reverse().join("") };
-}
-
-/** Cheap alignment for very long pairs: keep the shared ends, gap the middle. */
-function trimAlign(before: string, after: string): Alignment {
-  const head = commonPrefix(before, after);
-  const tail = commonSuffix(before, after, Math.min(before.length, after.length) - head);
-  const middleBefore = before.slice(head, before.length - tail);
-  const middleAfter = after.slice(head, after.length - tail);
-  const width = Math.max(middleBefore.length, middleAfter.length);
-  return {
-    alignedBefore: before.slice(0, head) + middleBefore.padEnd(width, "-") + before.slice(before.length - tail),
-    alignedAfter: after.slice(0, head) + middleAfter.padEnd(width, "-") + after.slice(after.length - tail),
-  };
 }
 
 /** Group an alignment into substitutions and runs of insertion/deletion. */
@@ -178,6 +214,20 @@ export function sequenceEdits(alignment: Alignment): SequenceEdit[] {
 
 export function sequenceDiff(before: string, after: string): SequenceDiff | null {
   if (before === after) return null;
+  // Beyond the browser's budget the honest answer is "the engine computes
+  // this", not a cheaper alignment dressed up as the engine's. Lengths are
+  // exact either way, so the branch still reports that the sequence changed.
+  if (!alignmentFitsInBrowser(before, after)) {
+    return {
+      identityPercent: 0,
+      lengthBefore: before.length,
+      lengthAfter: after.length,
+      alignedBefore: "",
+      alignedAfter: "",
+      edits: [],
+      alignmentUnavailable: true,
+    };
+  }
   const alignment = alignSequences(before, after);
   const columns = alignment.alignedBefore.length;
   let matches = 0;
@@ -412,9 +462,13 @@ export function localProjectDiff(from: DiffSource, to: DiffSource): ProjectDiff 
 }
 
 function describeSequence(sequence: SequenceDiff) {
+  const lengths = `${sequence.lengthBefore} → ${sequence.lengthAfter} aa`;
+  if (sequence.alignmentUnavailable) {
+    return `${lengths}. These sequences are too long to align in the app — the engine computes the residue-level comparison.`;
+  }
   const counts = new Map<string, number>();
   for (const edit of sequence.edits) counts.set(edit.kind, (counts.get(edit.kind) ?? 0) + 1);
   const parts = [...counts].map(([kind, count]) => `${count} ${kind}${count === 1 ? "" : "s"}`);
-  const spread = `${sequence.lengthBefore} → ${sequence.lengthAfter} aa, ${sequence.identityPercent}% identity`;
+  const spread = `${lengths}, ${sequence.identityPercent}% identity`;
   return parts.length ? `${parts.join(", ")} (${spread}).` : `${spread}.`;
 }

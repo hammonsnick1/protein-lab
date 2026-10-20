@@ -714,11 +714,18 @@ function BranchPanel({
         {diff.sequence && <section className="project-tree-diff-section category-sequence">
           <h4><Dna/> Sequence<i className="branch-chip category-sequence"><u>SEQ</u></i></h4>
           <dl className="project-tree-diff-figures">
-            <div><dt>Identity</dt><dd>{diff.sequence.identityPercent}%</dd></div>
+            <div><dt>Identity</dt><dd>{diff.sequence.alignmentUnavailable ? "—" : `${diff.sequence.identityPercent}%`}</dd></div>
             <div><dt>Length</dt><dd>{diff.sequence.lengthBefore} → {diff.sequence.lengthAfter} aa</dd></div>
-            <div><dt>Changes</dt><dd>{diff.sequence.edits.length}</dd></div>
+            <div><dt>Changes</dt><dd>{diff.sequence.alignmentUnavailable ? "—" : diff.sequence.edits.length}</dd></div>
           </dl>
-          <ResidueStrip sequence={diff.sequence}/>
+          {/* Residue positions come from an alignment. Without one there is
+              nothing honest to draw, so say that rather than guess. */}
+          {diff.sequence.alignmentUnavailable
+            ? <p className="project-tree-diff-note">
+              <TriangleAlert/> These sequences are too long to align in the app.
+              The lengths above are exact; connect the engine for the residue-by-residue comparison.
+            </p>
+            : <ResidueStrip sequence={diff.sequence}/>}
         </section>}
 
         {grouped.map(([category, changes]) => {
