@@ -90,6 +90,28 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/v1/protein-planner/proteins":
                 self._send(200, {"proteins": self.planner.database.list_proteins()})
                 return
+            if path == "/v1/protein-planner/project-trees":
+                self._send(200, {"trees": self.planner.project_trees.list_trees()})
+                return
+            if path == "/v1/protein-planner/project-trees/diff":
+                from_id = (query.get("fromProjectId") or [""])[0]
+                to_id = (query.get("toProjectId") or [""])[0]
+                if not from_id or not to_id:
+                    raise ValueError(
+                        "fromProjectId and toProjectId query parameters are required"
+                    )
+                self._send(200, self.planner.project_trees.project_diff(
+                    from_id, to_id
+                ))
+                return
+            tree_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)", path
+            )
+            if tree_match:
+                self._send(200, self.planner.project_trees.get_tree(
+                    tree_match.group(1)
+                ))
+                return
             if path == "/v1/protein-planner/construct-hosts":
                 self._send(200, self.planner.list_construct_hosts())
                 return
@@ -197,6 +219,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/protein-planner/proteins":
                 self._send(201, self.planner.create_protein(body))
+                return
+            if path == "/v1/protein-planner/project-trees":
+                self._send(201, self.planner.project_trees.create_tree(body))
+                return
+            if path == "/v1/protein-planner/project-trees/import":
+                self._send(200, self.planner.project_trees.import_local_trees(body))
+                return
+            tree_link_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)/links", path
+            )
+            if tree_link_match:
+                self._send(201, self.planner.project_trees.create_link(
+                    tree_link_match.group(1), body
+                ))
                 return
             if path == "/v1/gel/analyze":
                 self._send(200, analyze_gel(body))
@@ -388,6 +424,24 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_PATCH(self) -> None:
         try:
             path, _ = self._path_and_query()
+            tree_link_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)/links/([^/]+)", path
+            )
+            if tree_link_match:
+                self._send(200, self.planner.project_trees.update_link(
+                    tree_link_match.group(1),
+                    tree_link_match.group(2),
+                    self._read_json(),
+                ))
+                return
+            tree_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)", path
+            )
+            if tree_match:
+                self._send(200, self.planner.project_trees.rename_tree(
+                    tree_match.group(1), self._read_json()
+                ))
+                return
             job_match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/jobs/([^/]+)", path
             )
@@ -423,6 +477,22 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         try:
             path, _ = self._path_and_query()
+            tree_link_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)/links/([^/]+)", path
+            )
+            if tree_link_match:
+                self.planner.project_trees.delete_link(
+                    tree_link_match.group(1), tree_link_match.group(2)
+                )
+                self._send(200, {"deleted": tree_link_match.group(2)})
+                return
+            tree_match = re.fullmatch(
+                r"/v1/protein-planner/project-trees/([^/]+)", path
+            )
+            if tree_match:
+                self.planner.project_trees.delete_tree(tree_match.group(1))
+                self._send(200, {"deleted": tree_match.group(1)})
+                return
             library_match = re.fullmatch(
                 r"/v1/protein-planner/vector-library/([^/]+)", path
             )
