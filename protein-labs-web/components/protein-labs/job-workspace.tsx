@@ -23,7 +23,7 @@ const labels: Record<string, [string, string, typeof Dna]> = {
   properties: ["Protein properties", "Calculate physicochemical properties with the local ProtParam engine.", Scale],
   research: ["Sequence research", "Run one-click UniProt, NCBI BLAST, and PDB searches.", Search],
   "reference-match": ["Choose reference match", "Select one traceable homolog for cofactor, PTM, localization, and topology evidence.", BadgeCheck],
-  structure: ["Structure prediction", "Retrieve or prepare an AlphaFold model and inspect confidence.", Atom],
+  structure: ["Structure Viewer", "View the AlphaFold model or an experimental PDB entry and highlight regions of interest.", Atom],
   readiness: ["Protein readiness", "Resolve risks before designing expression and purification.", ShieldCheck],
   "expression-system": ["Expression system", "Compare hosts and strains, then choose the cell line for this project.", Microscope],
   "expression-vector": ["Expression vector design", "Build and annotate a complete expression plasmid.", Disc3],
