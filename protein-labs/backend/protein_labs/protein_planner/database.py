@@ -850,12 +850,6 @@ class Database:
                 "SELECT * FROM project_notebooks WHERE protein_id = ?",
                 (protein_id,),
             ).fetchone()
-        selected_view = view
-        view_counts: dict[str, int] = {}
-        for candidate in ("all", "favorites", "recent", "imports", "standard", "unsorted"):
-            view = candidate
-            view_counts[candidate] = sum(1 for record in records if matches(record))
-        view = selected_view
         return {
             "protein": protein,
             "protparam": None if protparam is None else {
@@ -1774,6 +1768,12 @@ class Database:
                     key=lambda item: (-item[1], labels[item[0]].casefold()),
                 )
             ]
+        selected_view = view
+        view_counts: dict[str, int] = {}
+        for candidate in ("all", "favorites", "recent", "imports", "standard", "unsorted"):
+            view = candidate
+            view_counts[candidate] = sum(1 for record in records if matches(record))
+        view = selected_view
         return {
             "vectors": matched[offset : offset + limit],
             "total": len(matched),
