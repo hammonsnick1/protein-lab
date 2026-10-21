@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderCog, FolderOpen, FolderSearch, GitBranch, HelpCircle, Keyboard, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, Workflow } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderCog, FolderOpen, FolderSearch, GitBranch, HelpCircle, Keyboard, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, TestTubes, Workflow } from "lucide-react";
 import { Menubar as MenubarPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import { ProjectTrees } from "@/components/protein-labs/project-trees";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { PurificationRoadmapWorkspace } from "@/components/protein-labs/purification-roadmap";
 import { VectorLibrary } from "@/components/protein-labs/vector-library";
+import { ProteinLibrary } from "@/components/protein-labs/protein-library";
 import { UserManual } from "@/components/protein-labs/user-manual";
 import { JsonObject, ProteinBundle, ProteinRecord, proteinLabsApi } from "@/lib/protein-labs-api";
 import { definitionFor } from "@/lib/workflow";
@@ -23,9 +24,9 @@ import { useProteinLabsWebMcp } from "@/hooks/use-protein-labs-webmcp";
 import { runViewTransition } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
 
-type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "vectors" | "manual" | "roadmap" | "reports" | "job";
+type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "vectors" | "proteins" | "manual" | "roadmap" | "reports" | "job";
 // Depth of each view; moving to a shallower view animates as "back".
-const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, vectors: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
+const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, vectors: 1, proteins: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
 type VisualTheme = "paper" | "mono-dark" | "mono-light";
 
 // Each appearance carries its own light or dark mode, so the appearance is the
@@ -111,10 +112,11 @@ export default function Home() {
     const timer = window.setTimeout(() => setSplashReady(true), 1150);
     return () => window.clearTimeout(timer);
   }, []);
-  // Ctrl+Shift+L opens the vector library and F1 the manual from anywhere.
+  // Ctrl+Shift+L opens the vector library, Ctrl+Shift+P the protein library
+  // and F1 the manual from anywhere.
   useEffect(() => {
     if (!started) return;
-    const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "l") { event.preventDefault(); setView("vectors"); } if (event.key === "F1") { event.preventDefault(); openManual(); } };
+    const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "l") { event.preventDefault(); setView("vectors"); } if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "p") { event.preventDefault(); setView("proteins"); } if (event.key === "F1") { event.preventDefault(); openManual(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [started, view]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -204,6 +206,7 @@ export default function Home() {
           <MenuItem icon={<LayoutGrid/>} onSelect={() => setView("projects")}>Project gallery</MenuItem>
           <MenuItem icon={<GitBranch/>} onSelect={() => setView("project-trees")}>Project trees</MenuItem>
           <MenuItem icon={<Disc3/>} shortcut="Ctrl+Shift+L" onSelect={() => setView("vectors")}>Vector library</MenuItem>
+          <MenuItem icon={<TestTubes/>} shortcut="Ctrl+Shift+P" onSelect={() => setView("proteins")}>Protein library</MenuItem>
           <MenuItem icon={<Workflow/>} disabled={!bundle} onSelect={() => setView("workflow")}>Project workflow</MenuItem>
           <MenuItem icon={<FlaskConical/>} disabled={!bundle} onSelect={() => setView("roadmap")}>Purification roadmap</MenuItem>
           <MenuItem icon={<BookOpen/>} disabled={!bundle} onSelect={() => setView("reports")}>Purification report</MenuItem>
@@ -216,7 +219,7 @@ export default function Home() {
         </DesktopMenu>
       </MenubarPrimitive.Root>
       <div className="topbar-spacer"/>
-      <div className="top-actions"><Button variant={view === "vectors" ? "secondary" : "ghost"} size="sm" className="topbar-vector-library" aria-pressed={view === "vectors"} title="Vector library (Ctrl+Shift+L)" onClick={() => setView("vectors")}><Disc3/> Vector library</Button><TopGoogleAccount/></div>
+      <div className="top-actions"><Button variant={view === "vectors" ? "secondary" : "ghost"} size="sm" className="topbar-vector-library" aria-pressed={view === "vectors"} title="Vector library (Ctrl+Shift+L)" onClick={() => setView("vectors")}><Disc3/> Vector library</Button><Button variant={view === "proteins" ? "secondary" : "ghost"} size="sm" className="topbar-protein-library" aria-pressed={view === "proteins"} title="Protein library (Ctrl+Shift+P)" onClick={() => setView("proteins")}><TestTubes/> Protein library</Button><TopGoogleAccount/></div>
     </header>
 
     {error && <div className="global-error"><CircleAlert/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
@@ -227,6 +230,7 @@ export default function Home() {
         : view === "projects" ? <ProjectGallery proteins={proteins} onOpen={(id) => void openProject(id)} onCreate={() => { setError(""); setCreateOpen(true); }}/>
         : view === "manual" ? <UserManual key={manualVisit.visit} initialSection={manualVisit.section}/>
         : view === "vectors" ? <VectorLibrary mode="page" proteins={proteins} onOpenProject={(id) => void openProjectJob(id, "expression-vector")}/>
+        : view === "proteins" ? <ProteinLibrary/>
         : view === "project-trees" ? <ProjectTrees proteins={proteins} trees={projectTrees} storageMode={treeStorage} loading={treesLoading} onChange={updateProjectTrees} onOpenProject={(id) => void openProject(id)}/>
         : bundle ? <>{view === "dashboard" && <ProjectDashboard bundle={bundle} onResume={() => setView("workflow")} onRoadmap={() => setView("roadmap")} onReports={() => setView("reports")}/>} {view === "workflow" && <ProjectWorkflow bundle={bundle} onOpenJob={(id) => openJob(id, "planning")} onRoadmap={() => setView("roadmap")} onRefresh={() => refreshBundle(selectedId)}/>} {view === "roadmap" && <PurificationRoadmapWorkspace bundle={bundle} onOpenJob={(id) => openJob(id, "roadmap")} onBackToWorkflow={() => setView("workflow")} onChanged={() => refreshBundle(selectedId)}/>} {view === "job" && <JobWorkspace key={`${selectedId}:${activeJob}:${jobReturn}`} jobId={activeJob} bundle={bundle} returnTo={jobReturn} onBack={() => setView(jobReturn === "roadmap" ? "roadmap" : "workflow")} onOpenJob={(id) => openJob(id, "planning")} onReports={() => setView("reports")} onRoadmap={() => setView("roadmap")} onChanged={() => refreshBundle(selectedId)}/>} {view === "reports" && <ReportsWorkspace bundle={bundle} onChanged={() => refreshBundle(selectedId)}/>}</>
         : <main className="gallery"><p>Select a saved protein project.</p></main>}
