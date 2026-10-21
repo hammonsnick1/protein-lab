@@ -1727,7 +1727,7 @@ class Database:
             if view == "recent" and not record["lastUsedAt"]: return False
             if view == "imports" and record["origin"] != "import": return False
             if view == "standard" and record["origin"] != "standard": return False
-            if view == "unsorted" and (record["collectionIds"] or record["tags"]): return False
+            if view == "unsorted" and (record["origin"] == "standard" or record["collectionIds"] or record["tags"]): return False
             if collection and collection not in record["collectionIds"]: return False
             if tag_filter and not tag_filter.issubset({tag.casefold() for tag in record["tags"]}): return False
             if query_value:
