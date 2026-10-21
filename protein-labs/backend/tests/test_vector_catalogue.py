@@ -238,6 +238,24 @@ def test_project_rename_does_not_rename_catalogue_source(tmp_path):
     assert service.get_library_vector(created["libraryId"])["name"] == "Catalogue name"
 
 
+def test_collections_tags_and_bulk_action_are_atomic(tmp_path):
+    service = planner(tmp_path)
+    first = service.import_library_vector("first.fa", ">first\nATGAAATAG\n")
+    second = service.import_library_vector("second.fa", ">second\nATGCCCTAG\n")
+    collection = service.create_library_collection({"name": "Expression"})["collection"]
+    result = service.bulk_library_action({
+        "ids": [first["id"], second["id"]], "action": "add_to_collection",
+        "collectionId": collection["id"],
+    })
+    assert result["affectedIds"] == [first["id"], second["id"]]
+    assert all(collection["id"] in vector["collectionIds"] for vector in result["vectors"])
+    tagged = service.bulk_library_action({"ids": [first["id"]], "action": "tag", "tag": "secreted"})
+    assert tagged["vectors"][0]["tags"] == ["secreted"]
+    with pytest.raises(LookupError):
+        service.bulk_library_action({"ids": [first["id"], "missing"], "action": "tag", "tag": "nope"})
+    assert service.get_library_vector(first["id"])["tags"] == ["secreted"]
+
+
 def test_fresh_database_loads_attributed_standard_collection(tmp_path):
     service = planner(tmp_path)
     standards = [
