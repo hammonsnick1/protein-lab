@@ -908,6 +908,50 @@ class ProteinPlanner:
     # ------------------------------------------------------------------
     # Shared vector library
     # ------------------------------------------------------------------
+    # Purified protein library -------------------------------------------------
+    def search_library_proteins(
+        self, *, query: str = "", filters: dict[str, list[str]] | None = None,
+        favorite: bool | None = None, limit: int = 100, offset: int = 0,
+    ) -> dict[str, Any]:
+        if limit < 1 or limit > 500:
+            raise ValueError("Protein library limit must be between 1 and 500")
+        if offset < 0:
+            raise ValueError("Protein library offset cannot be negative")
+        unknown = set(filters or {}) - set(self.database.PROTEIN_LIBRARY_FACETS)
+        if unknown:
+            raise ValueError("Unknown protein library facet: " + ", ".join(sorted(unknown)))
+        return self.database.search_library_proteins(
+            query=query, filters=filters, favorite=favorite, limit=limit, offset=offset
+        )
+
+    def get_library_protein(self, protein_id: str) -> dict[str, Any]:
+        return self.database.get_library_protein(protein_id)
+
+    def create_library_protein(self, fields: dict[str, Any]) -> dict[str, Any]:
+        self._validate_library_protein_fields(fields)
+        return self.database.create_library_protein(fields)
+
+    def update_library_protein(self, protein_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        self._validate_library_protein_fields(fields, partial=True)
+        return self.database.update_library_protein(protein_id, fields)
+
+    def delete_library_protein(self, protein_id: str) -> None:
+        self.database.delete_library_protein(protein_id)
+
+    def add_library_protein_event(self, protein_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        return self.database.add_library_protein_event(protein_id, fields)
+
+    @staticmethod
+    def _validate_library_protein_fields(fields: dict[str, Any], partial: bool = False) -> None:
+        if not partial and not str(fields.get("name") or "").strip():
+            raise ValueError("name is required")
+        if "name" in fields and len(str(fields["name"]).strip()) > 200:
+            raise ValueError("name must be at most 200 characters")
+        if "favorite" in fields and not isinstance(fields["favorite"], bool):
+            raise ValueError("favorite must be a boolean")
+        if "tags" in fields and (not isinstance(fields["tags"], list) or not all(isinstance(tag, str) for tag in fields["tags"])):
+            raise ValueError("tags must be an array of strings")
+
     def list_library_vectors(self) -> list[dict[str, Any]]:
         return self.database.list_library_vectors()
 
