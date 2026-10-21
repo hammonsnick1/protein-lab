@@ -57,6 +57,11 @@ def parse_vector_library_search(
         "favorite": favorite,
         "limit": int((query.get("limit") or ["100"])[0]),
         "offset": int((query.get("offset") or ["0"])[0]),
+        "view": (query.get("view") or ["all"])[0],
+        "collection": (query.get("collection") or [""])[0] or None,
+        "tags": [item.strip() for item in query.get("tag", []) if item.strip()],
+        "sort": (query.get("sort") or ["name"])[0],
+        "order": (query.get("order") or ["asc"])[0],
     }
 
 
@@ -153,6 +158,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/protein-planner/vector-library/collections":
                 self._send(200, self.planner.list_library_collections())
+                return
+            if path == "/v1/protein-planner/vector-library/tags":
+                self._send(200, {"tags": self.planner.list_library_tags()})
                 return
             match = re.fullmatch(
                 r"/v1/protein-planner/vector-library/([^/]+)/export", path
@@ -305,11 +313,28 @@ class ApiHandler(BaseHTTPRequestHandler):
                     protein_library_event_match.group(1), body
                 ))
                 return
+            if path == "/v1/protein-planner/vector-library/import/preview":
+                self._send(200, self.planner.preview_library_import(body))
+                return
+            if path == "/v1/protein-planner/vector-library/import/commit":
+                self._send(201, self.planner.commit_library_import(body))
+                return
             if path == "/v1/protein-planner/vector-library/collections":
                 self._send(201, self.planner.create_library_collection(body))
                 return
             if path == "/v1/protein-planner/vector-library/bulk":
                 self._send(200, self.planner.bulk_library_action(body))
+                return
+            if path == "/v1/protein-planner/vector-library/collections/order":
+                self._send(200, self.planner.reorder_library_collections(body))
+                return
+            export_match = re.fullmatch(r"/v1/protein-planner/vector-library/([^/]+)/duplicate", path)
+            if export_match:
+                self._send(201, self.planner.duplicate_library_vector(export_match.group(1)))
+                return
+            restore_match = re.fullmatch(r"/v1/protein-planner/vector-library/([^/]+)/restore", path)
+            if restore_match:
+                self._send(200, self.planner.restore_library_vector(restore_match.group(1)))
                 return
             match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors", path
@@ -485,6 +510,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if collection_match:
                 self._send(200, self.planner.update_library_collection(collection_match.group(1), self._read_json()))
                 return
+            tag_match = re.fullmatch(r"/v1/protein-planner/vector-library/tags/([^/]+)", path)
+            if tag_match:
+                self._send(200, self.planner.rename_library_tag(tag_match.group(1), self._read_json()))
+                return
             if tree_link_match:
                 self._send(200, self.planner.project_trees.update_link(
                     tree_link_match.group(1),
@@ -526,9 +555,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 r"/v1/protein-planner/vector-library/([^/]+)", path
             )
             if library_match:
-                self._send(200, self.planner.set_library_favorite(
-                    library_match.group(1), self._read_json()
-                ))
+                self._send(200, self.planner.update_library_vector(library_match.group(1), self._read_json()))
                 return
             protein_library_match = re.fullmatch(
                 r"/v1/protein-planner/protein-library/([^/]+)", path
@@ -551,6 +578,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(404, {"error": "Endpoint not found"})
                 return
             self._send(200, self.planner.update_protein(match.group(1), self._read_json()))
+        except Exception as error:
+            self._handle_error(error)
+
+    def do_PUT(self) -> None:
+        try:
+            path, _ = self._path_and_query()
+            if path == "/v1/protein-planner/vector-library/collections/order":
+                self._send(200, self.planner.reorder_library_collections(self._read_json()))
+                return
+            self._send(404, {"error": "Endpoint not found"})
         except Exception as error:
             self._handle_error(error)
 
@@ -590,8 +627,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 r"/v1/protein-planner/vector-library/([^/]+)", path
             )
             if library_match:
-                self.planner.delete_library_vector(library_match.group(1))
-                self._send(200, {"deleted": library_match.group(1)})
+                self._send(200, self.planner.delete_library_vector(library_match.group(1)))
                 return
             protein_library_match = re.fullmatch(
                 r"/v1/protein-planner/protein-library/([^/]+)", path
@@ -651,7 +687,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         return value
 
     def _handle_error(self, error: Exception) -> None:
-        if isinstance(error, (SequenceValidationError, ValueError, TypeError, json.JSONDecodeError)):
+        if isinstance(error, PermissionError):
+            self._send(403, {"error": "read_only", "type": error.__class__.__name__})
+        elif isinstance(error, (SequenceValidationError, ValueError, TypeError, json.JSONDecodeError)):
             self._send(400, {"error": str(error), "type": error.__class__.__name__})
         elif isinstance(error, (ProteinNotFoundError, LookupError)):
             self._send(404, {"error": str(error), "type": error.__class__.__name__})

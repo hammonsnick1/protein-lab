@@ -963,6 +963,11 @@ class ProteinPlanner:
         favorite: bool | None = None,
         limit: int = 100,
         offset: int = 0,
+        view: str = "all",
+        collection: str | None = None,
+        tags: list[str] | None = None,
+        sort: str = "name",
+        order: str = "asc",
     ) -> dict[str, Any]:
         if limit < 1 or limit > 500:
             raise ValueError("Vector library limit must be between 1 and 500")
@@ -979,6 +984,7 @@ class ProteinPlanner:
             favorite=favorite,
             limit=limit,
             offset=offset,
+            view=view, collection=collection, tags=tags or [], sort=sort, order=order,
         )
 
     def list_recent_library_vectors(self, limit: int = 10) -> list[dict[str, Any]]:
@@ -997,7 +1003,7 @@ class ProteinPlanner:
         return self.database.get_library_vector(library_id)
 
     def import_library_vector(
-        self, filename: str, content: str
+        self, filename: str, content: str, *, keep_both: bool = False
     ) -> dict[str, Any]:
         """Parse a sequence file directly into the shared catalogue."""
         if len(content) > 15_000_000:
@@ -1016,7 +1022,7 @@ class ProteinPlanner:
             "sequence": sequence,
             "circular": bool(parsed.get("circular", True)),
             "features": normalize_features(parsed.get("features") or [], len(sequence)),
-        })
+        }, keep_both=keep_both)
         return {**vector, "duplicate": True} if duplicate else vector
 
     def export_library_vector(
@@ -1032,8 +1038,9 @@ class ProteinPlanner:
             "content": export_sequence(vector, file_format),
         }
 
-    def delete_library_vector(self, library_id: str) -> None:
+    def delete_library_vector(self, library_id: str) -> dict[str, str]:
         self.database.delete_library_vector(library_id)
+        return {"deleted": library_id, "restoreToken": library_id}
 
     def list_library_collections(self) -> dict[str, Any]:
         return {"collections": self.database.list_collections()}
@@ -1042,7 +1049,7 @@ class ProteinPlanner:
         return {"collection": self.database.create_collection(str(fields.get("name") or ""))}
 
     def update_library_collection(self, collection_id: str, fields: dict[str, Any]) -> dict[str, Any]:
-        return {"collection": self.database.update_collection(collection_id, name=fields.get("name"))}
+        return {"collection": self.database.update_collection(collection_id, name=fields.get("name"), position=fields.get("position"))}
 
     def delete_library_collection(self, collection_id: str) -> dict[str, str]:
         self.database.delete_collection(collection_id); return {"deletedId": collection_id}
@@ -1050,8 +1057,70 @@ class ProteinPlanner:
     def bulk_library_action(self, fields: dict[str, Any]) -> dict[str, Any]:
         ids = fields.get("ids")
         if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids): raise ValueError("ids must be an array of strings")
-        vectors = self.database.bulk_library_action(ids, str(fields.get("action") or ""), collection_id=fields.get("collectionId"), tag=fields.get("tag"), favorite=fields.get("favorite"))
-        return {"affectedIds": ids, "vectors": vectors}
+        action = str(fields.get("action") or "")
+        aliases = {"addToCollection": "add_to_collection", "removeFromCollection": "remove_from_collection", "untag": "untag", "unfavorite": "favorite", "restore": "restore"}
+        action = aliases.get(action, action)
+        tags = fields.get("tags", fields.get("tag"))
+        tag = tags[0] if isinstance(tags, list) and tags else tags
+        favorite = fields.get("favorite", False if fields.get("action") == "unfavorite" else None)
+        vectors = self.database.bulk_library_action(ids, action, collection_id=fields.get("collectionId"), tag=tag, favorite=favorite)
+        return {"updated": ids, "skipped": [], "affectedIds": ids, "vectors": vectors}
+
+    def reorder_library_collections(self, fields: dict[str, Any]) -> dict[str, Any]:
+        ids = fields.get("ids")
+        if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+            raise ValueError("ids must be an array of strings")
+        return {"collections": self.database.reorder_collections(ids)}
+
+    def list_library_tags(self) -> list[dict[str, Any]]:
+        return self.database.list_tags()
+
+    def rename_library_tag(self, old_name: str, fields: dict[str, Any]) -> dict[str, Any]:
+        return {"tags": self.database.rename_tag(old_name, str(fields.get("name") or ""))}
+
+    def update_library_vector(self, library_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        return self.database.update_library_vector(library_id, fields)
+
+    def restore_library_vector(self, library_id: str) -> dict[str, Any]:
+        return self.database.restore_library_vector(library_id)
+
+    def duplicate_library_vector(self, library_id: str) -> dict[str, Any]:
+        return self.database.duplicate_library_vector(library_id)
+
+    def preview_library_import(self, fields: dict[str, Any]) -> dict[str, Any]:
+        files = fields.get("files")
+        if not isinstance(files, list): raise ValueError("files must be an array")
+        return {"files": [self._preview_import_file(file) for file in files]}
+
+    def _preview_import_file(self, file: Any) -> dict[str, Any]:
+        if not isinstance(file, dict): return {"filename": "", "status": "error", "error": "Invalid file"}
+        filename, content = str(file.get("filename") or ""), str(file.get("content") or "")
+        try:
+            parsed = parse_sequence_file(content, filename); sequence = normalize_dna(str(parsed.get("sequence") or ""))
+            if not sequence: raise ValueError("The imported file does not contain a DNA sequence")
+            duplicate = self.database.find_library_duplicate(sequence, bool(parsed.get("circular", True)))
+            result = {"filename": filename, "status": "duplicate" if duplicate else "new", "name": str(parsed.get("name") or "Untitled vector"), "lengthBp": len(sequence)}
+            if duplicate: result["duplicateOf"] = duplicate
+            return result
+        except Exception as error:
+            return {"filename": filename, "status": "error", "error": str(error)}
+
+    def commit_library_import(self, fields: dict[str, Any]) -> dict[str, Any]:
+        files = fields.get("files")
+        if not isinstance(files, list): raise ValueError("files must be an array")
+        results = []
+        for file in files:
+            preview = self._preview_import_file(file)
+            resolution = str(file.get("resolution") or "skip") if isinstance(file, dict) else "skip"
+            if preview["status"] == "error" or (preview["status"] == "duplicate" and resolution == "skip"):
+                results.append(preview | ({"resolution": "skipped"} if preview["status"] == "duplicate" else {})); continue
+            if preview["status"] == "duplicate" and resolution == "merge":
+                results.append(preview | {"resolution": "merged", "vector": preview["duplicateOf"]}); continue
+            try:
+                vector = self.import_library_vector(str(file.get("filename") or ""), str(file.get("content") or ""), keep_both=resolution == "keepBoth")
+                results.append(preview | {"resolution": "kept", "vector": vector})
+            except Exception as error: results.append(preview | {"status": "error", "error": str(error)})
+        return {"files": results}
 
     def copy_library_vector(self, protein_id: str, library_id: str) -> dict[str, Any]:
         """Bring a catalogued vector into a project, recording the new use."""
