@@ -78,7 +78,7 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         self.send_response(204)
         self._cors_headers()
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Content-Length", "0")
         self.end_headers()

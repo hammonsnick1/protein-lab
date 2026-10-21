@@ -1112,8 +1112,8 @@ class ProteinPlanner:
         for file in files:
             preview = self._preview_import_file(file)
             resolution = str(file.get("resolution") or "skip") if isinstance(file, dict) else "skip"
-            if preview["status"] == "error" or (preview["status"] == "duplicate" and resolution == "skip"):
-                results.append(preview | ({"resolution": "skipped"} if preview["status"] == "duplicate" else {})); continue
+            if preview["status"] == "error" or resolution == "skip":
+                results.append(preview | ({"resolution": "skipped"} if preview["status"] != "error" else {})); continue
             if preview["status"] == "duplicate" and resolution == "merge":
                 results.append(preview | {"resolution": "merged", "vector": preview["duplicateOf"]}); continue
             try:
