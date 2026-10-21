@@ -87,6 +87,22 @@ describe("copyProjects", () => {
     assert.equal(inspectDirectory(to).hasProjects, false);
   });
 
+  it("removes a partial temporary file when a copy fails midway", (t) => {
+    const from = scratch();
+    const to = scratch();
+    fs.writeFileSync(databaseIn(from), "main");
+    fs.writeFileSync(`${databaseIn(from)}-wal`, "recent saves");
+    // Simulate the main database copy dying after writing part of the file (a full disk, say).
+    const copy = fs.copyFileSync;
+    t.after(() => { fs.copyFileSync = copy; });
+    fs.copyFileSync = (source, destination, mode) => {
+      if (source === databaseIn(from)) { fs.writeFileSync(destination, "ma"); throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }); }
+      return copy(source, destination, mode);
+    };
+    assert.throws(() => copyProjects(databaseIn(from), to), /ENOSPC/);
+    assert.deepEqual(fs.readdirSync(to), []);
+  });
+
   it("reports nothing to copy when there is no database yet", () => {
     assert.equal(copyProjects(databaseIn(scratch()), scratch()), false);
   });
