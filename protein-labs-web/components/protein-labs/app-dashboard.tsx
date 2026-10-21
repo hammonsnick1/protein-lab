@@ -217,7 +217,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
       {/* Each tile shows an overview and flips to its full list. In a column
           the flipped tile takes the spare height and its back scrolls. */}
       <div className="dashboard-board-column">
-        <FlipTile className="dashboard-project-overview-card" icon={FolderKanban} title="Projects" subtitle="Local protein projects"
+        <FlipTile className="dashboard-project-overview-card" icon={FolderKanban} art="projects" title="Projects" subtitle="Local protein projects"
           backSubtitle={`${roots.length} project${roots.length === 1 ? "" : "s"} · ${completedJobs}/${totalJobs} workflow jobs complete`}
           actions={<Button variant="outline" size="sm" onClick={onProjects}>Gallery <ArrowRight/></Button>}
           front={<>
@@ -230,7 +230,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </div>}
         />
 
-        <FlipTile className="dashboard-tree-overview-card" icon={GitBranch} title="Project trees" subtitle="How your constructs relate"
+        <FlipTile className="dashboard-tree-overview-card" icon={GitBranch} art="trees" title="Project trees" subtitle="How your constructs relate"
           backSubtitle="How your constructs relate and what changed"
           actions={<Button variant="outline" size="sm" onClick={onTrees}>Open trees <ArrowRight/></Button>}
           front={<>
@@ -246,7 +246,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
       </div>
 
       <div className="dashboard-board-column">
-        <FlipTile className="dashboard-current-job-card" icon={Activity} title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}
+        <FlipTile className="dashboard-current-job-card" icon={Activity} art="job" title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}
           actions={currentJob && <Button variant="outline" size="sm" onClick={() => onOpenProject(currentJob.project.id)}>Resume <ArrowRight/></Button>}
           front={currentJob ? <span className="tile-job">
             <span className="current-job-head">
@@ -275,7 +275,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </button> : <div className="current-job-empty"><FlaskConical/><span><strong>No job has been opened yet</strong><small>Open a project and save a workflow step; the most recent one appears here.</small></span><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div>}
         />
 
-        <FlipTile className="dashboard-reports-card" icon={FileText} title="Reports" subtitle="Records to print or send"
+        <FlipTile className="dashboard-reports-card" icon={FileText} art="reports" title="Reports" subtitle="Records to print or send"
           backSubtitle="Publication-quality records to print or send to a client"
           front={<TileHeadline value={reportPages.length} label="report sections" detail={activeProject ? `For ${activeProject.name}` : "Create a project to build its report"}/>}
           back={<div className="reports-card-body">
@@ -285,7 +285,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </div>}
         />
 
-        <FlipTile className="dashboard-team-card" icon={Users} title="Team members" subtitle="Project handoffs for collaborators"
+        <FlipTile className="dashboard-team-card" icon={Users} art="team" title="Team members" subtitle="Project handoffs for collaborators"
           actions={<Button variant="outline" size="sm" onClick={() => setMemberOpen(true)}><UserPlus/> Add</Button>}
           front={<TileHeadline value={members.length + 1} label={members.length ? "people on the team" : "person on the team"} detail={members.length ? `${profile.name || "You"} and ${members.length} collaborator${members.length === 1 ? "" : "s"}` : "Only you so far"}/>}
           back={<>
@@ -296,7 +296,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
       </div>
 
       <div className="dashboard-board-column">
-        <FlipTile className="dashboard-calendar-card" icon={CalendarDays} title="Purification timeline" subtitle="Expression, columns and QC"
+        <FlipTile className="dashboard-calendar-card" icon={CalendarDays} art="timeline" title="Purification timeline" subtitle="Expression, columns and QC"
           backSubtitle="Schedule expression, columns, and quality control"
           actions={<Button variant="outline" size="sm" onClick={() => { setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedDate(dateKey(now)); }}>Today</Button>}
           front={<>
@@ -310,7 +310,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </>}
         />
 
-        <FlipTile className="dashboard-vector-card" icon={Database} title="Vector library" subtitle="Standard and saved vectors"
+        <FlipTile className="dashboard-vector-card" icon={Database} art="vectors" title="Vector library" subtitle="Standard and saved vectors"
           backSubtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} · used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : "Saved vectors appear here"}
           actions={<Button variant="outline" size="sm" onClick={onVectors}>Open library <ArrowRight/></Button>}
           front={vectorsState === "error"
@@ -319,7 +319,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           back={<VectorList vectors={vectors} failed={vectorsState === "error"} onOpenProject={onOpenProject} onOpenLibrary={onVectors}/>}
         />
 
-        <FlipTile className="dashboard-account-card" icon={Sparkles} title="AlphaFold access" subtitle="Through your system browser"
+        <FlipTile className="dashboard-account-card" icon={Sparkles} art="alphafold" title="AlphaFold access" subtitle="Through your system browser"
           backSubtitle="Use your Google-authenticated system browser"
           front={<span className={`tile-status ${profile.googleConnected ? "is-on" : ""}`}><i aria-hidden="true"/><span><b>{profile.googleConnected ? "Google browser link ready" : "Not connected"}</b><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab"}</small></span></span>}
           back={<>
