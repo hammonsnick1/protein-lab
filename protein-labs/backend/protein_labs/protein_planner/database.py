@@ -669,33 +669,58 @@ class Database:
         event_type = str(fields.get("eventType") or "").strip()
         if event_type not in {"stored", "thawed", "aliquot_used", "moved", "discarded"}:
             raise ValueError("eventType must be stored, thawed, aliquot_used, moved, or discarded")
-        current = self.get_library_protein(protein_id)
         used = int(fields.get("aliquotsUsed", 1 if event_type == "aliquot_used" else 0))
         if used < 0 or (event_type != "aliquot_used" and used):
             raise ValueError("aliquotsUsed is only allowed for aliquot_used events")
-        if used > current["aliquotCount"]:
-            raise ValueError("aliquotsUsed cannot exceed the available aliquot count")
-        next_count = current["aliquotCount"] - used
-        next_status = current["status"]
-        if event_type == "discarded":
-            next_status = "discarded"
-        elif event_type == "aliquot_used":
-            next_status = "used_up" if next_count == 0 else "low" if next_count <= 1 else "stored"
         event_id, timestamp = str(uuid.uuid4()), utc_now()
-        to_location = str(fields.get("toLocation") or "").strip()
         with self.connect() as connection:
+            # The conditional decrement must occur before the event insert and
+            # in the same transaction. This prevents two callers that both
+            # observed one remaining aliquot from recording two uses.
+            current = connection.execute(
+                "SELECT aliquot_count, location_path FROM protein_library WHERE id = ?",
+                (protein_id,),
+            ).fetchone()
+            if current is None:
+                raise LookupError(f"Protein library record {protein_id!r} was not found")
+            to_location = str(fields.get("toLocation") or "").strip()
+            if event_type == "aliquot_used":
+                cursor = connection.execute(
+                    """
+                    UPDATE protein_library SET
+                        aliquot_count = aliquot_count - ?,
+                        status = CASE
+                            WHEN aliquot_count - ? = 0 THEN 'used_up'
+                            WHEN aliquot_count - ? <= 1 THEN 'low'
+                            ELSE 'stored'
+                        END,
+                        updated_at = ?
+                    WHERE id = ? AND aliquot_count >= ?
+                    """,
+                    (used, used, used, timestamp, protein_id, used),
+                )
+                if cursor.rowcount == 0:
+                    raise ValueError("aliquotsUsed cannot exceed the available aliquot count")
+            else:
+                status = "discarded" if event_type == "discarded" else None
+                if status is None:
+                    connection.execute(
+                        "UPDATE protein_library SET location_path = ?, updated_at = ? WHERE id = ?",
+                        (to_location or current["location_path"], timestamp, protein_id),
+                    )
+                else:
+                    connection.execute(
+                        "UPDATE protein_library SET status = ?, location_path = ?, updated_at = ? WHERE id = ?",
+                        (status, to_location or current["location_path"], timestamp, protein_id),
+                    )
             connection.execute(
                 """INSERT INTO protein_library_events (
                     id, protein_library_id, event_type, aliquots_used, from_location,
                     to_location, notes, occurred_at, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (event_id, protein_id, event_type, used,
-                 str(fields.get("fromLocation") or current["locationPath"]), to_location,
+                 str(fields.get("fromLocation") or current["location_path"]), to_location,
                  str(fields.get("notes") or ""), str(fields.get("occurredAt") or timestamp), timestamp),
-            )
-            connection.execute(
-                "UPDATE protein_library SET aliquot_count = ?, status = ?, location_path = ?, updated_at = ? WHERE id = ?",
-                (next_count, next_status, to_location or current["locationPath"], timestamp, protein_id),
             )
         return self.get_library_protein(protein_id)
 

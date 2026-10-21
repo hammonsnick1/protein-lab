@@ -3,7 +3,7 @@
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
 import json
-from threading import Thread
+from threading import Barrier, Thread
 
 import pytest
 
@@ -96,6 +96,36 @@ def test_aliquot_events_decrement_and_auto_update_status(tmp_path):
     assert [event["eventType"] for event in empty["events"]] == ["aliquot_used", "aliquot_used"]
     with pytest.raises(ValueError, match="cannot exceed"):
         service.add_library_protein_event(record["id"], {"eventType": "aliquot_used", "aliquotsUsed": 1})
+
+
+def test_concurrent_aliquot_use_records_only_one_event_for_one_remaining_aliquot(tmp_path):
+    """Known answer: one physical aliquot permits exactly one consumption."""
+    service = planner(tmp_path)
+    record = service.create_library_protein(batch(aliquotCount=1))
+    barrier = Barrier(3)
+    results, errors = [], []
+
+    def consume():
+        barrier.wait()
+        try:
+            results.append(service.add_library_protein_event(
+                record["id"], {"eventType": "aliquot_used", "aliquotsUsed": 1}
+            ))
+        except ValueError as error:
+            errors.append(str(error))
+
+    workers = [Thread(target=consume) for _ in range(2)]
+    for worker in workers:
+        worker.start()
+    barrier.wait()
+    for worker in workers:
+        worker.join(timeout=5)
+
+    final = service.get_library_protein(record["id"])
+    assert len(results) == 1
+    assert errors == ["aliquotsUsed cannot exceed the available aliquot count"]
+    assert (final["aliquotCount"], final["status"]) == (0, "used_up")
+    assert len(final["events"]) == 1
 
 
 def test_http_contract_supports_create_filter_event_and_delete(api):
