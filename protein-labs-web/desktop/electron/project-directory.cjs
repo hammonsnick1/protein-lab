@@ -39,22 +39,53 @@ function resolveProjectDirectory(settings, defaultDirectory) {
   return { directory: defaultDirectory, isDefault: true, missing: chosen || null };
 }
 
+// SQLite's own files for one database. A folder holding any of them is not
+// empty: a stray -wal or -shm would be replayed into whatever lands next to it.
+const SQLITE_SUFFIXES = ["", "-wal", "-shm"];
+
+// `leftovers` names SQLite side files with no database beside them (an
+// interrupted copy, say); such a folder is neither empty nor a project folder.
 function inspectDirectory(directory) {
   let writable = true;
   try { fs.accessSync(directory, fs.constants.W_OK); } catch { writable = false; }
-  return { writable, hasProjects: fs.existsSync(databaseIn(directory)) };
+  const database = databaseIn(directory);
+  const hasProjects = fs.existsSync(database);
+  const leftovers = hasProjects ? [] : SQLITE_SUFFIXES.filter((suffix) => suffix && fs.existsSync(`${database}${suffix}`)).map((suffix) => `${DATABASE_FILE}${suffix}`);
+  return { writable, hasProjects, leftovers };
 }
 
 // Copies the database and its write-ahead log into an empty project directory.
 // The engine runs SQLite in WAL mode, so recent saves can still sit in the
 // -wal file; it must be stopped first so neither file changes mid-copy. The
 // original stays where it was as a fallback copy.
+//
+// Both files are copied under temporary names and renamed into place with the
+// main database last, so the folder only looks like it holds projects once the
+// copy is complete. On any failure, every file this call created is removed.
 function copyProjects(fromDatabase, toDirectory) {
   const target = databaseIn(toDirectory);
-  if (fs.existsSync(target)) throw new Error(`${toDirectory} already holds Protein Lab projects.`);
+  const present = SQLITE_SUFFIXES.filter((suffix) => fs.existsSync(`${target}${suffix}`));
+  if (present.length) {
+    throw new Error(`${toDirectory} already holds Protein Lab database files (${present.map((suffix) => path.basename(target) + suffix).join(", ")}).`);
+  }
   if (!fs.existsSync(fromDatabase)) return false;
-  fs.copyFileSync(fromDatabase, target, fs.constants.COPYFILE_EXCL);
-  if (fs.existsSync(`${fromDatabase}-wal`)) fs.copyFileSync(`${fromDatabase}-wal`, `${target}-wal`, fs.constants.COPYFILE_EXCL);
+  const parts = ["-wal", ""].filter((suffix) => fs.existsSync(`${fromDatabase}${suffix}`));
+  const created = [];
+  try {
+    for (const suffix of parts) {
+      const temporary = `${target}${suffix}.copying`;
+      fs.rmSync(temporary, { force: true });
+      fs.copyFileSync(`${fromDatabase}${suffix}`, temporary, fs.constants.COPYFILE_EXCL);
+      created.push(temporary);
+    }
+    for (const suffix of parts) {
+      fs.renameSync(`${target}${suffix}.copying`, `${target}${suffix}`);
+      created.push(`${target}${suffix}`);
+    }
+  } catch (error) {
+    for (const file of created) fs.rmSync(file, { force: true });
+    throw error;
+  }
   return true;
 }
 

@@ -47,7 +47,7 @@ describe("copyProjects", () => {
     assert.equal(fs.readFileSync(databaseIn(to), "utf8"), "main");
     assert.equal(fs.readFileSync(`${databaseIn(to)}-wal`, "utf8"), "recent saves");
     assert.equal(fs.existsSync(databaseIn(from)), true);
-    assert.deepEqual(inspectDirectory(to), { writable: true, hasProjects: true });
+    assert.deepEqual(inspectDirectory(to), { writable: true, hasProjects: true, leftovers: [] });
   });
 
   it("never overwrites projects already in the target folder", () => {
@@ -57,6 +57,34 @@ describe("copyProjects", () => {
     fs.writeFileSync(databaseIn(to), "theirs");
     assert.throws(() => copyProjects(databaseIn(from), to), /already holds/);
     assert.equal(fs.readFileSync(databaseIn(to), "utf8"), "theirs");
+  });
+
+  it("refuses a folder holding only a stray write-ahead log and leaves no database behind", () => {
+    const from = scratch();
+    const to = scratch();
+    fs.writeFileSync(databaseIn(from), "main");
+    fs.writeFileSync(`${databaseIn(from)}-wal`, "recent saves");
+    fs.writeFileSync(`${databaseIn(to)}-wal`, "left by an interrupted copy");
+    assert.throws(() => copyProjects(databaseIn(from), to), /protein_labs\.sqlite3-wal/);
+    assert.equal(fs.existsSync(databaseIn(to)), false);
+    assert.equal(fs.readFileSync(`${databaseIn(to)}-wal`, "utf8"), "left by an interrupted copy");
+    assert.deepEqual(fs.readdirSync(to), ["protein_labs.sqlite3-wal"]);
+    assert.deepEqual(inspectDirectory(to), { writable: true, hasProjects: false, leftovers: ["protein_labs.sqlite3-wal"] });
+  });
+
+  it("removes everything it created when the copy fails partway", () => {
+    const from = scratch();
+    const to = scratch();
+    fs.writeFileSync(databaseIn(from), "main");
+    fs.writeFileSync(`${databaseIn(from)}-wal`, "recent saves");
+    // The main database's temporary name is taken by a directory, so its copy fails after the WAL was copied.
+    fs.mkdirSync(`${databaseIn(to)}.copying`);
+    fs.writeFileSync(path.join(`${databaseIn(to)}.copying`, "keep"), "x");
+    assert.throws(() => copyProjects(databaseIn(from), to));
+    assert.equal(fs.existsSync(databaseIn(to)), false);
+    assert.equal(fs.existsSync(`${databaseIn(to)}-wal`), false);
+    assert.equal(fs.existsSync(`${databaseIn(to)}-wal.copying`), false);
+    assert.equal(inspectDirectory(to).hasProjects, false);
   });
 
   it("reports nothing to copy when there is no database yet", () => {
