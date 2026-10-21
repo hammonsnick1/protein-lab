@@ -51,18 +51,24 @@ def parse_vector_library_search(
         else False if favorite_value == "false"
         else None
     )
-    return {
-        "query": (query.get("q") or [""])[0],
+    request = {
+        "query": (query.get("q") or query.get("query") or [""])[0],
         "filters": filters,
         "favorite": favorite,
         "limit": int((query.get("limit") or ["100"])[0]),
         "offset": int((query.get("offset") or ["0"])[0]),
-        "view": (query.get("view") or ["all"])[0],
-        "collection": (query.get("collection") or [""])[0] or None,
-        "tags": [item.strip() for item in query.get("tag", []) if item.strip()],
-        "sort": (query.get("sort") or ["name"])[0],
-        "order": (query.get("order") or ["asc"])[0],
     }
+    # Keep the established parser contract byte-for-byte for old callers;
+    # only pass new controls when the client actually supplied them.
+    if any(key in query for key in ("view", "collection", "tag", "sort", "order")):
+        request.update({
+            "view": (query.get("view") or ["all"])[0],
+            "collection": (query.get("collection") or [""])[0] or None,
+            "tags": [item.strip() for item in query.get("tag", []) if item.strip()],
+            "sort": (query.get("sort") or ["name"])[0],
+            "order": (query.get("order") or ["asc"])[0],
+        })
+    return request
 
 
 class ApiHandler(BaseHTTPRequestHandler):
