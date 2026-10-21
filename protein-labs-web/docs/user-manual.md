@@ -204,16 +204,44 @@ To prepare a report:
 
 ## Vector library
 
-The vector library searches local vectors and, when enabled and reachable, public collections. You can filter, inspect, export, and load a selected backbone into a project.
+The vector library holds your own vectors next to the standard catalogue, and searches public collections when they are enabled and reachable. Organise vectors into collections and tags, then load a backbone into a project.
 
-![The vector library with search and vector cards](manual/vector-library.webp)
+![The vector library: smart views, collections and tags on the left, vector cards in the middle, the preview on the right](manual/vector-library.webp)
 
 To find a vector:
 
 1. Open **Tools** → **Vector library**, or press <kbd>Ctrl+Shift+L</kbd>.
-2. Search by name, promoter, tag, marker, or accession. Use the source switches and the filter groups to narrow the result list.
-3. Select a result to inspect its features, host, promoter, tags, marker, origin, and source. Select **GenBank** to download the displayed local vector when that export is available.
-4. Choose the destination project, then click **Use in project**. The app opens that project’s expression-vector design job with the selected vector.
+2. Pick a view on the left. **All vectors**, **Favourites**, **Recent**, **My imports**, **Standard catalogue** and **Unsorted** are built in; your collections and tags are listed below them with their counts.
+3. Search by name, promoter, tag, marker or accession; press <kbd>/</kbd> to jump to the search box. Open **Filters** to narrow by host, promoter, tag, marker, copy number or supplier.
+4. Switch between cards and a compact list with the buttons above the results, and choose a sort: name, size, date added or last used. The library remembers both.
+5. Select a vector to preview its map and features. Press <kbd>Space</kbd> for a larger quick look.
+6. Choose the destination project, then click **Use in project**. The app opens that project's expression-vector design job with the selected vector.
+
+To organise vectors:
+
+1. Click the folder-plus button next to **Collections** to make a collection and type its name. Drag collections to reorder them; double-click one to rename it.
+2. Drag vectors onto a collection in the sidebar to add them.
+3. In the preview, set a colour label, add tags and write notes. Notes save as you type.
+4. Right-click a vector, or use its **…** menu, to rename, favourite, duplicate, export, add to a collection or delete it. Standard catalogue vectors are read-only: you can tag, label and favourite them, and duplicate one to get a copy you can rename.
+5. Deleting shows an **Undo** button for a few seconds.
+
+To act on several vectors at once, tick their checkboxes, <kbd>Shift</kbd>-click a range or press <kbd>Ctrl+A</kbd>. The bar above the results then adds them to a collection, tags, favourites, exports or deletes them together.
+
+To import, drag GenBank, FASTA or SnapGene files, or a whole folder, anywhere onto the library; or use **Import files** or **Import folder**. A review sheet lists each file and points out vectors that are already in the library. For each duplicate choose **Skip**, **Keep both** or **Merge** (keep the existing record), then click **Import**.
+
+| Keys in the library | Action |
+| --- | --- |
+| <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Move between vectors |
+| <kbd>Enter</kbd> | Open the vector in the chosen project |
+| <kbd>Space</kbd> | Quick look |
+| <kbd>F</kbd> | Favourite or unfavourite |
+| <kbd>F2</kbd> | Rename |
+| <kbd>Delete</kbd> | Delete, with Undo |
+| <kbd>Ctrl+A</kbd> | Select every vector shown |
+| <kbd>/</kbd> | Search |
+| <kbd>Esc</kbd> | Clear the selection or close a sheet |
+
+Inside **Expression vector design**, **Load backbone** opens the same library as a dialog with the same views and collections. Select a vector and press <kbd>Enter</kbd> or click **Load into this project**.
 
 > **Note:** Public-source search can be unavailable while offline. The local catalogue is still searched, and the app explains which source could not be reached.
 
