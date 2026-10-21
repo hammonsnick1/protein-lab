@@ -75,8 +75,10 @@ function copyProjects(fromDatabase, toDirectory) {
     for (const suffix of parts) {
       const temporary = `${target}${suffix}.copying`;
       fs.rmSync(temporary, { force: true });
-      fs.copyFileSync(`${fromDatabase}${suffix}`, temporary, fs.constants.COPYFILE_EXCL);
+      // Recorded before copying: a copy that fails partway can still leave a
+      // partial temporary file, and it must be cleaned up with the rest.
       created.push(temporary);
+      fs.copyFileSync(`${fromDatabase}${suffix}`, temporary, fs.constants.COPYFILE_EXCL);
     }
     for (const suffix of parts) {
       fs.renameSync(`${target}${suffix}.copying`, `${target}${suffix}`);
