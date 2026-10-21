@@ -151,6 +151,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     )
                 })
                 return
+            if path == "/v1/protein-planner/vector-library/collections":
+                self._send(200, self.planner.list_library_collections())
+                return
             match = re.fullmatch(
                 r"/v1/protein-planner/vector-library/([^/]+)/export", path
             )
@@ -301,6 +304,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(201, self.planner.add_library_protein_event(
                     protein_library_event_match.group(1), body
                 ))
+                return
+            if path == "/v1/protein-planner/vector-library/collections":
+                self._send(201, self.planner.create_library_collection(body))
+                return
+            if path == "/v1/protein-planner/vector-library/bulk":
+                self._send(200, self.planner.bulk_library_action(body))
                 return
             match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors", path
@@ -472,6 +481,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             tree_link_match = re.fullmatch(
                 r"/v1/protein-planner/project-trees/([^/]+)/links/([^/]+)", path
             )
+            collection_match = re.fullmatch(r"/v1/protein-planner/vector-library/collections/([^/]+)", path)
+            if collection_match:
+                self._send(200, self.planner.update_library_collection(collection_match.group(1), self._read_json()))
+                return
             if tree_link_match:
                 self._send(200, self.planner.project_trees.update_link(
                     tree_link_match.group(1),
@@ -547,6 +560,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             tree_link_match = re.fullmatch(
                 r"/v1/protein-planner/project-trees/([^/]+)/links/([^/]+)", path
             )
+            collection_match = re.fullmatch(r"/v1/protein-planner/vector-library/collections/([^/]+)", path)
+            if collection_match:
+                self._send(200, self.planner.delete_library_collection(collection_match.group(1)))
+                return
             if tree_link_match:
                 self.planner.project_trees.delete_link(
                     tree_link_match.group(1), tree_link_match.group(2)

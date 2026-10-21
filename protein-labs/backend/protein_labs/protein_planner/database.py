@@ -244,6 +244,22 @@ class Database:
                     PRIMARY KEY (library_id, protein_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS vector_collections (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS vector_collection_memberships (
+                    collection_id TEXT NOT NULL REFERENCES vector_collections(id) ON DELETE CASCADE,
+                    library_id TEXT NOT NULL REFERENCES vector_library(id) ON DELETE CASCADE,
+                    PRIMARY KEY (collection_id, library_id)
+                );
+                CREATE TABLE IF NOT EXISTS vector_tags (
+                    library_id TEXT NOT NULL REFERENCES vector_library(id) ON DELETE CASCADE,
+                    tag TEXT NOT NULL COLLATE NOCASE,
+                    PRIMARY KEY (library_id, tag)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_vector_library_updated
                     ON vector_library(updated_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_vector_library_uses_protein
@@ -348,6 +364,12 @@ class Database:
                 connection.execute(
                     "ALTER TABLE expression_vectors ADD COLUMN library_id TEXT"
                 )
+            library_columns = {row["name"] for row in connection.execute(
+                "PRAGMA table_info(vector_library)").fetchall()}
+            if "color_label" not in library_columns:
+                connection.execute("ALTER TABLE vector_library ADD COLUMN color_label TEXT")
+            if "deleted_at" not in library_columns:
+                connection.execute("ALTER TABLE vector_library ADD COLUMN deleted_at TEXT")
             project_tree_link_columns = {
                 row["name"]
                 for row in connection.execute(
@@ -1802,6 +1824,62 @@ class Database:
             if cursor.rowcount == 0:
                 raise LookupError(f"Catalogued vector {library_id!r} was not found")
 
+    def list_collections(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT c.*, COUNT(m.library_id) AS vector_count
+                FROM vector_collections c LEFT JOIN vector_collection_memberships m
+                ON m.collection_id=c.id GROUP BY c.id ORDER BY c.position, c.name""").fetchall()
+        return [{"id": r["id"], "name": r["name"], "position": r["position"],
+                 "vectorCount": r["vector_count"], "createdAt": r["created_at"], "updatedAt": r["updated_at"]} for r in rows]
+
+    def create_collection(self, name: str) -> dict[str, Any]:
+        name = name.strip()
+        if not name or len(name) > 120: raise ValueError("Collection names must be 1 to 120 characters")
+        now, collection_id = utc_now(), str(uuid.uuid4())
+        with self.connect() as connection:
+            try:
+                position = connection.execute("SELECT COALESCE(MAX(position), -1)+1 FROM vector_collections").fetchone()[0]
+                connection.execute("INSERT INTO vector_collections VALUES (?, ?, ?, ?, ?)", (collection_id, name, position, now, now))
+            except sqlite3.IntegrityError as error: raise ValueError("That collection name already exists") from error
+        return next(c for c in self.list_collections() if c["id"] == collection_id)
+
+    def update_collection(self, collection_id: str, *, name: str | None = None) -> dict[str, Any]:
+        with self.connect() as connection:
+            if name is not None:
+                name = name.strip()
+                if not name: raise ValueError("Collection name is required")
+                try: cursor = connection.execute("UPDATE vector_collections SET name=?, updated_at=? WHERE id=?", (name, utc_now(), collection_id))
+                except sqlite3.IntegrityError as error: raise ValueError("That collection name already exists") from error
+            else: cursor = connection.execute("SELECT 1 FROM vector_collections WHERE id=?", (collection_id,))
+            if name is not None and cursor.rowcount == 0: raise LookupError(f"Collection {collection_id!r} was not found")
+            if name is None and cursor.fetchone() is None: raise LookupError(f"Collection {collection_id!r} was not found")
+        return next(c for c in self.list_collections() if c["id"] == collection_id)
+
+    def delete_collection(self, collection_id: str) -> None:
+        with self.connect() as connection:
+            if connection.execute("DELETE FROM vector_collections WHERE id=?", (collection_id,)).rowcount == 0: raise LookupError(f"Collection {collection_id!r} was not found")
+
+    def bulk_library_action(self, ids: list[str], action: str, *, collection_id: str | None = None, tag: str | None = None, favorite: bool | None = None) -> list[dict[str, Any]]:
+        if not ids or len(set(ids)) != len(ids): raise ValueError("ids must be a non-empty unique list")
+        with self.connect() as connection:
+            rows = connection.execute("SELECT id, is_standard FROM vector_library WHERE id IN (%s)" % ",".join("?" * len(ids)), ids).fetchall()
+            if len(rows) != len(ids): raise LookupError("One or more catalogued vectors were not found")
+            if action in {"delete"} and any(r["is_standard"] for r in rows): raise ValueError("Bundled standard vectors cannot be deleted")
+            if action in {"add_to_collection", "move_to_collection"}:
+                if not collection_id or connection.execute("SELECT 1 FROM vector_collections WHERE id=?", (collection_id,)).fetchone() is None: raise LookupError("Collection was not found")
+                if action == "move_to_collection": connection.execute("DELETE FROM vector_collection_memberships WHERE library_id IN (%s)" % ",".join("?" * len(ids)), ids)
+                connection.executemany("INSERT OR IGNORE INTO vector_collection_memberships VALUES (?, ?)", [(collection_id, i) for i in ids])
+            elif action in {"tag", "untag"}:
+                if not tag or not tag.strip(): raise ValueError("A tag is required")
+                sql = "INSERT OR IGNORE INTO vector_tags VALUES (?, ?)" if action == "tag" else "DELETE FROM vector_tags WHERE library_id=? AND tag=?"
+                connection.executemany(sql, [(i, tag.strip()) for i in ids])
+            elif action == "favorite":
+                if not isinstance(favorite, bool): raise ValueError("favorite must be a boolean")
+                connection.execute("UPDATE vector_library SET favorite=? WHERE id IN (%s)" % ",".join("?" * len(ids)), [int(favorite), *ids])
+            elif action == "delete": connection.execute("UPDATE vector_library SET deleted_at=? WHERE id IN (%s)" % ",".join("?" * len(ids)), [utc_now(), *ids])
+            else: raise ValueError("Unknown bulk action")
+        return [self.get_library_vector(i) for i in ids]
+
     def _library_vector(
         self, connection: sqlite3.Connection, row: sqlite3.Row, full: bool
     ) -> dict[str, Any]:
@@ -1848,6 +1926,8 @@ class Database:
             "favorite": bool(row["favorite"]),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
+            "colorLabel": row["color_label"] if "color_label" in row.keys() else None,
+            "deletedAt": row["deleted_at"] if "deleted_at" in row.keys() else None,
             "projects": [
                 {
                     "proteinId": use["protein_id"],
@@ -1859,6 +1939,8 @@ class Database:
                 for use in uses
             ],
         }
+        record["tags"] = [r["tag"] for r in connection.execute("SELECT tag FROM vector_tags WHERE library_id=? ORDER BY tag", (row["id"],))]
+        record["collectionIds"] = [r["collection_id"] for r in connection.execute("SELECT collection_id FROM vector_collection_memberships WHERE library_id=?", (row["id"],))]
         record["projectCount"] = len(record["projects"])
         if full:
             record["sequence"] = row["sequence"]

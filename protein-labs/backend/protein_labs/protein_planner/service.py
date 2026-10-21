@@ -1035,6 +1035,24 @@ class ProteinPlanner:
     def delete_library_vector(self, library_id: str) -> None:
         self.database.delete_library_vector(library_id)
 
+    def list_library_collections(self) -> dict[str, Any]:
+        return {"collections": self.database.list_collections()}
+
+    def create_library_collection(self, fields: dict[str, Any]) -> dict[str, Any]:
+        return {"collection": self.database.create_collection(str(fields.get("name") or ""))}
+
+    def update_library_collection(self, collection_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        return {"collection": self.database.update_collection(collection_id, name=fields.get("name"))}
+
+    def delete_library_collection(self, collection_id: str) -> dict[str, str]:
+        self.database.delete_collection(collection_id); return {"deletedId": collection_id}
+
+    def bulk_library_action(self, fields: dict[str, Any]) -> dict[str, Any]:
+        ids = fields.get("ids")
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids): raise ValueError("ids must be an array of strings")
+        vectors = self.database.bulk_library_action(ids, str(fields.get("action") or ""), collection_id=fields.get("collectionId"), tag=fields.get("tag"), favorite=fields.get("favorite"))
+        return {"affectedIds": ids, "vectors": vectors}
+
     def copy_library_vector(self, protein_id: str, library_id: str) -> dict[str, Any]:
         """Bring a catalogued vector into a project, recording the new use."""
         source = self.database.get_library_vector(library_id)
