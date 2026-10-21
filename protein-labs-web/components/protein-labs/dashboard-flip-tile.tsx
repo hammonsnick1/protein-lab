@@ -2,17 +2,20 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { RotateCcw, RotateCw, type LucideIcon } from "lucide-react";
+import { TileArt, type TileArtKind } from "@/components/protein-labs/dashboard-tile-art";
 
 /**
  * A dashboard tile that shows an overview on its front and flips to the full
  * list on its back. The whole front is one button (click, Enter or Space);
  * the back returns with its Back control, its title, or Escape. Focus follows
  * the visible face, and the hidden face is inert so Tab never lands on it.
- * Under reduced motion the CSS swaps the 3D turn for a cross-fade.
+ * Under reduced motion the CSS swaps the 3D turn for a cross-fade. The
+ * front carries the tile's cartoon beside its overview.
  */
-export function FlipTile({ className, icon: Icon, title, subtitle, front, back, actions, backSubtitle }: {
+export function FlipTile({ className, icon: Icon, art, title, subtitle, front, back, actions, backSubtitle }: {
   className: string;
   icon: LucideIcon;
+  art: TileArtKind;
   title: string;
   subtitle: string;
   front: React.ReactNode;
@@ -41,7 +44,7 @@ export function FlipTile({ className, icon: Icon, title, subtitle, front, back, 
         <span><strong>{title}</strong><small>{subtitle}</small></span>
         <em className="flip-hint"><RotateCw/><span>Show all</span></em>
       </span>
-      <span className="flip-front-body">{front}</span>
+      <span className="flip-front-body"><span className="flip-front-content">{front}</span><TileArt kind={art}/></span>
     </button>
     <section id={backId} className={`flip-face flip-back dashboard-card ${className}`} aria-label={title} inert={!flipped} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); flip(false); } }}>
       <header className="dashboard-card-header flip-back-header">

@@ -13186,7 +13186,104 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .flip-hint svg { width: 12px; }
 .flip-front:hover .flip-hint,
 .flip-front:focus-visible .flip-hint { color: var(--foreground); border-color: var(--primary); }
-.flip-front-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.flip-front-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
+.flip-front-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+/* Older card rules set their children to flex: none; the body still has to
+   fill the face so the cartoon reaches its foot. */
+.suite-dashboard .dashboard-board .flip-front > .flip-front-body { flex: 1 1 0; }
+
+/* Tile cartoons. They sit in the front's lower-right corner beside the
+   overview, sized from the face so they never crowd the text: about a third
+   of its width, never taller than the room under the header. */
+.tile-art {
+  --art-ink: var(--comic-ink);
+  --art-paper: #fffaf0;
+  --art-glass: #eef6f8;
+  --art-coral: #ef765f;
+  --art-sun: #efc456;
+  --art-sky: #7fb8e2;
+  --art-sky-deep: #4f8fc4;
+  --art-leaf: #6cc070;
+  --art-leaf-deep: #4a9a52;
+  --art-wood: #a8724a;
+  --art-skin-1: #f4d2ad;
+  --art-skin-2: #d29b6c;
+  --art-skin-3: #8d5b3d;
+  flex: none;
+  align-self: flex-end;
+  width: min(32cqw, calc(100cqh - 58px), 148px);
+  aspect-ratio: 1;
+  filter: drop-shadow(3px 3px 0 color-mix(in srgb, var(--art-ink) 14%, transparent));
+  transform-origin: 50% 100%;
+  transition: transform .35s cubic-bezier(.3,1.6,.5,1);
+}
+.tile-art svg { display: block; width: 100%; height: 100%; overflow: visible; fill: none; stroke: var(--art-ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.tile-art .art-paper { fill: var(--art-paper); }
+.tile-art .art-glass { fill: var(--art-glass); }
+.tile-art .art-coral { fill: var(--art-coral); }
+.tile-art .art-sun { fill: var(--art-sun); }
+.tile-art .art-sky { fill: var(--art-sky); }
+.tile-art .art-sky-deep { fill: var(--art-sky-deep); }
+.tile-art .art-leaf { fill: var(--art-leaf); }
+.tile-art .art-leaf-deep { fill: var(--art-leaf-deep); }
+.tile-art .art-wood { fill: var(--art-wood); }
+.tile-art .art-skin-1 { fill: var(--art-skin-1); }
+.tile-art .art-skin-2 { fill: var(--art-skin-2); }
+.tile-art .art-skin-3 { fill: var(--art-skin-3); }
+.tile-art .art-ink { fill: var(--art-ink); stroke: none; }
+.tile-art .art-none { fill: none; }
+.tile-art .art-thin { stroke-width: 2; }
+.tile-art .art-shade { fill: color-mix(in srgb, var(--art-ink) 12%, transparent); stroke: none; }
+.tile-art .art-gloss { stroke: var(--art-paper); stroke-width: 3.5; }
+.tile-art .art-coral-line { stroke: var(--art-coral); stroke-width: 3.5; }
+.tile-art .art-ink-line { stroke-width: 3.5; }
+.tile-art .art-ring-outline { stroke-width: 12; }
+.tile-art .art-ring { stroke: var(--art-paper); stroke-width: 6; }
+.tile-art .art-gene-coral { stroke: var(--art-coral); stroke-width: 6; stroke-linecap: butt; }
+.tile-art .art-gene-leaf { stroke: var(--art-leaf); stroke-width: 6; stroke-linecap: butt; }
+.tile-art .art-ribbon-outline { stroke-width: 10; }
+.tile-art .art-ribbon { stroke: var(--art-coral); stroke-width: 5; }
+.flip-front:hover .tile-art,
+.flip-front:focus-visible .tile-art { transform: rotate(-4deg) scale(1.05); }
+/* The monochrome appearances keep the drawings but not the hue: greys on
+   white under black ink, or dark greys under white ink on black. */
+.visual-mono-light .tile-art {
+  --art-paper: #ffffff;
+  --art-glass: #f4f4f5;
+  --art-coral: #6c6c73;
+  --art-sun: #d6d6da;
+  --art-sky: #b4b4ba;
+  --art-sky-deep: #77777d;
+  --art-leaf: #c4c4ca;
+  --art-leaf-deep: #8e8e96;
+  --art-wood: #55555c;
+  --art-skin-1: #ececee;
+  --art-skin-2: #c4c4ca;
+  --art-skin-3: #8e8e96;
+}
+.visual-mono-dark .tile-art {
+  --art-ink: var(--foreground);
+  --art-paper: #1c1c1f;
+  --art-glass: #141416;
+  --art-coral: #8e8e96;
+  --art-sun: #b4b4ba;
+  --art-sky: #4a4a50;
+  --art-sky-deep: #303034;
+  --art-leaf: #46464c;
+  --art-leaf-deep: #303034;
+  --art-wood: #2a2a2e;
+  --art-skin-1: #b4b4ba;
+  --art-skin-2: #8e8e96;
+  --art-skin-3: #6c6c73;
+}
+@container (max-height: 120px) {
+  .tile-art { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile-art { transition: none; }
+  .flip-front:hover .tile-art,
+  .flip-front:focus-visible .tile-art { transform: none; }
+}
 .tile-headline { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .tile-headline > strong { font-size: 36px; font-weight: 650; line-height: 1; letter-spacing: -.02em; }
 .tile-headline > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
