@@ -196,8 +196,9 @@ async function chooseProjectDirectory() {
   if (picked.canceled || !picked.filePaths[0]) return { status: "cancelled" };
   const target = path.resolve(picked.filePaths[0]);
   if (target === path.resolve(current.directory)) return { status: "unchanged", state: projectDirectoryState() };
-  const { writable, hasProjects } = inspectDirectory(target);
+  const { writable, hasProjects, leftovers } = inspectDirectory(target);
   if (!writable) return { status: "error", message: `Protein Lab cannot save in ${target}. Choose a folder you can write to.` };
+  if (leftovers.length) return { status: "error", message: `${target} holds ${leftovers.join(" and ")} without its database, probably from an interrupted copy. Remove ${leftovers.length > 1 ? "those files" : "that file"} or choose another folder.` };
 
   let copy = false;
   if (hasProjects) {
