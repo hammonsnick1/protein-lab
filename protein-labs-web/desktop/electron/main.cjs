@@ -18,6 +18,14 @@ let startupLog;
 // running belongs to someone else and cannot be moved to another folder.
 let ownsEngine = false;
 let switchingDirectory = false;
+// `--smoke-test` (used by the release workflow): start this build's own
+// engine, load the workspace, then exit 0, or exit 1 on any startup failure
+// instead of showing a dialog nobody can dismiss.
+const smokeTest = app.commandLine.hasSwitch("smoke-test");
+
+// Taskbar grouping and pinned shortcuts on Windows match on this id, which
+// electron-builder also writes into the installer's shortcuts.
+if (process.platform === "win32") app.setAppUserModelId("org.proteinlabs.desktop");
 
 // Use the compositor actually running on Linux. Forcing X11 on Omarchy can
 // leave an invisible process while Xwayland repeatedly restarts. Vulkan must
@@ -39,8 +47,21 @@ function log(message) {
 }
 
 function backendExecutable() {
-  if (app.isPackaged) return path.join(process.resourcesPath, "backend", "protein-labs-backend");
-  return path.resolve(__dirname, "../../../protein-labs/backend/dist/protein-labs-backend");
+  const name = process.platform === "win32" ? "protein-labs-backend.exe" : "protein-labs-backend";
+  if (app.isPackaged) return path.join(process.resourcesPath, "backend", name);
+  return path.resolve(__dirname, "../../../protein-labs/backend/dist", name);
+}
+
+// On Windows the PyInstaller bootloader runs the engine as a child process
+// and Node's kill() ends only the bootloader, leaving the engine on the port,
+// so the whole tree is ended with taskkill there.
+function killEngine(child, signal = "SIGTERM") {
+  if (process.platform !== "win32") {
+    child.kill(signal);
+    return;
+  }
+  spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true })
+    .on("error", () => child.kill());
 }
 
 function webEntry() {
@@ -115,6 +136,8 @@ function startBackend() {
   const child = spawn(executable, ["--host", API_HOST, "--port", String(API_PORT), "--database", databasePath()], {
     stdio: ["ignore", "ignore", "pipe"],
     env: { ...process.env, PYTHONUNBUFFERED: "1" },
+    // The engine is a console program; without this Windows opens a terminal.
+    windowsHide: true,
   });
   backendProcess = child;
   ownsEngine = true;
@@ -156,9 +179,9 @@ function stopBackend(timeoutMs = 8000) {
   const child = backendProcess;
   if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
   return new Promise((resolve) => {
-    const force = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    const force = setTimeout(() => killEngine(child, "SIGKILL"), timeoutMs);
     child.once("exit", () => { clearTimeout(force); resolve(); });
-    child.kill("SIGTERM");
+    killEngine(child);
   });
 }
 
@@ -256,6 +279,25 @@ ipcMain.handle("project-directory:open", async (event) => {
   return shell.openPath(projectDirectory().directory);
 });
 
+// Stops the engine this run started, then exits with the smoke-test result.
+async function exitSmokeTest(code) {
+  quitting = true;
+  await stopBackend();
+  app.exit(code);
+}
+
+// Passes once React has rendered the workspace into #root.
+async function finishSmokeTest() {
+  const deadline = Date.now() + 15000;
+  const mounted = () => mainWindow.webContents.executeJavaScript("document.getElementById('root')?.childElementCount > 0");
+  while (!(await mounted())) {
+    if (Date.now() > deadline) throw new Error("The workspace page loaded but never rendered.");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  log("Smoke test passed.");
+  await exitSmokeTest(0);
+}
+
 async function createWindow() {
   const logDir = path.join(app.getPath("userData"), "logs");
   fs.mkdirSync(logDir, { recursive: true });
@@ -283,17 +325,21 @@ async function createWindow() {
   mainWindow.on("closed", () => { mainWindow = undefined; });
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
     log(`Renderer stopped: ${JSON.stringify(details)}`);
+    if (smokeTest) return void exitSmokeTest(1);
     if (!quitting) dialog.showErrorBox("Protein Lab display stopped", `Please reopen Protein Lab. Startup details were saved to ${startupLog}.`);
   });
   await mainWindow.loadFile(path.resolve(__dirname, "../assets/starting.html"));
-  if (await backendIsHealthy()) log("Connected to existing local engine.");
-  else startBackend();
+  if (await backendIsHealthy()) {
+    if (smokeTest) throw new Error(`Another engine already answers on port ${API_PORT}, so this build's own engine cannot be tested.`);
+    log("Connected to existing local engine.");
+  } else startBackend();
   await backendReady();
   if (quitting || !mainWindow) return;
   await mainWindow.loadFile(webEntry());
   starting = false;
   mainWindow.show();
   log(`Workspace loaded; visible=${mainWindow.isVisible()}`);
+  if (smokeTest) await finishSmokeTest();
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -312,6 +358,7 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(createWindow).catch((error) => {
     if (quitting) return;
     log(`Startup failed: ${error instanceof Error ? error.stack : error}`);
+    if (smokeTest) return exitSmokeTest(1);
     dialog.showErrorBox("Protein Lab could not start", `${error instanceof Error ? error.message : String(error)}\n\nStartup log: ${startupLog || "unavailable"}`);
     app.quit();
   });
@@ -319,6 +366,6 @@ if (!hasSingleInstanceLock) {
   app.on("before-quit", () => {
     log("Desktop closing.");
     quitting = true;
-    if (backendProcess && !backendProcess.killed) backendProcess.kill("SIGTERM");
+    if (backendProcess && !backendProcess.killed) killEngine(backendProcess);
   });
 }

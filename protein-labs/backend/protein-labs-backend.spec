@@ -37,7 +37,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX-packed binaries break macOS code signing and trip Windows virus
+    # scanners, so the engine ships uncompressed on every platform.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
