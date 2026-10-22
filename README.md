@@ -55,4 +55,4 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and 
 
 ## License
 
-**TODO: a license has not yet been selected.** Until a license is added, no grant of rights is implied.
+Protein Lab is released under the [MIT License](LICENSE).

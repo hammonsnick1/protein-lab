@@ -1,6 +1,7 @@
 {
   "name": "protein-labs",
   "version": "0.2.0",
+  "license": "MIT",
   "description": "Offline protein planning, analysis, purification, and research workspace.",
   "homepage": "https://proteinlabs.local",
   "author": {
