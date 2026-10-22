@@ -51,15 +51,15 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: protein-labs/backend/requirements*.txt
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -119,11 +119,23 @@ jobs:
           desktop-file-validate /usr/share/applications/protein-labs.desktop
           xvfb-run -a node scripts/smoke-app.mjs /opt/Protein\ Lab/protein-labs --no-sandbox
 
+      # PowerShell, because Git Bash rewrites the /S switch into the path S:/
+      # and the installer then waits on its interactive wizard.
+      - name: Install - Windows installer
+        if: runner.os == 'Windows'
+        working-directory: protein-labs-web
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $installer = Get-ChildItem release/*.exe | Select-Object -First 1
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+
       - name: Smoke test - Windows installer
         if: runner.os == 'Windows'
         working-directory: protein-labs-web
+        timeout-minutes: 5
         run: |
-          ./release/*.exe /S
           app=$(find "$(cygpath "$LOCALAPPDATA")/Programs" -name "Protein Lab.exe" -print -quit)
           echo "Installed: $app"
           node scripts/smoke-app.mjs "$app"
@@ -138,7 +150,7 @@ jobs:
           codesign --verify --deep --verbose=2 "$RUNNER_TEMP/Protein Lab.app"
           node scripts/smoke-app.mjs "$RUNNER_TEMP/Protein Lab.app/Contents/MacOS/Protein Lab"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: installers-${{ runner.os }}-${{ runner.arch }}
           path: |
@@ -157,8 +169,8 @@ jobs:
     runs-on: ubuntu-latest
     container: archlinux:latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           name: installers-Linux-X64
           path: release
@@ -179,8 +191,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           pattern: installers-*
           path: release
