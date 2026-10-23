@@ -1090,17 +1090,35 @@ class ProteinPlanner:
     def preview_library_import(self, fields: dict[str, Any]) -> dict[str, Any]:
         files = fields.get("files")
         if not isinstance(files, list): raise ValueError("files must be an array")
-        return {"files": [self._preview_import_file(file) for file in files]}
+        # A review batch must be self-consistent too: the second copy of a
+        # sequence is a duplicate even before either file is committed.
+        batch_duplicates: dict[tuple[bool, str], dict[str, Any]] = {}
+        return {"files": [self._preview_import_file(file, batch_duplicates) for file in files]}
 
-    def _preview_import_file(self, file: Any) -> dict[str, Any]:
+    def _preview_import_file(
+        self, file: Any, batch_duplicates: dict[tuple[bool, str], dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
         if not isinstance(file, dict): return {"filename": "", "status": "error", "error": "Invalid file"}
         filename, content = str(file.get("filename") or ""), str(file.get("content") or "")
         try:
             parsed = parse_sequence_file(content, filename); sequence = normalize_dna(str(parsed.get("sequence") or ""))
             if not sequence: raise ValueError("The imported file does not contain a DNA sequence")
-            duplicate = self.database.find_library_duplicate(sequence, bool(parsed.get("circular", True)))
+            circular = bool(parsed.get("circular", True))
+            duplicate = self.database.find_library_duplicate(sequence, circular)
+            checksum = self.database._sequence_checksum(sequence, circular)
             result = {"filename": filename, "status": "duplicate" if duplicate else "new", "name": str(parsed.get("name") or "Untitled vector"), "lengthBp": len(sequence)}
+            batch_key = (circular, checksum)
+            if duplicate is None and batch_duplicates is not None and batch_key in batch_duplicates:
+                duplicate = batch_duplicates[batch_key]
+                result["status"] = "duplicate"
             if duplicate: result["duplicateOf"] = duplicate
+            elif batch_duplicates is not None:
+                # This lightweight pseudo-summary gives the review sheet a
+                # concrete earlier file to reference without writing anything.
+                batch_duplicates[batch_key] = {
+                    "id": None, "filename": filename, "name": result["name"],
+                    "isStandard": False, "deletedAt": None,
+                }
             return result
         except Exception as error:
             return {"filename": filename, "status": "error", "error": str(error)}

@@ -256,6 +256,16 @@ def test_collections_tags_and_bulk_action_are_atomic(tmp_path):
     assert service.get_library_vector(first["id"])["tags"] == ["secreted"]
 
 
+def test_import_preview_detects_duplicate_within_one_batch(tmp_path):
+    service = planner(tmp_path)
+    preview = service.preview_library_import({"files": [
+        {"filename": "batch-a.fa", "content": ">a\nATGTTTTAG\n"},
+        {"filename": "batch-b-duplicate.fa", "content": ">b\nATGTTTTAG\n"},
+    ]})
+    assert [item["status"] for item in preview["files"]] == ["new", "duplicate"]
+    assert preview["files"][1]["duplicateOf"]["filename"] == "batch-a.fa"
+
+
 def test_fresh_database_loads_attributed_standard_collection(tmp_path):
     service = planner(tmp_path)
     standards = [
