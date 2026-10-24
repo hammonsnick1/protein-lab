@@ -1870,9 +1870,11 @@ class Database:
 
     def list_collections(self) -> list[dict[str, Any]]:
         with self.connect() as connection:
-            rows = connection.execute("""SELECT c.*, COUNT(m.library_id) AS vector_count
+            rows = connection.execute("""SELECT c.*, COUNT(l.id) AS vector_count
                 FROM vector_collections c LEFT JOIN vector_collection_memberships m
-                ON m.collection_id=c.id GROUP BY c.id ORDER BY c.position, c.name""").fetchall()
+                ON m.collection_id=c.id LEFT JOIN vector_library l
+                ON l.id=m.library_id AND l.deleted_at IS NULL
+                GROUP BY c.id ORDER BY c.position, c.name""").fetchall()
         return [{"id": r["id"], "name": r["name"], "position": r["position"],
                  "vectorCount": r["vector_count"], "createdAt": r["created_at"], "updatedAt": r["updated_at"]} for r in rows]
 
@@ -1962,7 +1964,7 @@ class Database:
         vector, _ = self.import_library_vector(source, keep_both=True)
         return vector
 
-    def bulk_library_action(self, ids: list[str], action: str, *, collection_id: str | None = None, tag: str | None = None, favorite: bool | None = None) -> list[dict[str, Any]]:
+    def bulk_library_action(self, ids: list[str], action: str, *, collection_id: str | None = None, tags: list[str] | None = None, favorite: bool | None = None) -> list[dict[str, Any]]:
         if not ids or len(set(ids)) != len(ids): raise ValueError("ids must be a non-empty unique list")
         with self.connect() as connection:
             rows = connection.execute("SELECT id, is_standard FROM vector_library WHERE id IN (%s)" % ",".join("?" * len(ids)), ids).fetchall()
@@ -1976,9 +1978,9 @@ class Database:
                 if not collection_id: raise ValueError("collectionId is required")
                 connection.execute("DELETE FROM vector_collection_memberships WHERE collection_id=? AND library_id IN (%s)" % ",".join("?" * len(ids)), [collection_id, *ids])
             elif action in {"tag", "untag"}:
-                if not tag or not tag.strip(): raise ValueError("A tag is required")
+                if not tags: raise ValueError("At least one tag is required")
                 sql = "INSERT OR IGNORE INTO vector_tags VALUES (?, ?)" if action == "tag" else "DELETE FROM vector_tags WHERE library_id=? AND tag=?"
-                connection.executemany(sql, [(i, tag.strip()) for i in ids])
+                connection.executemany(sql, [(i, tag.strip()) for i in ids for tag in tags])
             elif action == "favorite":
                 if not isinstance(favorite, bool): raise ValueError("favorite must be a boolean")
                 connection.execute("UPDATE vector_library SET favorite=? WHERE id IN (%s)" % ",".join("?" * len(ids)), [int(favorite), *ids])

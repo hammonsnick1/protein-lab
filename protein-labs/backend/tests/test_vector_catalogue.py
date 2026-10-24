@@ -249,11 +249,15 @@ def test_collections_tags_and_bulk_action_are_atomic(tmp_path):
     })
     assert result["affectedIds"] == [first["id"], second["id"]]
     assert all(collection["id"] in vector["collectionIds"] for vector in result["vectors"])
-    tagged = service.bulk_library_action({"ids": [first["id"]], "action": "tag", "tag": "secreted"})
-    assert tagged["vectors"][0]["tags"] == ["secreted"]
+    tagged = service.bulk_library_action({"ids": [first["id"]], "action": "tag", "tags": ["secreted", "alpha"]})
+    assert tagged["vectors"][0]["tags"] == ["alpha", "secreted"]
     with pytest.raises(LookupError):
         service.bulk_library_action({"ids": [first["id"], "missing"], "action": "tag", "tag": "nope"})
-    assert service.get_library_vector(first["id"])["tags"] == ["secreted"]
+    assert service.get_library_vector(first["id"])["tags"] == ["alpha", "secreted"]
+    service.delete_library_vector(first["id"])
+    assert service.list_library_collections()["collections"][0]["vectorCount"] == 1
+    service.restore_library_vector(first["id"])
+    assert service.list_library_collections()["collections"][0]["vectorCount"] == 2
 
 
 def test_import_preview_detects_duplicate_within_one_batch(tmp_path):
