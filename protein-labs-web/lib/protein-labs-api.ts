@@ -101,8 +101,15 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(ENGINE_UNREACHABLE_MESSAGE);
   }
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
-  if (!response.ok) throw new Error(String(body.error ?? `Protein Lab returned ${response.status}`));
+  if (!response.ok) throw new Error(errorText(body.error) ?? `Protein Lab returned ${response.status}`);
   return body as T;
+}
+
+// Older routes send `{error: "text"}`; newer ones `{error: {code, message}}`.
+function errorText(error: unknown): string | undefined {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") return (error as { message: string }).message;
+  return undefined;
 }
 
 const post = <T>(path: string, body: JsonObject = {}) => request<T>(path, { method: "POST", body: JSON.stringify(body) });
@@ -159,6 +166,19 @@ export const proteinLabsApi = {
   getLibraryVector: (libraryId: string) => request<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`),
   deleteLibraryVector: (libraryId: string) => request<{ deleted: string }>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { method: "DELETE" }),
   copyLibraryVector: (proteinId: string, libraryId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/library/${encodeURIComponent(libraryId)}`),
+  // Library organisation (HOM-153 api-contract): collections, tags, per-vector metadata, bulk actions, import review.
+  updateLibraryVector: (libraryId: string, fields: JsonObject) => patch<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, fields),
+  duplicateLibraryVector: (libraryId: string) => post<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/duplicate`),
+  restoreLibraryVector: (libraryId: string) => post<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/restore`),
+  bulkLibraryAction: (body: JsonObject) => post<{ updated: string[]; skipped: (string | JsonObject)[]; affectedIds: string[]; vectors: JsonObject[] }>("/v1/protein-planner/vector-library/bulk", body),
+  libraryCollections: () => request<{ collections: JsonObject[] }>("/v1/protein-planner/vector-library/collections"),
+  createLibraryCollection: (name: string) => post<{ collection: JsonObject }>("/v1/protein-planner/vector-library/collections", { name }),
+  updateLibraryCollection: (collectionId: string, fields: JsonObject) => patch<{ collection: JsonObject }>(`/v1/protein-planner/vector-library/collections/${encodeURIComponent(collectionId)}`, fields),
+  deleteLibraryCollection: (collectionId: string) => request<{ deletedId: string }>(`/v1/protein-planner/vector-library/collections/${encodeURIComponent(collectionId)}`, { method: "DELETE" }),
+  // POST, not PUT: the engine's CORS preflight does not allow PUT.
+  reorderLibraryCollections: (ids: string[]) => post<{ collections: JsonObject[] }>("/v1/protein-planner/vector-library/collections/order", { ids }),
+  previewLibraryImport: (files: { filename: string; content: string }[]) => post<{ files: JsonObject[] }>("/v1/protein-planner/vector-library/import/preview", { files }),
+  commitLibraryImport: (files: { filename: string; content: string; resolution: string }[]) => post<{ files: JsonObject[] }>("/v1/protein-planner/vector-library/import/commit", { files }),
   vectorSources: () => request<{ sources: JsonObject[] }>("/v1/protein-planner/vector-sources"),
   vectorSourceSets: (source: string) => request<{ sets: JsonObject[] }>(`/v1/protein-planner/vector-sources/sets?source=${encodeURIComponent(source)}`),
   searchVectorSources: (source: string, query: string, set = "", limit = 25) => post<{ results: JsonObject[] }>("/v1/protein-planner/vector-sources/search", { source, query, set, limit }),
