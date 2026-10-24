@@ -1,6 +1,10 @@
+import type { ProjectDiff, ProjectTree } from "@/lib/project-tree-types";
+
 // The desktop build substitutes this at bundle time; the web build leaves it
 // undefined and falls back to the environment variable.
 declare const __PROTEIN_LABS_API__: string | undefined;
+
+import type { RegionsResponse, StructureDetail, StructureListResponse, StructureSource } from "./structure-regions.ts";
 
 // An empty bundled value is meaningful: it means same-origin requests, so the
 // chain tests for a defined string rather than a truthy one.
@@ -80,11 +84,22 @@ export type BackendHealth ={ service: string; version: number; apps: string[]; d
 
 // Exported so feature-specific engine clients (chromatography, gels) share one
 // transport, one error shape and one base URL instead of hand-rolling fetch.
+// Shown when the engine cannot be reached at all. "connection" keeps the
+// vector library's offline classification working.
+export const ENGINE_UNREACHABLE_MESSAGE = "No connection to the local Protein Lab engine. Restart Protein Lab and try again.";
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    });
+  } catch {
+    // fetch rejects only when no response arrived at all, so the local engine
+    // is not running. Say that instead of the browser's "Failed to fetch".
+    throw new Error(ENGINE_UNREACHABLE_MESSAGE);
+  }
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) throw new Error(String(body.error ?? `Protein Lab returned ${response.status}`));
   return body as T;
@@ -113,6 +128,10 @@ export const proteinLabsApi = {
   alphaFoldServer: (proteinId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/server-job`),
   importAlphaFold: (proteinId: string, path: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/import`, { path }),
   getAlphaFoldModel: (proteinId: string, modelId: string) => request<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/models/${encodeURIComponent(modelId)}`),
+  // Structure Viewer (HOM-126): AlphaFold and experimental PDB entries, mmCIF + residue mapping, regions of interest.
+  listStructures: (proteinId: string, limit = 10) => request<StructureListResponse>(`/v1/protein-planner/proteins/${proteinId}/structures?limit=${limit}`),
+  getStructure: (proteinId: string, source: StructureSource, structureId: string) => request<StructureDetail>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}`),
+  getStructureRegions: (proteinId: string, source: StructureSource, structureId: string) => request<RegionsResponse>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}/regions`),
   createJob: (proteinId: string, name: string, appType: string, config: JsonObject = {}) => post<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs`, { name, appType, config }),
   updateJob: (proteinId: string, jobId: string, name: string, status: ProjectJob["status"], config: JsonObject) => patch<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { name, status, config }),
   deleteJob: (proteinId: string, jobId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { method: "DELETE" }),
@@ -151,6 +170,20 @@ export const proteinLabsApi = {
   insertIntoVector: (proteinId: string, vectorId: string, fields: JsonObject) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/insert`, fields),
   digestVector: (proteinId: string, vectorId: string, enzymeNames: string[]) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/digest`, { enzymeNames }),
   alignVectors: (proteinId: string, vectorId: string, queryVectorId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/align`, { queryVectorId }),
+  // Project trees and the project diff service (HOM-136). The tree response
+  // embeds a one-line summary per branch so the tree view draws in one call;
+  // the full diff is fetched lazily when a branch is selected.
+  listProjectTrees: () => request<{ trees: ProjectTree[] }>("/v1/protein-planner/project-trees"),
+  createProjectTree: (name: string, rootProjectId: string) => post<ProjectTree>("/v1/protein-planner/project-trees", { name, rootProjectId }),
+  renameProjectTree: (treeId: string, name: string) => patch<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}`, { name }),
+  deleteProjectTree: (treeId: string) => request<{ deleted: string }>(`/v1/protein-planner/project-trees/${treeId}`, { method: "DELETE" }),
+  createProjectBranch: (treeId: string, fromProjectId: string, toProjectId: string, note: string) => post<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches`, { fromProjectId, toProjectId, note }),
+  updateProjectBranch: (treeId: string, branchId: string, fields: { fromProjectId?: string; note?: string }) => patch<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches/${branchId}`, fields),
+  deleteProjectBranch: (treeId: string, branchId: string) => request<ProjectTree>(`/v1/protein-planner/project-trees/${treeId}/branches/${branchId}`, { method: "DELETE" }),
+  // `confirmed` is the engine's durability handshake: only then may the
+  // browser stop treating its localStorage copy as authoritative.
+  importProjectTrees: (trees: JsonObject[]) => post<{ trees?: ProjectTree[]; imported?: number; skipped?: number; confirmed?: boolean }>("/v1/protein-planner/project-trees/import", { trees }),
+  projectDiff: (fromProjectId: string, toProjectId: string) => request<ProjectDiff>(`/v1/protein-planner/project-diff?from=${encodeURIComponent(fromProjectId)}&to=${encodeURIComponent(toProjectId)}`),
 };
 
 export async function ensureProjectJob(proteinId: string, jobs: ProjectJob[], appType: string, name: string, config: JsonObject, status: ProjectJob["status"] = "complete") {

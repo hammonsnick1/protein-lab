@@ -12,7 +12,7 @@ import { DashboardStats, type BundlesState } from "@/components/protein-labs/das
 import { FlipTile, TileHeadline } from "@/components/protein-labs/dashboard-flip-tile";
 import type { ProteinBundle, ProteinRecord } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
-import type { SavedProjectTree } from "@/lib/project-trees";
+import type { ProjectTree } from "@/lib/project-tree-types";
 import { projectTreeStats } from "@/lib/project-trees";
 
 const mascots = [
@@ -47,7 +47,7 @@ const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleCon
 const MASCOT_VISIBLE_KEY = "protein-labs-mascot-visible";
 const reportPages = ["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"];
 
-export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onVectors, onCreate }: { proteins: ProteinRecord[]; trees: SavedProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onVectors: () => void; onCreate: () => void }) {
+export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onVectors, onCreate }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onVectors: () => void; onCreate: () => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
   // Which project list the bundles were loaded for, so a newer list reads as loading.
@@ -112,7 +112,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   const activeProjectId = selectedProject || roots[0]?.id || "";
   const completedJobs = bundles.flatMap((bundle) => bundle.projectJobs).filter((job) => job.status === "complete").length;
   const totalJobs = bundles.reduce((sum, bundle) => sum + bundle.projectJobs.length, 0);
-  const projectIdsInTrees = new Set(trees.flatMap((tree) => [tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]));
+  const projectIdsInTrees = new Set(trees.flatMap((tree) => [tree.rootProjectId, ...tree.branches.flatMap((link) => [link.fromProjectId, link.toProjectId])]));
   const upcoming = events.filter((event) => event.date >= dateKey(now)).sort((a, b) => a.date.localeCompare(b.date));
   const workspaceHours = useWorkspaceHours();
   // The job touched most recently across every project, with its project's
@@ -217,7 +217,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
       {/* Each tile shows an overview and flips to its full list. In a column
           the flipped tile takes the spare height and its back scrolls. */}
       <div className="dashboard-board-column">
-        <FlipTile className="dashboard-project-overview-card" icon={FolderKanban} title="Projects" subtitle="Local protein projects"
+        <FlipTile className="dashboard-project-overview-card" icon={FolderKanban} art="projects" title="Projects" subtitle="Local protein projects"
           backSubtitle={`${roots.length} project${roots.length === 1 ? "" : "s"} · ${completedJobs}/${totalJobs} workflow jobs complete`}
           actions={<Button variant="outline" size="sm" onClick={onProjects}>Gallery <ArrowRight/></Button>}
           front={<>
@@ -230,7 +230,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </div>}
         />
 
-        <FlipTile className="dashboard-tree-overview-card" icon={GitBranch} title="Project trees" subtitle="How your constructs relate"
+        <FlipTile className="dashboard-tree-overview-card" icon={GitBranch} art="trees" title="Project trees" subtitle="How your constructs relate"
           backSubtitle="How your constructs relate and what changed"
           actions={<Button variant="outline" size="sm" onClick={onTrees}>Open trees <ArrowRight/></Button>}
           front={<>
@@ -239,14 +239,14 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </>}
           back={<>
             <button className="tree-stat-strip" onClick={onTrees}><span><strong>{treeStats.trees}</strong><small>Tree{treeStats.trees === 1 ? "" : "s"}</small></span><span><strong>{treeStats.branches}</strong><small>Branch{treeStats.branches === 1 ? "" : "es"}</small></span><span><strong>{projectIdsInTrees.size}</strong><small>Linked project{projectIdsInTrees.size === 1 ? "" : "s"}</small></span></button>
-            {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].relationships.length} branch{trees[0].relationships.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
-            <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.relationships.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.relationships.length} branch{tree.relationships.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
+            {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].branches.length} branch{trees[0].branches.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
+            <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.branches.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.branches.length} branch{tree.branches.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
           </>}
         />
       </div>
 
       <div className="dashboard-board-column">
-        <FlipTile className="dashboard-current-job-card" icon={Activity} title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}
+        <FlipTile className="dashboard-current-job-card" icon={Activity} art="job" title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}
           actions={currentJob && <Button variant="outline" size="sm" onClick={() => onOpenProject(currentJob.project.id)}>Resume <ArrowRight/></Button>}
           front={currentJob ? <span className="tile-job">
             <span className="current-job-head">
@@ -275,7 +275,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </button> : <div className="current-job-empty"><FlaskConical/><span><strong>No job has been opened yet</strong><small>Open a project and save a workflow step; the most recent one appears here.</small></span><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div>}
         />
 
-        <FlipTile className="dashboard-reports-card" icon={FileText} title="Reports" subtitle="Records to print or send"
+        <FlipTile className="dashboard-reports-card" icon={FileText} art="reports" title="Reports" subtitle="Records to print or send"
           backSubtitle="Publication-quality records to print or send to a client"
           front={<TileHeadline value={reportPages.length} label="report sections" detail={activeProject ? `For ${activeProject.name}` : "Create a project to build its report"}/>}
           back={<div className="reports-card-body">
@@ -285,7 +285,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </div>}
         />
 
-        <FlipTile className="dashboard-team-card" icon={Users} title="Team members" subtitle="Project handoffs for collaborators"
+        <FlipTile className="dashboard-team-card" icon={Users} art="team" title="Team members" subtitle="Project handoffs for collaborators"
           actions={<Button variant="outline" size="sm" onClick={() => setMemberOpen(true)}><UserPlus/> Add</Button>}
           front={<TileHeadline value={members.length + 1} label={members.length ? "people on the team" : "person on the team"} detail={members.length ? `${profile.name || "You"} and ${members.length} collaborator${members.length === 1 ? "" : "s"}` : "Only you so far"}/>}
           back={<>
@@ -296,7 +296,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
       </div>
 
       <div className="dashboard-board-column">
-        <FlipTile className="dashboard-calendar-card" icon={CalendarDays} title="Purification timeline" subtitle="Expression, columns and QC"
+        <FlipTile className="dashboard-calendar-card" icon={CalendarDays} art="timeline" title="Purification timeline" subtitle="Expression, columns and QC"
           backSubtitle="Schedule expression, columns, and quality control"
           actions={<Button variant="outline" size="sm" onClick={() => { setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1)); setSelectedDate(dateKey(now)); }}>Today</Button>}
           front={<>
@@ -310,7 +310,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </>}
         />
 
-        <FlipTile className="dashboard-vector-card" icon={Database} title="Vector library" subtitle="Standard and saved vectors"
+        <FlipTile className="dashboard-vector-card" icon={Database} art="vectors" title="Vector library" subtitle="Standard and saved vectors"
           backSubtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} · used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : "Saved vectors appear here"}
           actions={<Button variant="outline" size="sm" onClick={onVectors}>Open library <ArrowRight/></Button>}
           front={vectorsState === "error"
@@ -319,7 +319,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           back={<VectorList vectors={vectors} failed={vectorsState === "error"} onOpenProject={onOpenProject} onOpenLibrary={onVectors}/>}
         />
 
-        <FlipTile className="dashboard-account-card" icon={Sparkles} title="AlphaFold access" subtitle="Through your system browser"
+        <FlipTile className="dashboard-account-card" icon={Sparkles} art="alphafold" title="AlphaFold access" subtitle="Through your system browser"
           backSubtitle="Use your Google-authenticated system browser"
           front={<span className={`tile-status ${profile.googleConnected ? "is-on" : ""}`}><i aria-hidden="true"/><span><b>{profile.googleConnected ? "Google browser link ready" : "Not connected"}</b><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab"}</small></span></span>}
           back={<>
@@ -555,11 +555,11 @@ function ProjectTile({ protein, index, complete, total, linked, onOpen }: { prot
 /* Draws a saved tree as a left-to-right branch diagram: the root on the left,
    each relationship one generation further right. With no tree it draws a
    decorative sample so the empty state still previews the feature. */
-function TreePreview({ tree, names }: { tree?: SavedProjectTree; names?: ProteinRecord[] }) {
+function TreePreview({ tree, names }: { tree?: ProjectTree; names?: ProteinRecord[] }) {
   // Labelled diagrams compress the generations to leave room for names on the right.
   const span = names ? 74 : 96;
   const layout = useMemo(() => {
-    const links = tree ? tree.relationships.map((link) => [link.fromProjectId, link.toProjectId] as const) : [["r", "a"], ["r", "b"], ["a", "c"], ["a", "d"]] as const;
+    const links = tree ? tree.branches.map((link) => [link.fromProjectId, link.toProjectId] as const) : [["r", "a"], ["r", "b"], ["a", "c"], ["a", "d"]] as const;
     const root = tree?.rootProjectId ?? "r";
     const depth = new Map<string, number>([[root, 0]]);
     const queue = [root];

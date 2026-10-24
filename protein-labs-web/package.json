@@ -1,6 +1,7 @@
 {
   "name": "protein-labs",
   "version": "0.2.0",
+  "license": "MIT",
   "description": "Offline protein planning, analysis, purification, and research workspace.",
   "homepage": "https://proteinlabs.local",
   "author": {
@@ -22,10 +23,10 @@
     "desktop:package": "npm run desktop:build:web && electron-builder --linux AppImage"
   },
   "dependencies": {
-    "3dmol": "^2.5.5",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "^1.31.0",
+    "molstar": "^5.13.1",
     "radix-ui": "^1.6.7",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -55,6 +56,8 @@
     "productName": "Protein Lab",
     "artifactName": "Protein-Labs-${version}-${arch}.${ext}",
     "asar": true,
+    "icon": "desktop/assets/icon.png",
+    "publish": null,
     "directories": {
       "output": "release"
     },
@@ -66,21 +69,73 @@
     ],
     "extraResources": [
       {
-        "from": "../protein-labs/backend/dist/protein-labs-backend",
-        "to": "backend/protein-labs-backend"
+        "from": "../protein-labs/backend/dist",
+        "to": "backend",
+        "filter": [
+          "protein-labs-backend",
+          "protein-labs-backend.exe"
+        ]
       }
     ],
     "linux": {
       "target": [
         "AppImage",
+        "deb",
         "pacman"
       ],
-      "category": "Science;Education",
-      "icon": "desktop/assets/icon.png",
+      "category": "Science;Biology",
+      "icon": "desktop/assets/icons",
       "executableName": "protein-labs",
       "maintainer": "Protein Lab <protein-labs@localhost.invalid>",
       "synopsis": "Offline protein science workspace",
-      "syncDesktopName": true
+      "syncDesktopName": true,
+      "desktop": {
+        "entry": {
+          "Name": "Protein Lab",
+          "GenericName": "Protein Science Workspace",
+          "StartupWMClass": "protein-labs"
+        }
+      }
+    },
+    "deb": {
+      "packageCategory": "science"
+    },
+    "pacman": {
+      "artifactName": "protein-labs-${version}-1-x86_64.pkg.tar.zst",
+      "compression": "zstd",
+      "depends": [
+        "gtk3",
+        "nss",
+        "alsa-lib",
+        "at-spi2-core",
+        "libcups",
+        "libdrm",
+        "mesa",
+        "libxkbcommon",
+        "libxcomposite",
+        "libxdamage",
+        "libxrandr",
+        "xdg-utils"
+      ]
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.education",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "Protein Lab ${version}"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Protein Lab",
+      "uninstallDisplayName": "Protein Lab"
     }
   },
   "//": "Run `npm install-scripts approve electron` after npm ci, or `npx electron --version` once to fetch the runtime."
