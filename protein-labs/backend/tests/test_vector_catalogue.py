@@ -238,6 +238,38 @@ def test_project_rename_does_not_rename_catalogue_source(tmp_path):
     assert service.get_library_vector(created["libraryId"])["name"] == "Catalogue name"
 
 
+def test_collections_tags_and_bulk_action_are_atomic(tmp_path):
+    service = planner(tmp_path)
+    first = service.import_library_vector("first.fa", ">first\nATGAAATAG\n")
+    second = service.import_library_vector("second.fa", ">second\nATGCCCTAG\n")
+    collection = service.create_library_collection({"name": "Expression"})["collection"]
+    result = service.bulk_library_action({
+        "ids": [first["id"], second["id"]], "action": "add_to_collection",
+        "collectionId": collection["id"],
+    })
+    assert result["affectedIds"] == [first["id"], second["id"]]
+    assert all(collection["id"] in vector["collectionIds"] for vector in result["vectors"])
+    tagged = service.bulk_library_action({"ids": [first["id"]], "action": "tag", "tags": ["secreted", "alpha"]})
+    assert tagged["vectors"][0]["tags"] == ["alpha", "secreted"]
+    with pytest.raises(LookupError):
+        service.bulk_library_action({"ids": [first["id"], "missing"], "action": "tag", "tag": "nope"})
+    assert service.get_library_vector(first["id"])["tags"] == ["alpha", "secreted"]
+    service.delete_library_vector(first["id"])
+    assert service.list_library_collections()["collections"][0]["vectorCount"] == 1
+    service.restore_library_vector(first["id"])
+    assert service.list_library_collections()["collections"][0]["vectorCount"] == 2
+
+
+def test_import_preview_detects_duplicate_within_one_batch(tmp_path):
+    service = planner(tmp_path)
+    preview = service.preview_library_import({"files": [
+        {"filename": "batch-a.fa", "content": ">a\nATGTTTTAG\n"},
+        {"filename": "batch-b-duplicate.fa", "content": ">b\nATGTTTTAG\n"},
+    ]})
+    assert [item["status"] for item in preview["files"]] == ["new", "duplicate"]
+    assert preview["files"][1]["duplicateOf"]["filename"] == "batch-a.fa"
+
+
 def test_fresh_database_loads_attributed_standard_collection(tmp_path):
     service = planner(tmp_path)
     standards = [
