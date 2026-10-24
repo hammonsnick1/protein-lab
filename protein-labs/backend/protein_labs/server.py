@@ -30,7 +30,8 @@ from .vector_sources import VectorSourceError
 
 
 def parse_vector_library_search(
-    query: dict[str, list[str]], facet_names: dict[str, str]
+    query: dict[str, list[str]], facet_names: dict[str, str], *,
+    include_vector_controls: bool = False,
 ) -> dict[str, Any]:
     """Translate URL query values into the stable catalogue service contract."""
     filters = {
@@ -60,7 +61,7 @@ def parse_vector_library_search(
     }
     # Keep the established parser contract byte-for-byte for old callers;
     # only pass new controls when the client actually supplied them.
-    if any(key in query for key in ("view", "collection", "tag", "sort", "order")):
+    if include_vector_controls and any(key in query for key in ("view", "collection", "tag", "sort", "order")):
         request.update({
             "view": (query.get("view") or ["all"])[0],
             "collection": (query.get("collection") or [""])[0] or None,
@@ -137,7 +138,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/protein-planner/vector-library":
                 search = parse_vector_library_search(
-                    query, self.planner.database.VECTOR_LIBRARY_FACETS
+                    query, self.planner.database.VECTOR_LIBRARY_FACETS,
+                    include_vector_controls=True,
                 )
                 self._send(200, self.planner.search_library_vectors(**search))
                 return
