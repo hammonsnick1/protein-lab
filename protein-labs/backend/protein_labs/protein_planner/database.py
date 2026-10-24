@@ -147,6 +147,57 @@ class Database:
                     updated_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS project_trees (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    root_project_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                -- Project ids intentionally are not foreign keys. A deleted
+                -- project remains a visible missing node instead of silently
+                -- erasing lineage history.
+                CREATE TABLE IF NOT EXISTS project_tree_nodes (
+                    tree_id TEXT NOT NULL
+                        REFERENCES project_trees(id) ON DELETE CASCADE,
+                    project_id TEXT NOT NULL,
+                    added_at TEXT NOT NULL,
+                    PRIMARY KEY (tree_id, project_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS project_tree_links (
+                    id TEXT PRIMARY KEY,
+                    tree_id TEXT NOT NULL
+                        REFERENCES project_trees(id) ON DELETE CASCADE,
+                    from_project_id TEXT NOT NULL,
+                    to_project_id TEXT NOT NULL,
+                    change_type TEXT NOT NULL DEFAULT '',
+                    description TEXT NOT NULL DEFAULT '',
+                    diff_summary TEXT NOT NULL DEFAULT '',
+                    diff_categories_json TEXT NOT NULL DEFAULT '[]',
+                    diff_change_count INTEGER NOT NULL DEFAULT 0,
+                    from_project_updated_at TEXT,
+                    to_project_updated_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (tree_id, from_project_id, to_project_id),
+                    FOREIGN KEY (tree_id, from_project_id)
+                        REFERENCES project_tree_nodes(tree_id, project_id),
+                    FOREIGN KEY (tree_id, to_project_id)
+                        REFERENCES project_tree_nodes(tree_id, project_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS project_tree_imports (
+                    source_key TEXT NOT NULL,
+                    legacy_tree_id TEXT NOT NULL,
+                    tree_id TEXT NOT NULL UNIQUE
+                        REFERENCES project_trees(id) ON DELETE CASCADE,
+                    payload_hash TEXT NOT NULL,
+                    imported_at TEXT NOT NULL,
+                    PRIMARY KEY (source_key, legacy_tree_id)
+                );
+
                 CREATE TABLE IF NOT EXISTS expression_vectors (
                     id TEXT PRIMARY KEY,
                     protein_id TEXT NOT NULL REFERENCES proteins(id) ON DELETE CASCADE,
@@ -210,6 +261,10 @@ class Database:
                     ON alphafold_models(protein_id, imported_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_project_jobs_protein
                     ON project_jobs(protein_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_project_tree_links_tree
+                    ON project_tree_links(tree_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_project_tree_nodes_project
+                    ON project_tree_nodes(project_id);
                 CREATE INDEX IF NOT EXISTS idx_expression_vectors_protein
                     ON expression_vectors(protein_id, updated_at DESC);
                 """
@@ -235,6 +290,17 @@ class Database:
             if "library_id" not in vector_columns:
                 connection.execute(
                     "ALTER TABLE expression_vectors ADD COLUMN library_id TEXT"
+                )
+            project_tree_link_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(project_tree_links)"
+                ).fetchall()
+            }
+            if "diff_change_count" not in project_tree_link_columns:
+                connection.execute(
+                    "ALTER TABLE project_tree_links ADD COLUMN "
+                    "diff_change_count INTEGER NOT NULL DEFAULT 0"
                 )
             library_columns = {
                 row["name"]
@@ -475,6 +541,57 @@ class Database:
             "projectNotebook": None if notebook is None else self._notebook(notebook),
         }
 
+    def project_diff_revision(self, protein_id: str) -> str:
+        """Fingerprint every persisted input that can affect a project diff."""
+        with self.connect() as connection:
+            protein = connection.execute(
+                "SELECT updated_at FROM proteins WHERE id = ?", (protein_id,)
+            ).fetchone()
+            if protein is None:
+                raise ProteinNotFoundError(f"Protein {protein_id!r} was not found")
+            values: dict[str, Any] = {
+                "protein": protein["updated_at"],
+                "protparam": connection.execute(
+                    "SELECT analyzed_at FROM protparam_results WHERE protein_id = ?",
+                    (protein_id,),
+                ).fetchone(),
+                "notebook": connection.execute(
+                    "SELECT updated_at FROM project_notebooks WHERE protein_id = ?",
+                    (protein_id,),
+                ).fetchone(),
+                "jobs": connection.execute(
+                    """
+                    SELECT id, updated_at FROM project_jobs
+                    WHERE protein_id = ? ORDER BY id
+                    """,
+                    (protein_id,),
+                ).fetchall(),
+                "vectors": connection.execute(
+                    """
+                    SELECT v.id, v.updated_at, v.library_id,
+                           l.updated_at AS library_updated_at
+                    FROM expression_vectors v
+                    LEFT JOIN vector_library l ON l.id = v.library_id
+                    WHERE v.protein_id = ? ORDER BY v.id
+                    """,
+                    (protein_id,),
+                ).fetchall(),
+            }
+        serializable = {
+            "protein": values["protein"],
+            "protparam": None
+            if values["protparam"] is None
+            else values["protparam"]["analyzed_at"],
+            "notebook": None
+            if values["notebook"] is None
+            else values["notebook"]["updated_at"],
+            "jobs": [tuple(row) for row in values["jobs"]],
+            "vectors": [tuple(row) for row in values["vectors"]],
+        }
+        return hashlib.sha256(
+            json.dumps(serializable, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
     def save_project_notebook(
         self,
         protein_id: str,
@@ -510,6 +627,404 @@ class Database:
             ).fetchone()
         assert row is not None
         return self._notebook(row)
+
+    # ------------------------------------------------------------------
+    # Project lineage trees
+    # ------------------------------------------------------------------
+    def list_project_trees(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM project_trees ORDER BY updated_at DESC, id"
+            ).fetchall()
+            return [self._project_tree(connection, row) for row in rows]
+
+    def get_project_tree(self, tree_id: str) -> dict[str, Any]:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM project_trees WHERE id = ?", (tree_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Project tree {tree_id!r} was not found")
+            return self._project_tree(connection, row)
+
+    def create_project_tree(
+        self,
+        name: str,
+        root_project_id: str,
+        *,
+        tree_id: str | None = None,
+        created_at: str | None = None,
+        updated_at: str | None = None,
+    ) -> dict[str, Any]:
+        tree_id = tree_id or str(uuid.uuid4())
+        created_at = created_at or utc_now()
+        updated_at = updated_at or created_at
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO project_trees (
+                    id, name, root_project_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (tree_id, name, root_project_id, created_at, updated_at),
+            )
+            connection.execute(
+                """
+                INSERT INTO project_tree_nodes (tree_id, project_id, added_at)
+                VALUES (?, ?, ?)
+                """,
+                (tree_id, root_project_id, created_at),
+            )
+        return self.get_project_tree(tree_id)
+
+    def rename_project_tree(self, tree_id: str, name: str) -> dict[str, Any]:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "UPDATE project_trees SET name = ?, updated_at = ? WHERE id = ?",
+                (name, utc_now(), tree_id),
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Project tree {tree_id!r} was not found")
+        return self.get_project_tree(tree_id)
+
+    def delete_project_tree(self, tree_id: str) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM project_trees WHERE id = ?", (tree_id,)
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Project tree {tree_id!r} was not found")
+
+    def create_project_tree_link(
+        self,
+        tree_id: str,
+        from_project_id: str,
+        to_project_id: str,
+        *,
+        link_id: str | None = None,
+        change_type: str = "",
+        description: str = "",
+        diff_summary: str = "",
+        diff_categories: list[str] | None = None,
+        diff_change_count: int = 0,
+        from_project_updated_at: str | None = None,
+        to_project_updated_at: str | None = None,
+        created_at: str | None = None,
+        updated_at: str | None = None,
+    ) -> dict[str, Any]:
+        link_id = link_id or str(uuid.uuid4())
+        created_at = created_at or utc_now()
+        updated_at = updated_at or created_at
+        with self.connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM project_trees WHERE id = ?", (tree_id,)
+            ).fetchone() is None:
+                raise LookupError(f"Project tree {tree_id!r} was not found")
+            for project_id in (from_project_id, to_project_id):
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO project_tree_nodes (
+                        tree_id, project_id, added_at
+                    ) VALUES (?, ?, ?)
+                    """,
+                    (tree_id, project_id, created_at),
+                )
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO project_tree_links (
+                        id, tree_id, from_project_id, to_project_id,
+                        change_type, description, diff_summary,
+                        diff_categories_json, diff_change_count,
+                        from_project_updated_at,
+                        to_project_updated_at, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        link_id,
+                        tree_id,
+                        from_project_id,
+                        to_project_id,
+                        change_type,
+                        description,
+                        diff_summary,
+                        json.dumps(diff_categories or []),
+                        diff_change_count,
+                        from_project_updated_at,
+                        to_project_updated_at,
+                        created_at,
+                        updated_at,
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                if "UNIQUE constraint failed" in str(error):
+                    raise ValueError("That project link already exists") from error
+                raise
+            connection.execute(
+                "UPDATE project_trees SET updated_at = ? WHERE id = ?",
+                (updated_at, tree_id),
+            )
+        return self.get_project_tree_link(tree_id, link_id)
+
+    def get_project_tree_link(
+        self, tree_id: str, link_id: str
+    ) -> dict[str, Any]:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM project_tree_links
+                WHERE tree_id = ? AND id = ?
+                """,
+                (tree_id, link_id),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Project tree link {link_id!r} was not found")
+        return self._project_tree_link(row)
+
+    def update_project_tree_link(
+        self,
+        tree_id: str,
+        link_id: str,
+        from_project_id: str,
+        to_project_id: str,
+        *,
+        change_type: str,
+        description: str,
+        diff_summary: str,
+        diff_categories: list[str],
+        diff_change_count: int,
+        from_project_updated_at: str | None,
+        to_project_updated_at: str | None,
+    ) -> dict[str, Any]:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            current = connection.execute(
+                """
+                SELECT * FROM project_tree_links
+                WHERE tree_id = ? AND id = ?
+                """,
+                (tree_id, link_id),
+            ).fetchone()
+            if current is None:
+                raise LookupError(f"Project tree link {link_id!r} was not found")
+            for project_id in (from_project_id, to_project_id):
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO project_tree_nodes (
+                        tree_id, project_id, added_at
+                    ) VALUES (?, ?, ?)
+                    """,
+                    (tree_id, project_id, timestamp),
+                )
+            try:
+                connection.execute(
+                    """
+                    UPDATE project_tree_links SET
+                        from_project_id = ?, to_project_id = ?,
+                        change_type = ?, description = ?, diff_summary = ?,
+                        diff_categories_json = ?, diff_change_count = ?,
+                        from_project_updated_at = ?,
+                        to_project_updated_at = ?, updated_at = ?
+                    WHERE tree_id = ? AND id = ?
+                    """,
+                    (
+                        from_project_id,
+                        to_project_id,
+                        change_type,
+                        description,
+                        diff_summary,
+                        json.dumps(diff_categories),
+                        diff_change_count,
+                        from_project_updated_at,
+                        to_project_updated_at,
+                        timestamp,
+                        tree_id,
+                        link_id,
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                if "UNIQUE constraint failed" in str(error):
+                    raise ValueError("That project link already exists") from error
+                raise
+            self._prune_project_tree_nodes(connection, tree_id)
+            connection.execute(
+                "UPDATE project_trees SET updated_at = ? WHERE id = ?",
+                (timestamp, tree_id),
+            )
+        return self.get_project_tree_link(tree_id, link_id)
+
+    def update_project_tree_link_cache(
+        self,
+        tree_id: str,
+        link_id: str,
+        *,
+        diff_summary: str,
+        diff_categories: list[str],
+        diff_change_count: int,
+        from_project_updated_at: str,
+        to_project_updated_at: str,
+    ) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE project_tree_links SET
+                    diff_summary = ?, diff_categories_json = ?,
+                    diff_change_count = ?, from_project_updated_at = ?,
+                    to_project_updated_at = ?
+                WHERE tree_id = ? AND id = ?
+                """,
+                (
+                    diff_summary,
+                    json.dumps(diff_categories),
+                    diff_change_count,
+                    from_project_updated_at,
+                    to_project_updated_at,
+                    tree_id,
+                    link_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Project tree link {link_id!r} was not found")
+
+    def delete_project_tree_link(self, tree_id: str, link_id: str) -> None:
+        timestamp = utc_now()
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM project_tree_links
+                WHERE tree_id = ? AND id = ?
+                """,
+                (tree_id, link_id),
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Project tree link {link_id!r} was not found")
+            self._prune_project_tree_nodes(connection, tree_id)
+            connection.execute(
+                "UPDATE project_trees SET updated_at = ? WHERE id = ?",
+                (timestamp, tree_id),
+            )
+
+    @staticmethod
+    def _prune_project_tree_nodes(
+        connection: sqlite3.Connection, tree_id: str
+    ) -> None:
+        connection.execute(
+            """
+            DELETE FROM project_tree_nodes
+            WHERE tree_id = ?
+              AND project_id != (
+                  SELECT root_project_id FROM project_trees WHERE id = ?
+              )
+              AND project_id NOT IN (
+                  SELECT from_project_id FROM project_tree_links WHERE tree_id = ?
+                  UNION
+                  SELECT to_project_id FROM project_tree_links WHERE tree_id = ?
+              )
+            """,
+            (tree_id, tree_id, tree_id, tree_id),
+        )
+
+    def import_project_trees(
+        self, source_key: str, trees: list[dict[str, Any]]
+    ) -> tuple[list[str], list[str]]:
+        """Atomically import normalized localStorage trees without overwrites."""
+        imported: list[str] = []
+        existing: list[str] = []
+        timestamp = utc_now()
+        with self.connect() as connection:
+            for tree in trees:
+                legacy_id = tree["id"]
+                mapping = connection.execute(
+                    """
+                    SELECT tree_id FROM project_tree_imports
+                    WHERE source_key = ? AND legacy_tree_id = ?
+                    """,
+                    (source_key, legacy_id),
+                ).fetchone()
+                if mapping is not None:
+                    existing.append(mapping["tree_id"])
+                    continue
+
+                tree_id = legacy_id
+                if connection.execute(
+                    "SELECT 1 FROM project_trees WHERE id = ?", (tree_id,)
+                ).fetchone() is not None:
+                    tree_id = str(uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f"protein-labs:{source_key}:{legacy_id}",
+                    ))
+                    if connection.execute(
+                        "SELECT 1 FROM project_trees WHERE id = ?", (tree_id,)
+                    ).fetchone() is not None:
+                        raise ValueError(
+                            f"Cannot safely import project tree {legacy_id!r}"
+                        )
+
+                created_at = tree.get("createdAt") or timestamp
+                updated_at = tree.get("updatedAt") or created_at
+                connection.execute(
+                    """
+                    INSERT INTO project_trees (
+                        id, name, root_project_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        tree_id,
+                        tree["name"],
+                        tree["rootProjectId"],
+                        created_at,
+                        updated_at,
+                    ),
+                )
+                project_ids = {tree["rootProjectId"]}
+                for link in tree["links"]:
+                    project_ids.update(
+                        (link["fromProjectId"], link["toProjectId"])
+                    )
+                connection.executemany(
+                    """
+                    INSERT INTO project_tree_nodes (
+                        tree_id, project_id, added_at
+                    ) VALUES (?, ?, ?)
+                    """,
+                    [(tree_id, project_id, created_at) for project_id in project_ids],
+                )
+                for link in tree["links"]:
+                    connection.execute(
+                        """
+                        INSERT INTO project_tree_links (
+                            id, tree_id, from_project_id, to_project_id,
+                            change_type, description, diff_summary,
+                            diff_categories_json, diff_change_count,
+                            created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 0, ?, ?)
+                        """,
+                        (
+                            link["id"],
+                            tree_id,
+                            link["fromProjectId"],
+                            link["toProjectId"],
+                            link["changeType"],
+                            link["description"],
+                            link["description"] or link["changeType"],
+                            created_at,
+                            updated_at,
+                        ),
+                    )
+                payload_hash = hashlib.sha256(
+                    json.dumps(tree, sort_keys=True).encode("utf-8")
+                ).hexdigest()
+                connection.execute(
+                    """
+                    INSERT INTO project_tree_imports (
+                        source_key, legacy_tree_id, tree_id,
+                        payload_hash, imported_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (source_key, legacy_id, tree_id, payload_hash, timestamp),
+                )
+                imported.append(tree_id)
+        return imported, existing
 
     def create_project_job(
         self, protein_id: str, name: str, app_type: str, config: dict[str, Any]
@@ -1330,6 +1845,71 @@ class Database:
             "externalIds": _loads(row["external_ids_json"], {}),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
+        }
+
+    @classmethod
+    def _project_tree(
+        cls, connection: sqlite3.Connection, row: sqlite3.Row
+    ) -> dict[str, Any]:
+        node_rows = connection.execute(
+            """
+            SELECT n.project_id, p.id AS current_project_id, p.name
+            FROM project_tree_nodes n
+            LEFT JOIN proteins p ON p.id = n.project_id
+            WHERE n.tree_id = ?
+            ORDER BY n.added_at, n.project_id
+            """,
+            (row["id"],),
+        ).fetchall()
+        link_rows = connection.execute(
+            """
+            SELECT * FROM project_tree_links
+            WHERE tree_id = ? ORDER BY created_at, id
+            """,
+            (row["id"],),
+        ).fetchall()
+        links = [cls._project_tree_link(link) for link in link_rows]
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "rootProjectId": row["root_project_id"],
+            "nodes": [
+                {
+                    "projectId": node["project_id"],
+                    "project": None
+                    if node["current_project_id"] is None
+                    else {
+                        "id": node["current_project_id"],
+                        "name": node["name"],
+                    },
+                    "missing": node["current_project_id"] is None,
+                }
+                for node in node_rows
+            ],
+            "links": links,
+            # Temporary compatibility alias for the browser's v1 schema.
+            "relationships": links,
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    @staticmethod
+    def _project_tree_link(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "fromProjectId": row["from_project_id"],
+            "toProjectId": row["to_project_id"],
+            "changeType": row["change_type"],
+            "description": row["description"],
+            "diffSummary": row["diff_summary"],
+            "changeCategories": _loads(row["diff_categories_json"], []),
+            "changeCount": row["diff_change_count"],
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+            "_cache": {
+                "fromProjectUpdatedAt": row["from_project_updated_at"],
+                "toProjectUpdatedAt": row["to_project_updated_at"],
+            },
         }
 
     @staticmethod
