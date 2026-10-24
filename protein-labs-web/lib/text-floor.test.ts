@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 
 const FLOOR_PX = 12;
 const root = new URL("..", import.meta.url).pathname;
-const STYLESHEETS = ["app/globals.css", "app/vector-library.css"];
+const STYLESHEETS = ["app/globals.css", "app/vector-library.css", "app/protein-library.css"];
 
 const EXEMPT: Record<string, string> = {
   // Chart axis ticks may stay at 11px.
