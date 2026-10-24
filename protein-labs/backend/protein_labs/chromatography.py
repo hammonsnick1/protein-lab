@@ -86,7 +86,7 @@ def fit_sec(config: dict) -> dict:
     standards = config.get('standards', [])
     if not isinstance(standards, list):
         raise ValueError('standards must be an array')
-    xs, ys, volumes = [], [], []
+    xs, ys, volumes, masses = [], [], [], []
     for s in standards:
         if not isinstance(s, dict):
             raise ValueError('Each standard must be an object')
@@ -99,6 +99,7 @@ def fit_sec(config: dict) -> dict:
         xs.append(math.log10(mw))
         ys.append(kav(ve, vo, vt))
         volumes.append(ve)
+        masses.append(mw / 1000)
     if len(xs) < 2:
         raise ValueError('SEC calibration requires at least two included standards')
     mx, my = finite(mean(xs), 'SEC mean log molecular weight'), finite(mean(ys), 'SEC mean Kav')
@@ -117,7 +118,10 @@ def fit_sec(config: dict) -> dict:
     result = {'slope': slope, 'intercept': intercept,
               'r2': finite(1 - residual / total, 'SEC R squared'),
               'logMwDaRange': [min(xs), max(xs)], 'veMlRange': [min(volumes), max(volumes)],
-              'voMl': vo, 'vtMl': vt, 'standardCount': len(xs)}
+              'standardMassRangeKDa': [min(masses), max(masses)],
+              'residualVarianceKav': finite(residual / (len(xs) - 2), 'SEC residual variance') if len(xs) > 2 else None,
+            'meanLogMwDa': mx, 'sumSquaredLogMwDa': denominator,
+            'voMl': vo, 'vtMl': vt, 'standardCount': len(xs)}
     return json_result(result)
 
 
@@ -130,8 +134,7 @@ def calibrate_sec(body: dict) -> dict:
     if not isinstance(volumes, list) or len(volumes) > 200000:
         raise ValueError('elutionVolumesMl must be an array with at most 200000 values')
     result = {'schemaVersion': 1, 'calibration': fit,
-              'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit))
-                              for ve in volumes]}
+              'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit)) for ve in volumes]}
     return json_result(result)
 
 
@@ -144,7 +147,54 @@ def calibrate(ve: float, fit: dict) -> dict:
     outside = not (lo - 1e-12 <= log_mw <= hi + 1e-12 and v_lo - 1e-12 <= ve <= v_hi + 1e-12)
     mw = None if outside else finite(10 ** min(hi, max(lo, log_mw)) / 1000,
                                      'SEC molecular weight')
-    return {'kav': value, 'mwKDa': mw, 'outOfRange': outside}
+    uncertainty = None
+    flags = []
+    if mw is not None:
+        variance = fit['residualVarianceKav']
+        if variance is None:
+            flags.append(flag('mass_uncertainty_unavailable', 'caution',
+                              'At least three included standards are needed to estimate calibration scatter.'))
+        else:
+            # First-order inverse prediction for one new Kav observation, then
+            # propagate log10(Mw) to Mw. Not a confidence/prediction interval.
+            leverage = 1 + 1 / fit['standardCount'] + (log_mw - fit['meanLogMwDa']) ** 2 / fit['sumSquaredLogMwDa']
+            uncertainty = finite(mw * math.log(10) * math.sqrt(variance * leverage) / abs(fit['slope']),
+                                 'SEC molecular-weight uncertainty')
+            flags.append(flag('calibration_only_mass_uncertainty', 'note',
+                              'Mass uncertainty is an approximate one-sigma calibration estimate; it excludes '
+                              'peak localization, standard mass errors, column volume errors and shape effects.'))
+            if uncertainty >= mw:
+                flags.append(flag('large_mass_uncertainty', 'warning',
+                                  'Calibration uncertainty is at least the apparent mass; linear propagation is unreliable.'))
+    return {'kav': value, 'mwKDa': mw, 'mwUncertaintyKDa': uncertainty,
+            'outOfRange': outside, 'flags': flags}
+
+
+def flag(code: str, level: str, message: str) -> dict:
+    return {'code': code, 'level': level, 'title': code.replace('_', ' ').capitalize(), 'message': message}
+
+
+def peak_quality(points: list[dict], center: float, width: float | None) -> dict:
+    """Fit only nonnegative amplitude; measured center/FWHM stay fixed.
+
+    Signed baseline residuals include negative noise in the quality statistic.
+    Closed-form least squares avoids an iterative, potentially divergent fit.
+    """
+    result = {'rSquared': None, 'residual': None, 'model': 'gaussian_fixed_apex_fwhm_amplitude_fit'}
+    if len(points) < 5 or width is None or width <= 0:
+        return result
+    # Compute exp(-4 ln(2) ((x-center)/FWHM)^2) without squaring huge ratios.
+    shape = []
+    for p in points:
+        distance = abs(p['x'] - center) / width
+        shape.append(0.0 if distance > 20 else math.exp(-4 * math.log(2) * distance ** 2))
+    amplitude = max(0.0, math.fsum(p['y'] * g for p, g in zip(points, shape)) / math.fsum(g * g for g in shape))
+    residual = math.fsum((p['y'] - amplitude * g) ** 2 for p, g in zip(points, shape))
+    average = mean(p['y'] for p in points)
+    total = math.fsum((p['y'] - average) ** 2 for p in points)
+    result.update(rSquared=1 - residual / total if total > 0 else None,
+                  residual=math.sqrt(residual / len(points)))
+    return result
 
 
 def measure_peak(points: list[dict], start: float, end: float) -> dict | None:
@@ -152,8 +202,9 @@ def measure_peak(points: list[dict], start: float, end: float) -> dict | None:
     if len(region) < 3:
         return None
     a, b = region[0], region[-1]
-    corrected = [{'x': p['x'], 'y': max(0, p['y'] - a['y'] -
-                  (b['y'] - a['y']) * (p['x'] - a['x']) / (b['x'] - a['x']))} for p in region]
+    signed = [{'x': p['x'], 'y': p['y'] - a['y'] -
+               (b['y'] - a['y']) * (p['x'] - a['x']) / (b['x'] - a['x'])} for p in region]
+    corrected = [{'x': p['x'], 'y': max(0, p['y'])} for p in signed]
     apex = max(range(len(region)), key=lambda i: corrected[i]['y'])
     height = corrected[apex]['y']
     if height <= 0 or apex in (0, len(region) - 1):
@@ -172,9 +223,21 @@ def measure_peak(points: list[dict], start: float, end: float) -> dict | None:
     left50, right50 = crossing(.5, -1), crossing(.5, 1)
     left10, right10 = crossing(.1, -1), crossing(.1, 1)
     x = region[apex]['x']
+    width = None if left50 is None or right50 is None else right50 - left50
+    quality = peak_quality(signed, x, width)
+    flags = []
+    if quality['rSquared'] is None:
+        flags.append(flag('peak_fit_unavailable', 'caution',
+                          'Peak quality needs at least five samples and a positive FWHM.'))
+    elif quality['rSquared'] < .95:
+        flags.append(flag('poor_gaussian_fit', 'caution',
+                          'Gaussian amplitude fit R-squared is below 0.95; inspect overlap, truncation, noise or asymmetry.'))
+    if width is not None and sum(left50 <= p['x'] <= right50 for p in region) < 5:
+        flags.append(flag('sparse_peak_sampling', 'caution',
+                          'Fewer than five samples span the FWHM; apex and width may be poorly resolved.'))
     return {'start': a['x'], 'end': b['x'], 'apexX': x, 'response': region[apex]['y'],
             'height': height, 'area': area(corrected),
-            'fwhm': None if left50 is None or right50 is None else right50 - left50,
+            'fwhm': width, 'fitQuality': quality, 'flags': flags,
             'asymmetry10': None if left10 is None or right10 is None else (right10 - x) / (x - left10)}
 
 
@@ -183,10 +246,8 @@ def detect_ranges(points: list[dict], count: int) -> list[dict]:
     a, b = points[0], points[-1]
     detrended = [{'x': p['x'], 'y': p['y'] - a['y'] - (b['y'] - a['y']) *
                   (p['x'] - a['x']) / (b['x'] - a['x'])} for p in points]
-    # A three-sample trace is the smallest valid integration region.  Applying
-    # the normal seven-sample smoother to it inverts a triangular peak at the
-    # boundaries, so use its directly observed local maximum instead.  There
-    # are too few first differences to estimate a meaningful noise floor.
+    # Short traces cannot support the seven-sample smoother or noise estimate.
+    # Use a directly observed strict local maximum instead of silently losing it.
     if len(points) < 7:
         candidates = [i for i in range(1, len(points) - 1)
                       if detrended[i]['y'] > 0
@@ -203,19 +264,7 @@ def detect_ranges(points: list[dict], count: int) -> list[dict]:
                   and smooth[i]['y'] >= smooth[i - 1]['y'] and smooth[i]['y'] > smooth[i + 1]['y']]
     chosen = []
     for i in sorted(candidates, key=lambda i: smooth[i]['y'], reverse=True):
-        # A second maximum is a separate peak only when its intervening valley
-        # falls materially below the smaller apex. This rejects noise ripples
-        # on a broad peak without assuming a requested/known peak count.
-        separated = True
-        for other in chosen:
-            left, right = sorted((i, other))
-            valley = min(smooth[k]['y'] for k in range(left, right + 1))
-            lower_apex = min(smooth[i]['y'], smooth[other]['y'])
-            required_drop = max(3 * noise, .1 * max(0, lower_apex))
-            if lower_apex - valley < required_drop:
-                separated = False
-                break
-        if separated:
+        if all(abs(i - other) > max(1, len(points) * .03) for other in chosen):
             chosen.append(i)
         if len(chosen) == count:
             break
@@ -285,13 +334,20 @@ def analyze_chromatogram(body: dict) -> dict:
             raise ValueError('SEC requires an mL axis; explicitly convert time using measured flow before analysis')
         fit = fit_sec(sec)
         for p in peaks:
-            p.update(calibrate(p['apexX'], fit))
+            prediction = calibrate(p['apexX'], fit)
+            p['flags'].extend(prediction.pop('flags'))
+            p.update(prediction)
     resolutions = []
     for i, (a, b) in enumerate(zip(peaks, peaks[1:])):
         widths = [a['fwhm'], b['fwhm']]
         rs = None if None in widths else 1.18 * (b['apexX'] - a['apexX']) / sum(widths)
         resolutions.append({'leftPeakIndex': i, 'rightPeakIndex': i + 1, 'rs': rs})
-    total_area = math.fsum(p['area'] for p in peaks)
+        if rs is not None and rs < 1.5:
+            for p in (a, b):
+                if not any(f['code'] == 'unresolved_neighbor' for f in p['flags']):
+                    p['flags'].append(flag('unresolved_neighbor', 'caution',
+                                           'An adjacent peak has Rs below 1.5; species contributions are not deconvolved.'))
+    total_area = finite_sum((p['area'] for p in peaks), 'integrated peak area')
     mass = body.get('massBalance')
     recovery = {'status': 'not_requested', 'integratedArea': total_area, 'recoveredMg': None, 'recoveryPercent': None}
     if mass is not None:
@@ -302,17 +358,20 @@ def analyze_chromatogram(body: dict) -> dict:
         if units['y'] == 'mAU':
             factor = positive(mass.get('responseFactorMAUPerMgMl'), 'responseFactorMAUPerMgMl')
         flow = positive(mass.get('flowMlPerMin'), 'flowMlPerMin') if units['x'] == 'min' else 1.0
-        recovered = total_area / factor * flow
+        recovered = finite(total_area / factor * flow, 'recovered mass')
         recovery.update(status='calculated', loadedMg=loaded, recoveredMg=recovered,
-                        recoveryPercent=100 * recovered / loaded, unaccountedMg=loaded - recovered,
+                        recoveryPercent=finite(100 * recovered / loaded, 'recovery percent'),
+                        unaccountedMg=finite(loaded - recovered, 'unaccounted mass'),
                         exceedsLoaded=recovered > loaded)
     result = {'schemaVersion': 1, 'units': {**units, 'area': units['y'] + '*' + units['x'],
-              'width': units['x'], 'mw': 'kDa', 'mass': 'mg', 'recovery': '%'},
+              'width': units['x'], 'mw': 'kDa', 'mass': 'mg', 'recovery': '%',
+              'fitResidual': units['y'], 'mwUncertainty': 'kDa'},
               'points': points, 'baselineOffset': offset, 'peaks': peaks,
               'calibration': fit, 'resolutions': resolutions, 'massBalance': recovery,
               'methods': {'baseline': baseline, 'peakBaseline': 'linear_endpoints_positive_area',
                           'resolution': '1.18*apex_distance/(fwhm1+fwhm2)',
                           'asymmetry': 'trailing/leading width at 10% height',
-                          'noise': ('1.4826*MAD(first differences)/sqrt(2); 3 sigma threshold; '
-                                    'candidate valley drop max(3 sigma, 10% smaller apex)')}}
+                          'peakFit': 'nonnegative least-squares Gaussian amplitude; measured apex/FWHM fixed; signed endpoint baseline residuals; RMSE in y units',
+                          'mwUncertainty': 'first-order one-sigma inverse SEC prediction from calibration scatter only; not a confidence interval',
+                          'noise': '1.4826*MAD(first differences)/sqrt(2); 3 sigma threshold'}}
     return json_result(result)
