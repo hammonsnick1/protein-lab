@@ -30,6 +30,17 @@ const EXEMPT: Record<string, string> = {
   ".mascot-zzz span:nth-child(3)": "decorative sleeping glyph",
 };
 
+// Figures drawn at their export size (HOM-120). Their text is sized in SVG
+// attributes rather than CSS, so the stylesheet scan never sees it, but the
+// on-screen preview scales the whole figure down and the text falls below the
+// floor at window widths of 1440px or less. The exported file is full size.
+// Listed here like the plasmid map and tree thumbnail; each class must still
+// be rendered somewhere, so an entry cannot outlive its figure.
+const EXEMPT_FIGURES: Record<string, string> = {
+  ".chromatogram-canvas.figure-mode": "Chromatogram Studio Figures tab, 1000×700: export-size figure preview; export output meets the floor",
+  ".sec-curve-figure": "SEC calibration figure, 900×640: export-size figure preview; export output meets the floor",
+};
+
 interface SmallRule { file: string; line: number; selector: string; px: number }
 
 /** Every font-size / font declaration under the floor, with the selector of its rule. */
@@ -99,5 +110,12 @@ describe("app-wide text floor", () => {
         .filter((match) => Number(match[1]) < FLOOR_PX)
         .map((match) => `${file}: ${match[0]}`));
     assert.deepEqual(offenders, []);
+  });
+
+  it("lists only export-size figures that are still rendered", () => {
+    const sources = ["components"].flatMap(sourceFiles).map((file) => readFileSync(join(root, file), "utf8")).join("\n");
+    const stale = Object.keys(EXEMPT_FIGURES).filter((selector) =>
+      selector.split(".").filter(Boolean).some((name) => !new RegExp(`["\`\\s]${name}["\`\\s]`).test(sources)));
+    assert.deepEqual(stale, []);
   });
 });

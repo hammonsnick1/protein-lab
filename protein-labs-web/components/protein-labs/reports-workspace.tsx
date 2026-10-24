@@ -10,6 +10,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import { gelFigureNote, readGelJobConfig } from "@/lib/gel-quantification";
+import {
+  array, asObject, constructColumns, jobConfig, pageFacts, proteinProperties, reportHtml, reportMarkdown, text,
+  type Figure, type ReportPage,
+} from "@/lib/report-export";
 import { headingIgnoresKey, singleLineHeading } from "@/lib/report-headings";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 
@@ -21,18 +25,6 @@ import { StructureViewer } from "@/components/protein-labs/structure-viewer";
  * client or a lab can file, so the on-screen editing controls are the only
  * thing the print stylesheet removes.
  */
-
-type Figure = { id: string; jobId: string; caption: string };
-type ReportPage = {
-  id: string;
-  templateId: string;
-  title: string;
-  subtitle: string;
-  content: string;
-  hidden: boolean;
-  showFacts: boolean;
-  figures: Figure[];
-};
 
 type PageTemplate = {
   id: string;
@@ -309,10 +301,7 @@ function HeadingField({ className, value, placeholder, onChange }: { className: 
 }
 
 function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometry: JsonObject | null }) {
-  const protparam = bundle.protparam?.result ?? {};
-  const construct = constructSummary(bundle);
-  const vector = jobConfig(bundle, "expression-planning");
-  const host = jobConfig(bundle, "expression-system");
+  const { properties, construct, constructFacts } = proteinProperties(bundle);
   const model = bundle.alphaFoldModels[0];
   return <>
     <section className="report-properties">
@@ -325,28 +314,19 @@ function PropertiesBlocks({ bundle, geometry }: { bundle: ProteinBundle; geometr
         <small>{model ? `${text(model.name, text(model.modelId))} · ${text(model.source, "AlphaFold")}${geometry?.meanPlddt ? ` · mean pLDDT ${text(geometry.meanPlddt)}` : ""}` : "Predicted structure"}</small>
       </div>
       <dl className="report-property-grid">
-        <div><dt>Molecular weight</dt><dd>{number(protparam.molecularWeightDa, 2)} Da</dd></div>
-        <div><dt>ε₂₈₀ (reduced cysteines)</dt><dd>{number(asObject(protparam.extinctionCoefficient280).reducedMolarM1Cm1, 0)} M⁻¹cm⁻¹</dd></div>
-        <div><dt>ε₂₈₀ (cystines formed)</dt><dd>{number(asObject(protparam.extinctionCoefficient280).oxidizedMolarM1Cm1, 0)} M⁻¹cm⁻¹</dd></div>
-        <div><dt>Theoretical pI</dt><dd>{number(protparam.theoreticalPI, 2)}</dd></div>
-        <div><dt>Residues</dt><dd>{bundle.protein.sequence.length}</dd></div>
-        <div><dt>Expression host</dt><dd>{text(host.strainName, text(host.hostSystem, "Not selected"))}</dd></div>
+        {properties.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl>
     </section>
     <section className="report-construct">
       <h3>Expressed construct</h3>
       <table>
-        <thead><tr><th>Species</th><th>Residues</th><th>Molecular weight (Da)</th><th>ε₂₈₀ reduced (M⁻¹cm⁻¹)</th></tr></thead>
+        <thead><tr>{constructColumns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
         <tbody>
-          <tr><td>Uncleaved fusion</td><td>{construct.fusionLength}</td><td>{construct.fusionMass}</td><td>{construct.fusionExt}</td></tr>
-          <tr><td>After tag cleavage</td><td>{construct.cleavedLength}</td><td>{construct.cleavedMass}</td><td>{construct.cleavedExt}</td></tr>
+          {construct.map((row) => <tr key={row.species}><td>{row.species}</td><td>{row.residues}</td><td>{row.massDa}</td><td>{row.extinction}</td></tr>)}
         </tbody>
       </table>
       <dl className="report-property-grid">
-        <div><dt>Affinity tag</dt><dd>{construct.tag}</dd></div>
-        <div><dt>Cleavage</dt><dd>{construct.protease}</dd></div>
-        <div><dt>Expression vector</dt><dd>{text(vector.vectorName, text(host.vectorFamilyName, "Not selected"))}</dd></div>
-        <div><dt>Vector length</dt><dd>{vector.featureCount ? `${text(vector.featureCount)} annotated features` : "—"}</dd></div>
+        {constructFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl>
     </section>
   </>;
@@ -564,156 +544,6 @@ function toSection(page: ReportPage) {
   };
 }
 
-function jobConfig(bundle: ProteinBundle, appType: string): JsonObject {
-  return bundle.projectJobs.find((job) => job.appType === appType)?.config ?? {};
-}
-
-/** Short, human-readable facts drawn from whichever jobs feed a page. */
-function pageFacts(bundle: ProteinBundle, templateId: string): [string, string][] {
-  const rows: [string, string][] = [];
-  const add = (label: string, value: unknown) => { const printable = text(value, ""); if (printable) rows.push([label, printable]); };
-  if (templateId === "expression") {
-    const host = jobConfig(bundle, "expression-system");
-    const vector = jobConfig(bundle, "expression-planning");
-    const run = jobConfig(bundle, "transformation-expression");
-    add("Host strain", host.strainName);
-    add("Host system", host.hostSystem);
-    add("Promoter", host.promoter);
-    add("Vector", vector.vectorName);
-    add("Medium", run.mediaName);
-    add("Induction", run.inductionSummary ?? run.induction);
-    add("Harvest", run.harvestSummary ?? run.harvest);
-  }
-  if (templateId === "lysis") {
-    const lysis = jobConfig(bundle, "purification-lysis");
-    add("Method", lysis.methodName);
-    add("Category", lysis.category);
-    add("Mechanism", lysis.mechanism);
-    add("Lysis buffer", lysis.bufferName);
-    add("Buffer pH", lysis.bufferPH);
-  }
-  if (templateId === "affinity" || templateId === "cleanup" || templateId === "sec") {
-    const appType = templateId === "affinity" ? "purification-affinity" : templateId === "cleanup" ? "purification-subtractive" : "purification-sec";
-    const step = jobConfig(bundle, appType);
-    add("Column or resin", step.columnName);
-    add("Tag", step.tag);
-    add("Ligand", step.ligand);
-    add("Binding", step.binding);
-    add("Wash", step.wash);
-    add("Elution", step.elution);
-    add("Buffer", step.bufferName);
-    if (templateId === "sec") { add("Expected mass", step.expectedMassKDa ? `${text(step.expectedMassKDa)} kDa` : ""); add("Sample volume", step.sampleVolumeMl ? `${text(step.sampleVolumeMl)} mL` : ""); }
-  }
-  if (templateId === "cleavage") {
-    const cleavage = jobConfig(bundle, "purification-cleavage");
-    add("Protease", cleavage.proteaseName);
-    add("Recognition site", cleavage.recognitionSite ?? cleavage.site);
-    add("Conditions", cleavage.conditions);
-    add("Buffer", cleavage.bufferName);
-    const construct = asObject(cleavage.construct);
-    add("Mass after cleavage", construct.cleavedMassDa ? `${number(construct.cleavedMassDa, 2)} Da` : "");
-  }
-  if (templateId === "quality") {
-    const buffer = jobConfig(bundle, "purification-buffer");
-    const review = jobConfig(bundle, "purification-workflow");
-    add("Storage buffer", buffer.bufferName ?? buffer.presetName);
-    add("Buffer pH", buffer.bufferPH);
-    add("Workflow review", review.reviewStatus);
-    add("Reviewed", review.savedAt ? new Date(String(review.savedAt)).toLocaleDateString() : "");
-  }
-  return rows;
-}
-
-function constructSummary(bundle: ProteinBundle) {
-  const cleavage = jobConfig(bundle, "purification-cleavage");
-  const affinity = jobConfig(bundle, "purification-affinity");
-  const construct = asObject(cleavage.construct ?? affinity.construct);
-  const protparam = bundle.protparam?.result ?? {};
-  const nativeMass = number(protparam.molecularWeightDa, 2);
-  const nativeExt = number(asObject(protparam.extinctionCoefficient280).reducedMolarM1Cm1, 0);
-  return {
-    fusionLength: text(construct.fusionLength, String(bundle.protein.sequence.length)),
-    fusionMass: construct.fusionMassDa ? number(construct.fusionMassDa, 2) : nativeMass,
-    fusionExt: construct.fusionExtinction ? number(construct.fusionExtinction, 0) : nativeExt,
-    cleavedLength: text(construct.cleavedLength, String(bundle.protein.sequence.length)),
-    cleavedMass: construct.cleavedMassDa ? number(construct.cleavedMassDa, 2) : nativeMass,
-    cleavedExt: construct.cleavedExtinction ? number(construct.cleavedExtinction, 0) : nativeExt,
-    tag: text(construct.tagName ?? affinity.tag, "Not selected"),
-    protease: text(cleavage.proteaseName, "Not selected"),
-  };
-}
-
-function reportMarkdown(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[]) {
-  const lines = [`# ${title}`, "", summary, "", `**${bundle.protein.name}** · ${bundle.protein.sequence.length} aa · ${bundle.protein.organism || "organism not entered"}`, ""];
-  for (const page of pages.filter((value) => !value.hidden)) {
-    lines.push(`## ${page.title}`);
-    if (page.subtitle) lines.push(`*${page.subtitle}*`);
-    lines.push("");
-    if (page.showFacts) for (const [label, value] of pageFacts(bundle, page.templateId)) lines.push(`- **${label}:** ${value}`);
-    if (page.content.trim()) { lines.push("", page.content.trim()); }
-    for (const [index, figure] of page.figures.entries()) lines.push("", `_Figure ${index + 1}. ${figure.caption}_`);
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-
-function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], analyses: ProjectJob[]) {
-  const body = pages.filter((page) => !page.hidden).map((page) => {
-    const facts = page.showFacts ? pageFacts(bundle, page.templateId) : [];
-    const figures = page.figures.map((figure, index) => {
-      const job = analyses.find((value) => value.id === figure.jobId);
-      const image = job?.appType === "gel-analysis" && job.config.previewBase64
-        ? `<img src="data:image/png;base64,${String(job.config.previewBase64)}" alt="${escapeHtml(figure.caption)}"/>`
-        : `<p class="placeholder">${escapeHtml(job?.name ?? "Figure")}</p>`;
-      // Whatever the caption claims, the figure carries the engine's own
-      // verdict for each annotated lane, including the lanes it would not quantify.
-      const note = job?.appType === "gel-analysis" ? gelFigureNote(readGelJobConfig(job.config)) : null;
-      return `<figure>${image}<figcaption><b>Figure ${index + 1}.</b> ${escapeHtml(figure.caption)}${note ? ` <span class="gel-note">${escapeHtml(note)}</span>` : ""}</figcaption></figure>`;
-    }).join("");
-    return `<section class="sheet">
-      <h2>${escapeHtml(page.title)}</h2>
-      ${page.subtitle ? `<p class="subtitle">${escapeHtml(page.subtitle)}</p>` : ""}
-      ${facts.length ? `<dl>${facts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>` : ""}
-      ${page.content.trim() ? `<div class="notes">${escapeHtml(page.content).replace(/\n/g, "<br/>")}</div>` : ""}
-      ${figures}
-    </section>`;
-  }).join("");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title><style>
-    body { font-family: Georgia, "Times New Roman", serif; color: #14181b; margin: 0; background: #f2f2f3; }
-    .sheet { background: #fff; max-width: 820px; margin: 24px auto; padding: 48px 56px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
-    h1 { font-size: 30px; margin: 0 0 6px; } h2 { font-size: 21px; margin: 0 0 4px; border-bottom: 2px solid #14181b; padding-bottom: 7px; }
-    .subtitle { color: #5d666c; margin: 6px 0 16px; font-style: italic; }
-    dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 26px; margin: 16px 0; }
-    dl > div { display: flex; justify-content: space-between; gap: 14px; border-bottom: 1px solid #e3e5e7; padding: 6px 0; }
-    dt { color: #5d666c; font-size: 13px; } dd { margin: 0; font-weight: 600; font-size: 13px; text-align: right; }
-    .notes { white-space: pre-wrap; line-height: 1.6; margin: 16px 0; }
-    figure { margin: 22px 0; } figure img { max-width: 100%; border: 1px solid #d8dadd; }
-    figcaption { font-size: 12px; color: #5d666c; margin-top: 7px; }
-    figcaption .gel-note { display: block; margin-top: 5px; font-size: 11px; line-height: 1.5; color: #6d767c; }
-    .placeholder { color: #8a9197; font-style: italic; }
-    @media print { body { background: #fff; } .sheet { box-shadow: none; margin: 0; page-break-after: always; } }
-  </style></head><body>
-    <section class="sheet"><h1>${escapeHtml(title)}</h1><p class="subtitle">${escapeHtml(summary)}</p>
-    <dl><div><dt>Construct</dt><dd>${escapeHtml(bundle.protein.name)}</dd></div><div><dt>Length</dt><dd>${bundle.protein.sequence.length} aa</dd></div><div><dt>Organism</dt><dd>${escapeHtml(bundle.protein.organism || "—")}</dd></div><div><dt>Prepared</dt><dd>${new Date().toLocaleDateString()}</dd></div></dl></section>
-    ${body}
-  </body></html>`;
-}
-
-function asObject(value: unknown): JsonObject {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
-}
-function array(value: unknown): JsonObject[] {
-  return Array.isArray(value) ? value.filter((item): item is JsonObject => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
-}
-function text(value: unknown, fallback = "—") {
-  return value === null || value === undefined || value === "" ? fallback : String(value);
-}
-function number(value: unknown, digits: number) {
-  return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }) : "—";
-}
-function escapeHtml(value: string) {
-  return value.replace(/[&<>"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[character] ?? character));
-}
 function safeName(value: string) {
   return value.trim().replace(/[^a-z0-9._-]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "purification-report";
 }
