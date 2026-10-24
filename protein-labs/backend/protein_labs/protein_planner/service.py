@@ -1061,9 +1061,11 @@ class ProteinPlanner:
         aliases = {"addToCollection": "add_to_collection", "removeFromCollection": "remove_from_collection", "untag": "untag", "unfavorite": "favorite", "restore": "restore"}
         action = aliases.get(action, action)
         tags = fields.get("tags", fields.get("tag"))
-        tag = tags[0] if isinstance(tags, list) and tags else tags
+        if isinstance(tags, str): tags = [tags]
+        if tags is not None and (not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags)):
+            raise ValueError("tags must be a string or an array of non-empty strings")
         favorite = fields.get("favorite", False if fields.get("action") == "unfavorite" else None)
-        vectors = self.database.bulk_library_action(ids, action, collection_id=fields.get("collectionId"), tag=tag, favorite=favorite)
+        vectors = self.database.bulk_library_action(ids, action, collection_id=fields.get("collectionId"), tags=tags, favorite=favorite)
         return {"updated": ids, "skipped": [], "affectedIds": ids, "vectors": vectors}
 
     def reorder_library_collections(self, fields: dict[str, Any]) -> dict[str, Any]:
