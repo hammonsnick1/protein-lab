@@ -130,6 +130,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 self._send(200, self.planner.search_library_vectors(**search))
                 return
+            if path == "/v1/protein-planner/protein-library":
+                search = parse_vector_library_search(
+                    query, self.planner.database.PROTEIN_LIBRARY_FACETS
+                )
+                self._send(200, self.planner.search_library_proteins(**search))
+                return
+            protein_library_match = re.fullmatch(
+                r"/v1/protein-planner/protein-library/([^/]+)", path
+            )
+            if protein_library_match:
+                self._send(200, self.planner.get_library_protein(
+                    protein_library_match.group(1)
+                ))
+                return
             if path == "/v1/protein-planner/vector-library/recent":
                 self._send(200, {
                     "vectors": self.planner.list_recent_library_vectors(
@@ -275,6 +289,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(201, self.planner.import_library_vector(
                     str(body.get("filename") or "sequence.gb"),
                     str(body.get("content") or ""),
+                ))
+                return
+            if path == "/v1/protein-planner/protein-library":
+                self._send(201, self.planner.create_library_protein(body))
+                return
+            protein_library_event_match = re.fullmatch(
+                r"/v1/protein-planner/protein-library/([^/]+)/events", path
+            )
+            if protein_library_event_match:
+                self._send(201, self.planner.add_library_protein_event(
+                    protein_library_event_match.group(1), body
                 ))
                 return
             match = re.fullmatch(
@@ -492,6 +517,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                     library_match.group(1), self._read_json()
                 ))
                 return
+            protein_library_match = re.fullmatch(
+                r"/v1/protein-planner/protein-library/([^/]+)", path
+            )
+            if protein_library_match:
+                self._send(200, self.planner.update_library_protein(
+                    protein_library_match.group(1), self._read_json()
+                ))
+                return
             vector_match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors/([^/]+)", path
             )
@@ -542,6 +575,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             if library_match:
                 self.planner.delete_library_vector(library_match.group(1))
                 self._send(200, {"deleted": library_match.group(1)})
+                return
+            protein_library_match = re.fullmatch(
+                r"/v1/protein-planner/protein-library/([^/]+)", path
+            )
+            if protein_library_match:
+                self.planner.delete_library_protein(protein_library_match.group(1))
+                self._send(200, {"deleted": protein_library_match.group(1)})
                 return
             job_match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/jobs/([^/]+)", path
