@@ -146,6 +146,14 @@ export const proteinLabsApi = {
   searchVectorLibrary: (params: string) => request<{ vectors: JsonObject[]; total: number; limit: number; offset: number; facets: Record<string, { value: string; count: number }[]> }>(`/v1/protein-planner/vector-library?${params}`),
   recentLibraryVectors: (limit = 8) => request<{ vectors: JsonObject[] }>(`/v1/protein-planner/vector-library/recent?limit=${limit}`),
   setLibraryFavorite: (libraryId: string, favorite: boolean) => patch<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { favorite }),
+  // Purified-protein library (HOM-158). `params` comes from librarySearchParams
+  // in lib/protein-library; records and events are typed there.
+  searchProteinLibrary: (params: string) => request<{ proteins: JsonObject[]; total: number; facets: Record<string, { value: string; count: number }[]> }>(`/v1/protein-planner/protein-library?${params}`),
+  getLibraryProtein: (id: string) => request<JsonObject>(`/v1/protein-planner/protein-library/${encodeURIComponent(id)}`),
+  createLibraryProtein: (fields: JsonObject) => post<JsonObject>("/v1/protein-planner/protein-library", fields),
+  updateLibraryProtein: (id: string, fields: JsonObject) => patch<JsonObject>(`/v1/protein-planner/protein-library/${encodeURIComponent(id)}`, fields),
+  deleteLibraryProtein: (id: string) => request<{ deleted: string }>(`/v1/protein-planner/protein-library/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  addLibraryProteinEvent: (id: string, event: { eventType: string; aliquotsUsed?: number; fromLocation?: string; toLocation?: string; notes?: string; occurredAt?: string }) => post<JsonObject>(`/v1/protein-planner/protein-library/${encodeURIComponent(id)}/events`, event),
   exportLibraryVector: (libraryId: string, format: "genbank" | "fasta") => request<{ filename: string; content: string }>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/export?format=${format}`),
   importLibraryVector: (filename: string, content: string) => post<JsonObject & { duplicate?: boolean }>("/v1/protein-planner/vector-library/import", { filename, content }),
   getLibraryVector: (libraryId: string) => request<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`),
