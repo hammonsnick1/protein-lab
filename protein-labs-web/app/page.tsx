@@ -25,6 +25,10 @@ import { runViewTransition } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
 
 type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "vectors" | "proteins" | "manual" | "roadmap" | "reports" | "job";
+// Baked in by desktop/vite.config.ts from package.json.
+declare const __PROTEIN_LABS_VERSION__: string;
+const appVersion = __PROTEIN_LABS_VERSION__;
+
 // Depth of each view; moving to a shallower view animates as "back".
 const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, vectors: 1, proteins: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
 type VisualTheme = "paper" | "mono-dark" | "mono-light";
@@ -237,7 +241,7 @@ export default function Home() {
     </div>
 
     <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="dialog-panel"><DialogHeader><DialogTitle>Start a protein project</DialogTitle><DialogDescription>Create an independent project with its own Workflow, Roadmap, and Report. Related projects can be connected later in Project Trees.</DialogDescription></DialogHeader><label className="field">Project name<input autoFocus value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="e.g. PA0012 · PDB 8U0I"/></label><label className="field">Protein sequence<textarea rows={7} value={newSequence} onChange={(event) => setNewSequence(event.target.value)} placeholder="Paste a one-letter amino acid sequence"/></label><small>{newSequence.replace(/\s/g, "").length} residues</small><DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button><Button disabled={busy || !newSequence.trim()} onClick={() => void createProject()}>{busy && <LoaderCircle className="spin"/>} Create project</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={aboutOpen} onOpenChange={setAboutOpen}><DialogContent className="dialog-panel about-dialog"><DialogHeader><DialogTitle>Protein Lab 0.2</DialogTitle><DialogDescription>An offline workspace for planning protein expression, running purification analyses, and writing the purification report.</DialogDescription></DialogHeader><dl className="about-facts"><dt>Project directory</dt><dd className="about-path">{projectDirectory?.directory ?? (enginePath ? folderOf(enginePath) : "Engine not connected")}</dd><dt>Engine</dt><dd>{engineOnline ? "Connected" : engineOnline === false ? "Not connected" : "Connecting…"}</dd></dl><DialogFooter><Button variant="outline" onClick={() => { setAboutOpen(false); openManual(); }}><BookOpen/> Open the manual</Button><Button onClick={() => setAboutOpen(false)}>Close</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={aboutOpen} onOpenChange={setAboutOpen}><DialogContent className="dialog-panel about-dialog"><DialogHeader><DialogTitle>Protein Lab {appVersion}</DialogTitle><DialogDescription>An offline workspace for planning protein expression, running purification analyses, and writing the purification report.</DialogDescription></DialogHeader><dl className="about-facts"><dt>Project directory</dt><dd className="about-path">{projectDirectory?.directory ?? (enginePath ? folderOf(enginePath) : "Engine not connected")}</dd><dt>Engine</dt><dd>{engineOnline ? "Connected" : engineOnline === false ? "Not connected" : "Connecting…"}</dd></dl><DialogFooter><Button variant="outline" onClick={() => { setAboutOpen(false); openManual(); }}><BookOpen/> Open the manual</Button><Button onClick={() => setAboutOpen(false)}>Close</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }
 
