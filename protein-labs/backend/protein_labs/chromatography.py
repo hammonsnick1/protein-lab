@@ -183,6 +183,17 @@ def detect_ranges(points: list[dict], count: int) -> list[dict]:
     a, b = points[0], points[-1]
     detrended = [{'x': p['x'], 'y': p['y'] - a['y'] - (b['y'] - a['y']) *
                   (p['x'] - a['x']) / (b['x'] - a['x'])} for p in points]
+    # A three-sample trace is the smallest valid integration region.  Applying
+    # the normal seven-sample smoother to it inverts a triangular peak at the
+    # boundaries, so use its directly observed local maximum instead.  There
+    # are too few first differences to estimate a meaningful noise floor.
+    if len(points) < 7:
+        candidates = [i for i in range(1, len(points) - 1)
+                      if detrended[i]['y'] > 0
+                      and detrended[i]['y'] > detrended[i - 1]['y']
+                      and detrended[i]['y'] > detrended[i + 1]['y']]
+        return ([{'start': points[0]['x'], 'end': points[-1]['x']}]
+                if candidates[:count] else [])
     smooth = moving_average(detrended, 7)
     differences = [b['y'] - a['y'] for a, b in zip(detrended, detrended[1:])]
     median = quantile(differences, .5)

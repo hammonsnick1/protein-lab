@@ -180,6 +180,15 @@ def test_flat_trace_and_short_trace_detection():
     assert analyze_chromatogram(request([{'x': i, 'y': 2} for i in range(50)]))['peaks'] == []
 
 
+def test_three_sample_triangle_is_detected_and_recovers_1_5_mg():
+    # mg/mL × mL: trapezoids are (1 × 1 / 2) + (2 × 1 / 2) = 1.5 mg.
+    triangle = [{'x': 0, 'y': 0}, {'x': 1, 'y': 1}, {'x': 3, 'y': 0}]
+    result = analyze_chromatogram(request(triangle, massBalance={'loadedMg': 2}))
+    assert len(result['peaks']) == 1
+    assert result['peaks'][0]['area'] == pytest.approx(1.5)
+    assert result['massBalance']['recoveredMg'] == pytest.approx(1.5)
+
+
 def test_response_disk_round_trip(tmp_path):
     result = analyze_chromatogram(request(gaussian(center=16, sigma=.2), sec=calibration(), massBalance={'loadedMg': 2}))
     path = tmp_path / 'analysis.json'
