@@ -267,6 +267,63 @@ class Database:
                     ON project_tree_nodes(project_id);
                 CREATE INDEX IF NOT EXISTS idx_expression_vectors_protein
                     ON expression_vectors(protein_id, updated_at DESC);
+
+                -- Physical purified-protein batches are deliberately separate
+                -- from design-project proteins: deleting a design must never
+                -- erase an inventory record or its custody history.
+                CREATE TABLE IF NOT EXISTS protein_library (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    gene_name TEXT NOT NULL DEFAULT '',
+                    organism TEXT NOT NULL DEFAULT '',
+                    construct_name TEXT NOT NULL DEFAULT '',
+                    tags_json TEXT NOT NULL DEFAULT '[]',
+                    purification_method TEXT NOT NULL DEFAULT '',
+                    concentration_value REAL,
+                    concentration_unit TEXT NOT NULL DEFAULT 'mg/mL',
+                    yield_value REAL,
+                    yield_unit TEXT NOT NULL DEFAULT 'mg',
+                    purity_percent REAL,
+                    buffer TEXT NOT NULL DEFAULT '',
+                    storage_date TEXT NOT NULL DEFAULT '',
+                    storage_temperature TEXT NOT NULL DEFAULT '',
+                    location_path TEXT NOT NULL DEFAULT '',
+                    freezer TEXT NOT NULL DEFAULT '',
+                    shelf TEXT NOT NULL DEFAULT '',
+                    rack TEXT NOT NULL DEFAULT '',
+                    box TEXT NOT NULL DEFAULT '',
+                    position TEXT NOT NULL DEFAULT '',
+                    aliquot_count INTEGER NOT NULL DEFAULT 0 CHECK (aliquot_count >= 0),
+                    aliquot_volume REAL,
+                    aliquot_unit TEXT NOT NULL DEFAULT 'uL',
+                    status TEXT NOT NULL DEFAULT 'stored'
+                        CHECK (status IN ('stored', 'low', 'used_up', 'discarded')),
+                    notes TEXT NOT NULL DEFAULT '',
+                    favorite INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS protein_library_events (
+                    id TEXT PRIMARY KEY,
+                    protein_library_id TEXT NOT NULL
+                        REFERENCES protein_library(id) ON DELETE CASCADE,
+                    event_type TEXT NOT NULL
+                        CHECK (event_type IN ('stored', 'thawed', 'aliquot_used', 'moved', 'discarded')),
+                    aliquots_used INTEGER NOT NULL DEFAULT 0 CHECK (aliquots_used >= 0),
+                    from_location TEXT NOT NULL DEFAULT '',
+                    to_location TEXT NOT NULL DEFAULT '',
+                    notes TEXT NOT NULL DEFAULT '',
+                    occurred_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_protein_library_updated
+                    ON protein_library(updated_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_protein_library_status
+                    ON protein_library(status);
+                CREATE INDEX IF NOT EXISTS idx_protein_library_events_batch
+                    ON protein_library_events(protein_library_id, occurred_at DESC);
                 """
             )
             vector_columns = {
@@ -480,6 +537,250 @@ class Database:
             )
             if cursor.rowcount == 0:
                 raise ProteinNotFoundError(f"Protein {protein_id!r} was not found")
+
+    # ------------------------------------------------------------------
+    # Purified protein library
+    # ------------------------------------------------------------------
+    PROTEIN_LIBRARY_FACETS = {
+        "temperature": "storageTemperature",
+        "location": "locationPath",
+        "status": "status",
+        "method": "purificationMethod",
+        "tag": "tags",
+    }
+
+    def create_library_protein(self, fields: dict[str, Any]) -> dict[str, Any]:
+        protein_id = str(uuid.uuid4())
+        timestamp = utc_now()
+        record = self._library_protein_values(fields)
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO protein_library (
+                    id, name, gene_name, organism, construct_name, tags_json,
+                    purification_method, concentration_value, concentration_unit,
+                    yield_value, yield_unit, purity_percent, buffer, storage_date,
+                    storage_temperature, location_path, freezer, shelf, rack, box,
+                    position, aliquot_count, aliquot_volume, aliquot_unit, status,
+                    notes, favorite, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (protein_id, *record, timestamp, timestamp),
+            )
+        return self.get_library_protein(protein_id)
+
+    def get_library_protein(self, protein_id: str) -> dict[str, Any]:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM protein_library WHERE id = ?", (protein_id,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"Protein library record {protein_id!r} was not found")
+            return self._library_protein(connection, row, include_events=True)
+
+    def update_library_protein(
+        self, protein_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        current = self.get_library_protein(protein_id)
+        merged = {**current, **fields}
+        record = self._library_protein_values(merged)
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE protein_library SET
+                    name = ?, gene_name = ?, organism = ?, construct_name = ?,
+                    tags_json = ?, purification_method = ?, concentration_value = ?,
+                    concentration_unit = ?, yield_value = ?, yield_unit = ?,
+                    purity_percent = ?, buffer = ?, storage_date = ?,
+                    storage_temperature = ?, location_path = ?, freezer = ?,
+                    shelf = ?, rack = ?, box = ?, position = ?, aliquot_count = ?,
+                    aliquot_volume = ?, aliquot_unit = ?, status = ?, notes = ?,
+                    favorite = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (*record, utc_now(), protein_id),
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Protein library record {protein_id!r} was not found")
+        return self.get_library_protein(protein_id)
+
+    def delete_library_protein(self, protein_id: str) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM protein_library WHERE id = ?", (protein_id,)
+            )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Protein library record {protein_id!r} was not found")
+
+    def search_library_proteins(
+        self, *, query: str = "", filters: dict[str, list[str]] | None = None,
+        favorite: bool | None = None, limit: int = 100, offset: int = 0,
+    ) -> dict[str, Any]:
+        normalized_filters = {
+            key: [str(value).strip() for value in values if str(value).strip()]
+            for key, values in (filters or {}).items() if values
+        }
+        folded = {key: [value.casefold() for value in values]
+                  for key, values in normalized_filters.items()}
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM protein_library ORDER BY favorite DESC, updated_at DESC"
+            ).fetchall()
+            records = [self._library_protein(connection, row, include_events=False) for row in rows]
+        search = query.strip().casefold()
+
+        def matches(record: dict[str, Any], ignored: str | None = None) -> bool:
+            if favorite is not None and record["favorite"] is not favorite:
+                return False
+            if search and search not in " ".join(str(value) for value in record.values()).casefold():
+                return False
+            for facet, values in folded.items():
+                if facet == ignored:
+                    continue
+                record_values = self._protein_library_facet_values(record, facet)
+                if values and not record_values.intersection(values):
+                    return False
+            return True
+
+        matched = [record for record in records if matches(record)]
+        facets: dict[str, list[dict[str, Any]]] = {}
+        for facet in self.PROTEIN_LIBRARY_FACETS:
+            counts: dict[str, tuple[str, int]] = {}
+            for record in records:
+                if not matches(record, ignored=facet):
+                    continue
+                for label in self._protein_library_facet_labels(record, facet):
+                    key = label.casefold()
+                    shown, count = counts.get(key, (label, 0))
+                    counts[key] = (shown, count + 1)
+            facets[facet] = [
+                {"value": shown, "count": count}
+                for _, (shown, count) in sorted(
+                    counts.items(), key=lambda item: (-item[1][1], item[1][0].casefold())
+                )
+            ]
+        return {"proteins": matched[offset: offset + limit], "total": len(matched),
+                "limit": limit, "offset": offset, "query": query.strip(),
+                "filters": normalized_filters, "facets": facets}
+
+    def add_library_protein_event(
+        self, protein_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        event_type = str(fields.get("eventType") or "").strip()
+        if event_type not in {"stored", "thawed", "aliquot_used", "moved", "discarded"}:
+            raise ValueError("eventType must be stored, thawed, aliquot_used, moved, or discarded")
+        used = int(fields.get("aliquotsUsed", 1 if event_type == "aliquot_used" else 0))
+        if used < 0 or (event_type != "aliquot_used" and used):
+            raise ValueError("aliquotsUsed is only allowed for aliquot_used events")
+        event_id, timestamp = str(uuid.uuid4()), utc_now()
+        with self.connect() as connection:
+            # The conditional decrement must occur before the event insert and
+            # in the same transaction. This prevents two callers that both
+            # observed one remaining aliquot from recording two uses.
+            current = connection.execute(
+                "SELECT aliquot_count, location_path FROM protein_library WHERE id = ?",
+                (protein_id,),
+            ).fetchone()
+            if current is None:
+                raise LookupError(f"Protein library record {protein_id!r} was not found")
+            to_location = str(fields.get("toLocation") or "").strip()
+            if event_type == "aliquot_used":
+                cursor = connection.execute(
+                    """
+                    UPDATE protein_library SET
+                        aliquot_count = aliquot_count - ?,
+                        status = CASE
+                            WHEN aliquot_count - ? = 0 THEN 'used_up'
+                            WHEN aliquot_count - ? <= 1 THEN 'low'
+                            ELSE 'stored'
+                        END,
+                        updated_at = ?
+                    WHERE id = ? AND aliquot_count >= ?
+                    """,
+                    (used, used, used, timestamp, protein_id, used),
+                )
+                if cursor.rowcount == 0:
+                    raise ValueError("aliquotsUsed cannot exceed the available aliquot count")
+            else:
+                status = "discarded" if event_type == "discarded" else None
+                if status is None:
+                    connection.execute(
+                        "UPDATE protein_library SET location_path = ?, updated_at = ? WHERE id = ?",
+                        (to_location or current["location_path"], timestamp, protein_id),
+                    )
+                else:
+                    connection.execute(
+                        "UPDATE protein_library SET status = ?, location_path = ?, updated_at = ? WHERE id = ?",
+                        (status, to_location or current["location_path"], timestamp, protein_id),
+                    )
+            connection.execute(
+                """INSERT INTO protein_library_events (
+                    id, protein_library_id, event_type, aliquots_used, from_location,
+                    to_location, notes, occurred_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (event_id, protein_id, event_type, used,
+                 str(fields.get("fromLocation") or current["location_path"]), to_location,
+                 str(fields.get("notes") or ""), str(fields.get("occurredAt") or timestamp), timestamp),
+            )
+        return self.get_library_protein(protein_id)
+
+    def _library_protein_values(self, fields: dict[str, Any]) -> tuple[Any, ...]:
+        tags = fields.get("tags") or []
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ValueError("tags must be an array of strings")
+        aliquots = int(fields.get("aliquotCount", 0))
+        if aliquots < 0:
+            raise ValueError("aliquotCount cannot be negative")
+        status = str(fields.get("status") or "stored")
+        if status not in {"stored", "low", "used_up", "discarded"}:
+            raise ValueError("status must be stored, low, used_up, or discarded")
+        numeric = lambda key: None if fields.get(key) in (None, "") else float(fields[key])
+        return (
+            str(fields.get("name") or "").strip(), str(fields.get("geneName") or "").strip(),
+            str(fields.get("organism") or "").strip(), str(fields.get("constructName") or "").strip(),
+            json.dumps(tags, allow_nan=False), str(fields.get("purificationMethod") or "").strip(),
+            numeric("concentrationValue"), str(fields.get("concentrationUnit") or "mg/mL").strip(),
+            numeric("yieldValue"), str(fields.get("yieldUnit") or "mg").strip(), numeric("purityPercent"),
+            str(fields.get("buffer") or ""), str(fields.get("storageDate") or ""),
+            str(fields.get("storageTemperature") or ""), str(fields.get("locationPath") or ""),
+            str(fields.get("freezer") or ""), str(fields.get("shelf") or ""), str(fields.get("rack") or ""),
+            str(fields.get("box") or ""), str(fields.get("position") or ""), aliquots,
+            numeric("aliquotVolume"), str(fields.get("aliquotUnit") or "uL").strip(), status,
+            str(fields.get("notes") or ""), 1 if bool(fields.get("favorite", False)) else 0,
+        )
+
+    @classmethod
+    def _protein_library_facet_labels(cls, record: dict[str, Any], facet: str) -> list[str]:
+        value = record.get(cls.PROTEIN_LIBRARY_FACETS.get(facet, ""))
+        return [str(item).strip() for item in (value if isinstance(value, list) else [value]) if str(item or "").strip()]
+
+    @classmethod
+    def _protein_library_facet_values(cls, record: dict[str, Any], facet: str) -> set[str]:
+        return {label.casefold() for label in cls._protein_library_facet_labels(record, facet)}
+
+    def _library_protein(self, connection: sqlite3.Connection, row: sqlite3.Row, *, include_events: bool) -> dict[str, Any]:
+        record = {
+            "id": row["id"], "name": row["name"], "geneName": row["gene_name"],
+            "organism": row["organism"], "constructName": row["construct_name"],
+            "tags": _loads(row["tags_json"], []), "purificationMethod": row["purification_method"],
+            "concentrationValue": row["concentration_value"], "concentrationUnit": row["concentration_unit"],
+            "yieldValue": row["yield_value"], "yieldUnit": row["yield_unit"], "purityPercent": row["purity_percent"],
+            "buffer": row["buffer"], "storageDate": row["storage_date"], "storageTemperature": row["storage_temperature"],
+            "locationPath": row["location_path"], "freezer": row["freezer"], "shelf": row["shelf"],
+            "rack": row["rack"], "box": row["box"], "position": row["position"],
+            "aliquotCount": row["aliquot_count"], "aliquotVolume": row["aliquot_volume"],
+            "aliquotUnit": row["aliquot_unit"], "status": row["status"], "notes": row["notes"],
+            "favorite": bool(row["favorite"]), "createdAt": row["created_at"], "updatedAt": row["updated_at"],
+        }
+        if include_events:
+            events = connection.execute(
+                "SELECT * FROM protein_library_events WHERE protein_library_id = ? ORDER BY occurred_at DESC, created_at DESC", (row["id"],)
+            ).fetchall()
+            record["events"] = [{"id": event["id"], "eventType": event["event_type"],
+                "aliquotsUsed": event["aliquots_used"], "fromLocation": event["from_location"],
+                "toLocation": event["to_location"], "notes": event["notes"], "occurredAt": event["occurred_at"],
+                "createdAt": event["created_at"]} for event in events]
+        return record
 
     def save_protparam(self, protein_id: str, result: dict[str, Any]) -> None:
         self.get_protein(protein_id)
