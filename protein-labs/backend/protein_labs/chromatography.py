@@ -26,6 +26,30 @@ def positive(value: Any, name: str) -> float:
     return result
 
 
+def finite(value: float, name: str) -> float:
+    """Reject overflow from arithmetic on otherwise finite inputs."""
+    if not math.isfinite(value):
+        raise ValueError(f"{name} overflowed; rescale input values explicitly")
+    return value
+
+
+def finite_sum(values: Any, name: str) -> float:
+    """Compute an accurate sum while mapping arithmetic overflow to input error."""
+    try:
+        return finite(math.fsum(values), name)
+    except OverflowError as error:
+        raise ValueError(f"{name} overflowed; rescale input values explicitly") from error
+
+
+def json_result(value: dict) -> dict:
+    """Keep non-finite numbers from reaching the JSON response boundary."""
+    try:
+        json.dumps(value, allow_nan=False)
+    except (ValueError, OverflowError) as error:
+        raise ValueError('Numeric overflow; rescale input values explicitly') from error
+    return value
+
+
 def quantile(values: list[float], fraction: float) -> float:
     ordered = sorted(values)
     position = (len(ordered) - 1) * fraction
@@ -53,7 +77,7 @@ def kav(ve: float, vo: float, vt: float) -> float:
     vo, vt = positive(vo, 'voMl'), positive(vt, 'vtMl')
     if vo >= vt:
         raise ValueError('SEC requires 0 < voMl < vtMl (void volume below column volume)')
-    return (number(ve, 'veMl') - vo) / (vt - vo)
+    return finite((number(ve, 'veMl') - vo) / (vt - vo), 'SEC Kav calculation')
 
 
 def fit_sec(config: dict) -> dict:
@@ -78,22 +102,27 @@ def fit_sec(config: dict) -> dict:
         masses.append(mw / 1000)
     if len(xs) < 2:
         raise ValueError('SEC calibration requires at least two included standards')
-    mx, my = mean(xs), mean(ys)
-    denominator = math.fsum((x - mx) ** 2 for x in xs)
+    mx, my = finite(mean(xs), 'SEC mean log molecular weight'), finite(mean(ys), 'SEC mean Kav')
+    denominator = finite_sum(((x - mx) ** 2 for x in xs), 'SEC fit denominator')
     if denominator < 1e-20:
         raise ValueError('SEC standards must have distinct molecular weights')
-    slope = math.fsum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denominator
+    numerator = finite_sum(((x - mx) * (y - my) for x, y in zip(xs, ys)),
+                           'SEC fit numerator')
+    slope = finite(numerator / denominator, 'SEC fit slope')
     if slope >= -1e-12:
         raise ValueError('SEC calibration requires a negative, invertible slope')
-    intercept = my - slope * mx
-    residual = math.fsum((y - slope * x - intercept) ** 2 for x, y in zip(xs, ys))
-    total = math.fsum((y - my) ** 2 for y in ys)
-    return {'slope': slope, 'intercept': intercept, 'r2': 1 - residual / total,
-            'logMwDaRange': [min(xs), max(xs)], 'veMlRange': [min(volumes), max(volumes)],
-            'standardMassRangeKDa': [min(masses), max(masses)],
-            'residualVarianceKav': residual / (len(xs) - 2) if len(xs) > 2 else None,
+    intercept = finite(my - slope * mx, 'SEC fit intercept')
+    residual = finite_sum(((y - slope * x - intercept) ** 2 for x, y in zip(xs, ys)),
+                          'SEC residual sum of squares')
+    total = finite_sum(((y - my) ** 2 for y in ys), 'SEC total sum of squares')
+    result = {'slope': slope, 'intercept': intercept,
+              'r2': finite(1 - residual / total, 'SEC R squared'),
+              'logMwDaRange': [min(xs), max(xs)], 'veMlRange': [min(volumes), max(volumes)],
+              'standardMassRangeKDa': [min(masses), max(masses)],
+              'residualVarianceKav': finite(residual / (len(xs) - 2), 'SEC residual variance') if len(xs) > 2 else None,
             'meanLogMwDa': mx, 'sumSquaredLogMwDa': denominator,
             'voMl': vo, 'vtMl': vt, 'standardCount': len(xs)}
+    return json_result(result)
 
 
 def calibrate_sec(body: dict) -> dict:
@@ -104,17 +133,20 @@ def calibrate_sec(body: dict) -> dict:
     volumes = body.get('elutionVolumesMl', [])
     if not isinstance(volumes, list) or len(volumes) > 200000:
         raise ValueError('elutionVolumesMl must be an array with at most 200000 values')
-    return {'schemaVersion': 1, 'calibration': fit,
-            'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit)) for ve in volumes]}
+    result = {'schemaVersion': 1, 'calibration': fit,
+              'predictions': [dict(veMl=number(ve, 'veMl'), **calibrate(ve, fit)) for ve in volumes]}
+    return json_result(result)
 
 
 def calibrate(ve: float, fit: dict) -> dict:
     value = kav(ve, fit['voMl'], fit['vtMl'])
-    log_mw = (value - fit['intercept']) / fit['slope']
+    log_mw = finite((value - fit['intercept']) / fit['slope'],
+                    'SEC molecular-weight calculation')
     lo, hi = fit['logMwDaRange']
     v_lo, v_hi = fit['veMlRange']
     outside = not (lo - 1e-12 <= log_mw <= hi + 1e-12 and v_lo - 1e-12 <= ve <= v_hi + 1e-12)
-    mw = None if outside else 10 ** min(hi, max(lo, log_mw)) / 1000
+    mw = None if outside else finite(10 ** min(hi, max(lo, log_mw)) / 1000,
+                                     'SEC molecular weight')
     uncertainty = None
     flags = []
     if mw is not None:
@@ -126,7 +158,8 @@ def calibrate(ve: float, fit: dict) -> dict:
             # First-order inverse prediction for one new Kav observation, then
             # propagate log10(Mw) to Mw. Not a confidence/prediction interval.
             leverage = 1 + 1 / fit['standardCount'] + (log_mw - fit['meanLogMwDa']) ** 2 / fit['sumSquaredLogMwDa']
-            uncertainty = mw * math.log(10) * math.sqrt(variance * leverage) / abs(fit['slope'])
+            uncertainty = finite(mw * math.log(10) * math.sqrt(variance * leverage) / abs(fit['slope']),
+                                 'SEC molecular-weight uncertainty')
             flags.append(flag('calibration_only_mass_uncertainty', 'note',
                               'Mass uncertainty is an approximate one-sigma calibration estimate; it excludes '
                               'peak localization, standard mass errors, column volume errors and shape effects.'))
@@ -314,7 +347,7 @@ def analyze_chromatogram(body: dict) -> dict:
                 if not any(f['code'] == 'unresolved_neighbor' for f in p['flags']):
                     p['flags'].append(flag('unresolved_neighbor', 'caution',
                                            'An adjacent peak has Rs below 1.5; species contributions are not deconvolved.'))
-    total_area = math.fsum(p['area'] for p in peaks)
+    total_area = finite_sum((p['area'] for p in peaks), 'integrated peak area')
     mass = body.get('massBalance')
     recovery = {'status': 'not_requested', 'integratedArea': total_area, 'recoveredMg': None, 'recoveryPercent': None}
     if mass is not None:
@@ -325,9 +358,10 @@ def analyze_chromatogram(body: dict) -> dict:
         if units['y'] == 'mAU':
             factor = positive(mass.get('responseFactorMAUPerMgMl'), 'responseFactorMAUPerMgMl')
         flow = positive(mass.get('flowMlPerMin'), 'flowMlPerMin') if units['x'] == 'min' else 1.0
-        recovered = total_area / factor * flow
+        recovered = finite(total_area / factor * flow, 'recovered mass')
         recovery.update(status='calculated', loadedMg=loaded, recoveredMg=recovered,
-                        recoveryPercent=100 * recovered / loaded, unaccountedMg=loaded - recovered,
+                        recoveryPercent=finite(100 * recovered / loaded, 'recovery percent'),
+                        unaccountedMg=finite(loaded - recovered, 'unaccounted mass'),
                         exceedsLoaded=recovered > loaded)
     result = {'schemaVersion': 1, 'units': {**units, 'area': units['y'] + '*' + units['x'],
               'width': units['x'], 'mw': 'kDa', 'mass': 'mg', 'recovery': '%',
@@ -340,9 +374,4 @@ def analyze_chromatogram(body: dict) -> dict:
                           'peakFit': 'nonnegative least-squares Gaussian amplitude; measured apex/FWHM fixed; signed endpoint baseline residuals; RMSE in y units',
                           'mwUncertainty': 'first-order one-sigma inverse SEC prediction from calibration scatter only; not a confidence interval',
                           'noise': '1.4826*MAD(first differences)/sqrt(2); 3 sigma threshold'}}
-    # Reject numeric overflow at the API boundary instead of returning invalid JSON.
-    try:
-        json.dumps(result, allow_nan=False)
-    except ValueError as error:
-        raise ValueError('Numeric overflow; rescale input values explicitly') from error
-    return result
+    return json_result(result)

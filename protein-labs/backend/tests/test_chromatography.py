@@ -214,6 +214,22 @@ def test_calibration_route_without_trace():
     assert result['predictions'][1]['mwKDa'] is None
 
 
+def test_calibration_route_rejects_non_finite_derived_values():
+    """Finite inputs may still overflow the Kav denominator calculation."""
+    status, result = dispatch({
+        'voMl': 1e-310,
+        'vtMl': 3e-310,
+        'standards': [
+            {'mwDa': 1000, 'veMl': 2.5e-310},
+            {'mwDa': 100000, 'veMl': 1.5e-310},
+        ],
+        'elutionVolumesMl': [1e308],
+    }, '/v1/chromatogram/calibrate-sec')
+    assert status == 400
+    assert result['type'] == 'ValueError'
+    assert 'overflow' in result['error']
+
+
 def test_calibration_mass_range_uses_only_included_standards():
     config = calibration()
     config['standards'].append({'mwDa': 1e9, 'veMl': 9, 'included': False})
