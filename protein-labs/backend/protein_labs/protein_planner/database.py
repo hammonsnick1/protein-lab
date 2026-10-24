@@ -244,6 +244,22 @@ class Database:
                     PRIMARY KEY (library_id, protein_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS vector_collections (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                    position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS vector_collection_memberships (
+                    collection_id TEXT NOT NULL REFERENCES vector_collections(id) ON DELETE CASCADE,
+                    library_id TEXT NOT NULL REFERENCES vector_library(id) ON DELETE CASCADE,
+                    PRIMARY KEY (collection_id, library_id)
+                );
+                CREATE TABLE IF NOT EXISTS vector_tags (
+                    library_id TEXT NOT NULL REFERENCES vector_library(id) ON DELETE CASCADE,
+                    tag TEXT NOT NULL COLLATE NOCASE,
+                    PRIMARY KEY (library_id, tag)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_vector_library_updated
                     ON vector_library(updated_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_vector_library_uses_protein
@@ -348,6 +364,12 @@ class Database:
                 connection.execute(
                     "ALTER TABLE expression_vectors ADD COLUMN library_id TEXT"
                 )
+            library_columns = {row["name"] for row in connection.execute(
+                "PRAGMA table_info(vector_library)").fetchall()}
+            if "color_label" not in library_columns:
+                connection.execute("ALTER TABLE vector_library ADD COLUMN color_label TEXT")
+            if "deleted_at" not in library_columns:
+                connection.execute("ALTER TABLE vector_library ADD COLUMN deleted_at TEXT")
             project_tree_link_columns = {
                 row["name"]
                 for row in connection.execute(
@@ -1475,14 +1497,31 @@ class Database:
     # ------------------------------------------------------------------
     # Shared vector library
     # ------------------------------------------------------------------
+    @staticmethod
+    def _sequence_checksum(sequence: str, circular: bool) -> str:
+        """Stable content checksum; circular sequences are rotation invariant."""
+        sequence = sequence.upper()
+        if circular and sequence:
+            sequence = min(sequence[index:] + sequence[:index] for index in range(len(sequence)))
+        return hashlib.sha256(sequence.encode("utf-8")).hexdigest()
+
+    def find_library_duplicate(self, sequence: str, circular: bool) -> dict[str, Any] | None:
+        checksum = self._sequence_checksum(sequence, circular)
+        with self.connect() as connection:
+            rows = connection.execute("SELECT * FROM vector_library WHERE deleted_at IS NULL").fetchall()
+            for row in rows:
+                if bool(row["circular"]) == circular and self._sequence_checksum(row["sequence"], circular) == checksum:
+                    return self._library_vector(connection, row, full=False)
+        return None
+
     def import_library_vector(
-        self, vector: dict[str, Any]
+        self, vector: dict[str, Any], *, keep_both: bool = False
     ) -> tuple[dict[str, Any], bool]:
         """Insert a project-free catalogue record, or return its sequence twin."""
         sequence = str(vector.get("sequence") or "")
         if not sequence:
             raise ValueError("A catalogued vector needs a sequence")
-        fingerprint = hashlib.sha256(sequence.upper().encode("utf-8")).hexdigest()
+        fingerprint = self._sequence_checksum(sequence, bool(vector.get("circular", True)))
         features = vector.get("features") or []
         insert_name = next(
             (
@@ -1494,6 +1533,11 @@ class Database:
         )
         library_id = str(uuid.uuid4())
         timestamp = utc_now()
+        existing = self.find_library_duplicate(sequence, bool(vector.get("circular", True)))
+        if existing and not keep_both:
+            return existing, True
+        if existing:
+            fingerprint = f"{fingerprint}:{uuid.uuid4()}"
         with self.connect() as connection:
             cursor = connection.execute(
                 """
@@ -1643,6 +1687,11 @@ class Database:
         favorite: bool | None = None,
         limit: int = 100,
         offset: int = 0,
+        view: str = "all",
+        collection: str | None = None,
+        tags: list[str] | None = None,
+        sort: str = "name",
+        order: str = "asc",
     ) -> dict[str, Any]:
         """Search catalogue summaries and compute disjunctive facet counts."""
         normalized_filters = {
@@ -1655,20 +1704,32 @@ class Database:
             for key, values in normalized_filters.items()
         }
         with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM vector_library ORDER BY favorite DESC, name COLLATE NOCASE"
-            ).fetchall()
+            rows = connection.execute("SELECT * FROM vector_library WHERE deleted_at IS NULL").fetchall()
             records = [
                 self._library_vector(connection, row, full=False) for row in rows
             ]
 
         query_value = query.strip().casefold()
 
+        view = view or "all"
+        if view not in {"all", "favorites", "recent", "imports", "standard", "unsorted"}:
+            raise ValueError("Unknown vector library view")
+        if sort not in {"name", "size", "created", "lastUsed"} or order not in {"asc", "desc"}:
+            raise ValueError("Unknown vector library sort")
+        tag_filter = {tag.casefold() for tag in tags or [] if tag.strip()}
+
         def matches(
             record: dict[str, Any], ignored_facet: str | None = None
         ) -> bool:
             if favorite is not None and record["favorite"] is not favorite:
                 return False
+            if view == "favorites" and not record["favorite"]: return False
+            if view == "recent" and not record["lastUsedAt"]: return False
+            if view == "imports" and record["origin"] != "import": return False
+            if view == "standard" and record["origin"] != "standard": return False
+            if view == "unsorted" and (record["origin"] == "standard" or record["collectionIds"] or record["tags"]): return False
+            if collection and collection not in record["collectionIds"]: return False
+            if tag_filter and not tag_filter.issubset({tag.casefold() for tag in record["tags"]}): return False
             if query_value:
                 searchable = " ".join(
                     str(value)
@@ -1687,6 +1748,8 @@ class Database:
             return True
 
         matched = [record for record in records if matches(record)]
+        sort_keys = {"name": lambda r: r["name"].casefold(), "size": lambda r: r["lengthBp"], "created": lambda r: r["createdAt"], "lastUsed": lambda r: r["lastUsedAt"] or ""}
+        matched.sort(key=sort_keys[sort], reverse=order == "desc")
         facets: dict[str, list[dict[str, Any]]] = {}
         for facet in self.VECTOR_LIBRARY_FACETS:
             counts: dict[str, int] = {}
@@ -1705,6 +1768,12 @@ class Database:
                     key=lambda item: (-item[1], labels[item[0]].casefold()),
                 )
             ]
+        selected_view = view
+        view_counts: dict[str, int] = {}
+        for candidate in ("all", "favorites", "recent", "imports", "standard", "unsorted"):
+            view = candidate
+            view_counts[candidate] = sum(1 for record in records if matches(record))
+        view = selected_view
         return {
             "vectors": matched[offset : offset + limit],
             "total": len(matched),
@@ -1713,6 +1782,8 @@ class Database:
             "query": query.strip(),
             "filters": normalized_filters,
             "facets": facets,
+            "tags": self.list_tags(),
+            "viewCounts": view_counts,
         }
 
     VECTOR_LIBRARY_FACETS = {
@@ -1748,6 +1819,7 @@ class Database:
                 SELECT l.*, MAX(u.last_used_at) AS recent_used_at
                 FROM vector_library l
                 JOIN vector_library_uses u ON u.library_id = l.id
+                WHERE l.deleted_at IS NULL
                 GROUP BY l.id
                 ORDER BY recent_used_at DESC
                 LIMIT ?
@@ -1792,15 +1864,130 @@ class Database:
                 raise LookupError(f"Catalogued vector {library_id!r} was not found")
             if bool(row["is_standard"]):
                 raise ValueError("Bundled standard vectors cannot be deleted")
-            connection.execute(
-                "UPDATE expression_vectors SET library_id = NULL WHERE library_id = ?",
-                (library_id,),
-            )
-            cursor = connection.execute(
-                "DELETE FROM vector_library WHERE id = ?", (library_id,)
-            )
+            cursor = connection.execute("UPDATE vector_library SET deleted_at = ? WHERE id = ?", (utc_now(), library_id))
             if cursor.rowcount == 0:
                 raise LookupError(f"Catalogued vector {library_id!r} was not found")
+
+    def list_collections(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT c.*, COUNT(l.id) AS vector_count
+                FROM vector_collections c LEFT JOIN vector_collection_memberships m
+                ON m.collection_id=c.id LEFT JOIN vector_library l
+                ON l.id=m.library_id AND l.deleted_at IS NULL
+                GROUP BY c.id ORDER BY c.position, c.name""").fetchall()
+        return [{"id": r["id"], "name": r["name"], "position": r["position"],
+                 "vectorCount": r["vector_count"], "createdAt": r["created_at"], "updatedAt": r["updated_at"]} for r in rows]
+
+    def create_collection(self, name: str) -> dict[str, Any]:
+        name = name.strip()
+        if not name or len(name) > 120: raise ValueError("Collection names must be 1 to 120 characters")
+        now, collection_id = utc_now(), str(uuid.uuid4())
+        with self.connect() as connection:
+            try:
+                position = connection.execute("SELECT COALESCE(MAX(position), -1)+1 FROM vector_collections").fetchone()[0]
+                connection.execute("INSERT INTO vector_collections VALUES (?, ?, ?, ?, ?)", (collection_id, name, position, now, now))
+            except sqlite3.IntegrityError as error: raise ValueError("That collection name already exists") from error
+        return next(c for c in self.list_collections() if c["id"] == collection_id)
+
+    def update_collection(self, collection_id: str, *, name: str | None = None, position: int | None = None) -> dict[str, Any]:
+        with self.connect() as connection:
+            if name is not None:
+                name = name.strip()
+                if not name: raise ValueError("Collection name is required")
+                try: cursor = connection.execute("UPDATE vector_collections SET name=?, updated_at=? WHERE id=?", (name, utc_now(), collection_id))
+                except sqlite3.IntegrityError as error: raise ValueError("That collection name already exists") from error
+            else: cursor = connection.execute("SELECT 1 FROM vector_collections WHERE id=?", (collection_id,))
+            if name is not None and cursor.rowcount == 0: raise LookupError(f"Collection {collection_id!r} was not found")
+            if name is None and cursor.fetchone() is None: raise LookupError(f"Collection {collection_id!r} was not found")
+            if position is not None:
+                if not isinstance(position, int) or position < 0: raise ValueError("position must be a non-negative integer")
+                connection.execute("UPDATE vector_collections SET position=?, updated_at=? WHERE id=?", (position, utc_now(), collection_id))
+        return next(c for c in self.list_collections() if c["id"] == collection_id)
+
+    def delete_collection(self, collection_id: str) -> None:
+        with self.connect() as connection:
+            if connection.execute("DELETE FROM vector_collections WHERE id=?", (collection_id,)).rowcount == 0: raise LookupError(f"Collection {collection_id!r} was not found")
+
+    def reorder_collections(self, ids: list[str]) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            known = [row["id"] for row in connection.execute("SELECT id FROM vector_collections ORDER BY position").fetchall()]
+            if len(ids) != len(known) or set(ids) != set(known): raise ValueError("ids must contain every collection exactly once")
+            now = utc_now(); connection.executemany("UPDATE vector_collections SET position=?, updated_at=? WHERE id=?", [(position, now, item) for position, item in enumerate(ids)])
+        return self.list_collections()
+
+    def list_tags(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT t.tag, COUNT(*) AS count FROM vector_tags t
+                JOIN vector_library l ON l.id=t.library_id WHERE l.deleted_at IS NULL
+                GROUP BY t.tag ORDER BY t.tag COLLATE NOCASE""").fetchall()
+            return [{"name": row["tag"], "count": row["count"]} for row in rows]
+
+    def rename_tag(self, old_name: str, new_name: str) -> list[dict[str, Any]]:
+        old_name, new_name = old_name.strip(), new_name.strip()
+        if not old_name or not new_name: raise ValueError("Tag names are required")
+        with self.connect() as connection:
+            if connection.execute("SELECT 1 FROM vector_tags WHERE tag=? COLLATE NOCASE", (old_name,)).fetchone() is None: raise LookupError(f"Tag {old_name!r} was not found")
+            connection.execute("INSERT OR IGNORE INTO vector_tags (library_id, tag) SELECT library_id, ? FROM vector_tags WHERE tag=? COLLATE NOCASE", (new_name, old_name))
+            connection.execute("DELETE FROM vector_tags WHERE tag=? COLLATE NOCASE", (old_name,))
+        return self.list_tags()
+
+    def update_library_vector(self, library_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        allowed = {"name", "notes", "color", "colorLabel", "tags", "favorite"}
+        unknown = set(fields) - allowed
+        if unknown: raise ValueError("Unsupported vector fields: " + ", ".join(sorted(unknown)))
+        with self.connect() as connection:
+            row = connection.execute("SELECT * FROM vector_library WHERE id=?", (library_id,)).fetchone()
+            if row is None: raise LookupError(f"Catalogued vector {library_id!r} was not found")
+            if row["is_standard"] and set(fields) - {"notes", "color", "colorLabel", "tags", "favorite"}: raise PermissionError("read_only")
+            updates: list[str] = []; values: list[Any] = []
+            for field, column in (("name", "name"), ("notes", "notes"), ("color", "color_label"), ("colorLabel", "color_label"), ("favorite", "favorite")):
+                if field in fields:
+                    if field == "name" and not str(fields[field]).strip(): raise ValueError("name is required")
+                    updates.append(f"{column}=?"); values.append(int(fields[field]) if field == "favorite" else fields[field])
+            if updates:
+                updates.append("updated_at=?"); values.append(utc_now()); values.append(library_id)
+                connection.execute(f"UPDATE vector_library SET {', '.join(updates)} WHERE id=?", values)
+            if "tags" in fields:
+                tags = fields["tags"]
+                if not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags): raise ValueError("tags must be an array of non-empty strings")
+                connection.execute("DELETE FROM vector_tags WHERE library_id=?", (library_id,)); connection.executemany("INSERT OR IGNORE INTO vector_tags VALUES (?, ?)", [(library_id, tag.strip()) for tag in tags])
+        return self.get_library_vector(library_id)
+
+    def restore_library_vector(self, library_id: str) -> dict[str, Any]:
+        with self.connect() as connection:
+            if connection.execute("UPDATE vector_library SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", (library_id,)).rowcount == 0: raise LookupError(f"Deleted vector {library_id!r} was not found")
+        return self.get_library_vector(library_id)
+
+    def duplicate_library_vector(self, library_id: str) -> dict[str, Any]:
+        source = self.get_library_vector(library_id)
+        source["name"] = f"{source['name']} copy"
+        vector, _ = self.import_library_vector(source, keep_both=True)
+        return vector
+
+    def bulk_library_action(self, ids: list[str], action: str, *, collection_id: str | None = None, tags: list[str] | None = None, favorite: bool | None = None) -> list[dict[str, Any]]:
+        if not ids or len(set(ids)) != len(ids): raise ValueError("ids must be a non-empty unique list")
+        with self.connect() as connection:
+            rows = connection.execute("SELECT id, is_standard FROM vector_library WHERE id IN (%s)" % ",".join("?" * len(ids)), ids).fetchall()
+            if len(rows) != len(ids): raise LookupError("One or more catalogued vectors were not found")
+            if action in {"delete"} and any(r["is_standard"] for r in rows): raise ValueError("Bundled standard vectors cannot be deleted")
+            if action in {"add_to_collection", "move_to_collection"}:
+                if not collection_id or connection.execute("SELECT 1 FROM vector_collections WHERE id=?", (collection_id,)).fetchone() is None: raise LookupError("Collection was not found")
+                if action == "move_to_collection": connection.execute("DELETE FROM vector_collection_memberships WHERE library_id IN (%s)" % ",".join("?" * len(ids)), ids)
+                connection.executemany("INSERT OR IGNORE INTO vector_collection_memberships VALUES (?, ?)", [(collection_id, i) for i in ids])
+            elif action == "remove_from_collection":
+                if not collection_id: raise ValueError("collectionId is required")
+                connection.execute("DELETE FROM vector_collection_memberships WHERE collection_id=? AND library_id IN (%s)" % ",".join("?" * len(ids)), [collection_id, *ids])
+            elif action in {"tag", "untag"}:
+                if not tags: raise ValueError("At least one tag is required")
+                sql = "INSERT OR IGNORE INTO vector_tags VALUES (?, ?)" if action == "tag" else "DELETE FROM vector_tags WHERE library_id=? AND tag=?"
+                connection.executemany(sql, [(i, tag.strip()) for i in ids for tag in tags])
+            elif action == "favorite":
+                if not isinstance(favorite, bool): raise ValueError("favorite must be a boolean")
+                connection.execute("UPDATE vector_library SET favorite=? WHERE id IN (%s)" % ",".join("?" * len(ids)), [int(favorite), *ids])
+            elif action == "delete": connection.execute("UPDATE vector_library SET deleted_at=? WHERE id IN (%s)" % ",".join("?" * len(ids)), [utc_now(), *ids])
+            elif action == "restore": connection.execute("UPDATE vector_library SET deleted_at=NULL WHERE id IN (%s)" % ",".join("?" * len(ids)), ids)
+            else: raise ValueError("Unknown bulk action")
+        return [self.get_library_vector(i) for i in ids]
 
     def _library_vector(
         self, connection: sqlite3.Connection, row: sqlite3.Row, full: bool
@@ -1848,6 +2035,9 @@ class Database:
             "favorite": bool(row["favorite"]),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
+            "colorLabel": row["color_label"] if "color_label" in row.keys() else None,
+            "color": row["color_label"] if "color_label" in row.keys() else None,
+            "deletedAt": row["deleted_at"] if "deleted_at" in row.keys() else None,
             "projects": [
                 {
                     "proteinId": use["protein_id"],
@@ -1859,7 +2049,15 @@ class Database:
                 for use in uses
             ],
         }
+        record["tags"] = [r["tag"] for r in connection.execute("SELECT tag FROM vector_tags WHERE library_id=? ORDER BY tag", (row["id"],))]
+        record["collectionIds"] = [r["collection_id"] for r in connection.execute("SELECT collection_id FROM vector_collection_memberships WHERE library_id=?", (row["id"],))]
         record["projectCount"] = len(record["projects"])
+        record["lastUsedAt"] = max((use["last_used_at"] for use in uses), default=None)
+        record["origin"] = "standard" if record["isStandard"] else ("project" if uses else "import")
+        record["mapFeatures"] = [
+            {key: feature.get(key) for key in ("name", "type", "start", "end", "strand")}
+            for feature in features[:40] if isinstance(feature, dict)
+        ]
         if full:
             record["sequence"] = row["sequence"]
             record["features"] = features
