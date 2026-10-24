@@ -1,92 +1,58 @@
 # Protein Lab
 
-Offline protein expression, purification, and analysis workspace. The app is an
-Electron desktop shell around a React UI, with a local Python engine that does
-every calculation on this computer. Nothing is sent to a server.
+Protein Lab is a private, offline desktop workspace for planning protein expression and purification, designing expression vectors, and analysing chromatograms and gels. The Electron/React interface talks only to a local Python engine; project data stays on the computer running the app.
 
-## Everything in this folder
+![Protein Lab dashboard](protein-labs-web/desktop/public/manual/dashboard.webp)
 
-    protein-lab                Launcher: runs the installed app against data/
-    build-and-install.sh       Fresh dependencies → tests → build → install
-    app/                       The installed app (not in git)
-      Protein-Labs.AppImage
-      Protein-Labs.previous.AppImage   the build it replaced, for rollback
-    data/                      Your projects database, settings and logs (not in git)
-      data/protein_labs.sqlite3
-    archive/                   Old builds, the September prototype data and the
-                               original sources (not in git)
+> **Repository status:** this repository is currently private. This README describes the project in preparation for a future public release; it does not change repository visibility.
 
-    protein-labs-web/          Desktop app: Electron shell, React UI, build config
-      desktop/electron/        Main process; starts the engine and the window
-      desktop/                 Renderer entry, window assets, Vite build config
-      app/                     page.tsx and globals.css — the whole UI entry
-      components/protein-labs/ The workspace: dashboard, jobs, studios, reports
-      components/ui/           Shared button, dialog, tabs, progress primitives
-      lib/                     Catalogues, the engine client, workflow model
-      hooks/                   Browser-side integration hooks
-      vendor/                  Third-party stylesheet imported by globals.css
+## Install a release
 
-    protein-labs/backend/      Local engine
-      protein_labs/            Python package: server, planner, analysis
-      tests/                   Engine test suite (62 tests)
-      protein-labs-backend.spec  PyInstaller recipe that builds the engine
+Download the installer for your operating system from [GitHub Releases](https://github.com/hammonsnick1/protein-lab/releases).
 
-The relative position of the two source directories matters: the Electron main
-process looks for the engine at `../../../protein-labs/backend/dist/protein-labs-backend`
-when running unpackaged.
+| Platform | Install |
+| --- | --- |
+| Windows | Download the `.exe` installer, run it, and follow Windows' prompts. |
+| macOS | Download the `.dmg`, open it, then drag Protein Lab to Applications. |
+| Ubuntu/Debian | Download the `.deb`, then install it with `sudo apt install ./Protein-Lab_*.deb`. An AppImage is also available. |
+| Arch Linux | Install the release package with `sudo pacman -U protein-lab-*.pkg.tar.zst`, or use the AppImage. |
 
-## Using the app
+Unsigned desktop builds can trigger an operating-system warning on first launch. Only install artifacts downloaded from this repository's Releases page.
 
-Open **Protein Lab** from the app menu, or run `protein-labs` in a terminal.
-Both go through `./protein-lab`, which starts `app/Protein-Labs.AppImage` with
-`--user-data-dir=data`, so your projects stay in this folder. Back up `data/`
-to back up everything you have made.
+## Build from source
 
-## Rebuilding and installing
+Prerequisites: Node.js 22+, Python 3.11+, and a platform supported by Electron Builder.
 
-    ./build-and-install.sh
+```sh
+git clone https://github.com/hammonsnick1/protein-lab.git
+cd protein-lab/protein-labs-web
+npm ci
+npm run lint
+npm run typecheck
+npm test
+```
 
-This recreates the engine's Python environment, runs the engine tests, builds
-the engine, does a clean `npm ci`, lints and type-checks the UI, packages the
-AppImage, and installs it into `app/` (keeping the previous build as
-`Protein-Labs.previous.AppImage`). It also points the app-menu entry and
-`~/.local/bin/protein-labs` at this folder, so rerun it after moving the folder.
-Close the app first; the script stops if the engine is still running.
-`data/` is never touched.
+In a second terminal, set up and test the local engine:
 
-## Developing
+```sh
+cd protein-lab/protein-labs/backend
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
 
-    cd protein-labs-web
-    npm run desktop:run       # builds the UI bundle and opens the app
+See [the web-app README](protein-labs-web/README.md) for development and desktop build commands.
 
-`desktop:run` uses Electron's default data directory (`~/.config/protein-labs`,
-which now only holds the copy your data was moved from). To try changes on a
-throwaway database, pass a scratch directory:
+## Project layout
 
-    npm run desktop:build:web && npx electron . --user-data-dir=/tmp/protein-lab-scratch
+- `protein-labs-web/` — Electron desktop shell and React UI.
+- `protein-labs/backend/` — local Python purification and analysis engine.
+- `app/`, `data/`, and `archive/` — legacy or local-support paths; these are not published as source material.
 
-## Working on the engine
+## Contributing and security
 
-    cd protein-labs/backend
-    python3 -m venv .venv
-    .venv/bin/python -m pip install -r requirements-dev.txt
-    .venv/bin/python -m pytest tests -q
+Please read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and the [Code of Conduct](CODE_OF_CONDUCT.md) before opening an issue or pull request.
 
-After changing Python code, rebuild the bundled engine so the desktop app picks
-it up:
+## License
 
-    .venv/bin/python -m pip install pyinstaller
-    .venv/bin/python -m PyInstaller --noconfirm protein-labs-backend.spec
-
-## What is not here
-
-`node_modules/`, `.venv/`, build output, `app/`, `data/` and `archive/` are
-kept out of git, and so is the built engine binary — it is 76 MB and reproducible from
-`protein_labs/` with one PyInstaller command.
-
-Dependencies are limited to what the app imports. The UI needs 3dmol,
-class-variance-authority, clsx, lucide-react, radix-ui, react, react-dom and
-tailwind-merge; everything else in `devDependencies` builds, type-checks, lints
-or packages it. The Next.js, Cloudflare, Drizzle and Wrangler stack the project
-started from is gone, which took the installed tree from 1.4 GB to 598 MB (287 MB of what
-remains is the Electron runtime itself).
+Protein Lab is released under the [MIT License](LICENSE).
