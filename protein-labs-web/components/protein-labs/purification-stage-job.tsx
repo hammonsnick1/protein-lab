@@ -48,7 +48,8 @@ export function PurificationStageJob({bundle,onChanged,mode}:{bundle:ProteinBund
   // Cell lysis composes its buffer: from the suggestion ("suggested") or a preset, then edited freely.
   const [lysisStep,setLysisStep]=useState<BufferStep>(()=>{const savedStep=normalizeBufferSteps(config(bundle,"purification-buffer").steps)?.lysis;return saved.methodId&&savedStep?.components.length?savedStep:presetBufferStep(lysisBuffers.find(value=>value.id===bufferId)??lysisBuffers[0],bufferStepLabels.lysis)});
   const [lysisEdited,setLysisEdited]=useState(Boolean(saved.bufferEdited));
-  const host=lysisHost(config(bundle,"expression-system").hostSystemId??config(bundle,"expression-system").hostSystem);
+  // Methods are marked against a cell host only; a cell-free reaction has nothing to lyse, and the checks say so.
+  const savedHost=lysisHost(config(bundle,"expression-system").hostSystemId??config(bundle,"expression-system").hostSystem); const host=savedHost==="cellfree"?"":savedHost;
   const picked=buffers.find(value=>value.id===bufferId)??buffers[0];
   const buffer=mode==="purification-lysis"?lysisStageBuffer(lysisStep,bufferId,lysisEdited):picked;
   const checks=useMemo(()=>mode==="purification-lysis"?lysisChecks(bundle,vectors,method,buffer):mode==="purification-subtractive"?cleanupChecks(bundle,vectors,cleanup,bufferStep,{proteaseId:protease.id,proteaseName:protease.name}):secChecks(bundle,sec,bufferStep,expectedMass,sampleVolume),[mode,bundle,method,buffer,bufferStep,vectors,cleanup,sec,expectedMass,sampleVolume,protease]);
