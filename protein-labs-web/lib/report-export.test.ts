@@ -1,7 +1,7 @@
 // The report exports carry the protein's numbers (HOM-120). Run with
 // `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import type { ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
 import { proteinProperties, reportHtml, reportMarkdown, type ReportPage } from "./report-export.ts";

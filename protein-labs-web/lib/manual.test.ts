@@ -1,7 +1,7 @@
 // In-app user manual parser (HOM-147). Run with `npm run test`.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { parseInline, parseManual, searchManual, slugify } from "./manual.ts";
 

@@ -1,7 +1,7 @@
 // Focused tests for the honesty rules of the gel studio. Run with
 // `npm run test` in protein-labs-web (Node's built-in runner, no extra deps).
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import {
   bandQuantification,

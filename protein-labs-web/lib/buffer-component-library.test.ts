@@ -1,6 +1,6 @@
 // The buffer component library and how composed buffers save and load. Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { applyLibraryComponent, bufferComponentLibrary, bufferPurposes, findLibraryComponent, purposeExplanation, purposeOptions, rangeStatus, resolvePurpose, searchLibrary } from "./buffer-component-library.ts";
 import { bufferPresets, normalizeBufferSteps, type BufferStep } from "./purification-catalog.ts";

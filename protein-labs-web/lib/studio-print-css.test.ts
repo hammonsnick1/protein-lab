@@ -2,7 +2,7 @@
 // `npm run test`. Each rule is read from app/globals.css.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
   .replace(/\/\*[\s\S]*?\*\//g, "");
