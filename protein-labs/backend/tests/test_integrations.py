@@ -16,6 +16,7 @@ from protein_labs.protein_planner.integrations import (
     parse_structure_geometry,
     representative_peptides,
 )
+from typing import get_type_hints
 from urllib.parse import parse_qs
 
 
@@ -468,4 +469,8 @@ def test_uniprot_peptide_polling_accepts_303_before_completion(monkeypatch):
 
     assert client._peptide_candidates("ACDEFGHIKLMNP") == ["P69905"]
     assert [method for method, _ in calls] == ["POST", "GET", "GET"]
+
+
+def test_http_client_request_type_hints_resolve():
+    assert "allowed_statuses" in get_type_hints(HttpClient.request)
 
