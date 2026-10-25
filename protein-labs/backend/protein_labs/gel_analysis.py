@@ -16,6 +16,7 @@ SATURATION_SIGNAL = 255.0
 BACKGROUND_METHOD = "rolling_ball"
 DEFAULT_BACKGROUND_RADIUS = 28
 LINEAR_RANGE_MAX = 254.0
+INTEGRATED_DENSITY_UNIT = "8_bit_polarity_corrected_intensity_px"
 NORMALIZATION_BASIS = "fraction_of_detected_band_integrals"
 NORMALIZATION_UNAVAILABLE_SATURATION = "lane_fraction_unavailable_due_to_saturation"
 
@@ -324,6 +325,9 @@ def _lane_bands(
             "isTarget": False,
             "quantificationRefused": saturated,
             "saturationReason": saturation_reason,
+            # Corrected 8-bit intensity integrated over the band area (pixels).
+            # This also applies to densityUncertainty when it is available.
+            "densityUnit": INTEGRATED_DENSITY_UNIT,
             "normalizationBasis": NORMALIZATION_BASIS,
             # Noise-only approximate standard error in integrated signal units.
             # The profile has already been averaged across the lane and smoothed.
