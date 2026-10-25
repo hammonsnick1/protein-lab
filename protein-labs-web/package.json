@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run && node --test desktop/electron/project-directory.node-test.cjs",
     "desktop:build:web": "vite build --config desktop/vite.config.ts",
+    "build": "npm run desktop:build:web",
     "desktop:run": "npm run desktop:build:web && electron .",
     "desktop:package": "npm run desktop:build:web && electron-builder --linux AppImage"
   },
