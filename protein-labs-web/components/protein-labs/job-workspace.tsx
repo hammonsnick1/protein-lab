@@ -1,9 +1,10 @@
 "use client";
 
 import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, Play, Scale, Search, ShieldCheck, Sparkles, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
+import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, MousePointerClick, Play, Scale, Search, ShieldCheck, Sparkles, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { StatusChip } from "@/components/ui/status-chip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ensureProjectJob, JsonObject, ProteinBundle, proteinLabsApi } from "@/lib/protein-labs-api";
 import { assemblyValue, minimumHigherOrder, OligomericKind, oligomericEvidence, oligomericKinds, oligomericLabel, OligomericState, oligomericStateProblem, oligomericStateSave, readOligomericState, recalculatedProtparamConfig, subunitCount, unknownState } from "@/lib/oligomeric-state";
@@ -18,6 +19,8 @@ import { ReferenceMatchJob } from "@/components/protein-labs/reference-match-job
 import { StructureJob } from "@/components/protein-labs/structure-viewer-job";
 import { TransformationExpressionJob } from "@/components/protein-labs/transformation-expression-job";
 import { isComplete, workflowJobs } from "@/lib/workflow";
+import { aminoAcid, residueFamily, sideChainClassLabels } from "@/lib/amino-acids";
+import { ResidueClassLegend, ResidueDetailDialog } from "@/components/protein-labs/residue-detail";
 import { isLowExtinction } from "@/lib/readiness";
 
 const labels: Record<string, [string, string, typeof Dna]> = {
@@ -86,23 +89,30 @@ function asObject(value: unknown): JsonObject { return value && typeof value ===
 function asArray(value: unknown): JsonObject[] { return Array.isArray(value) ? value.filter((item): item is JsonObject => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : []; }
 function text(value: unknown, fallback: unknown = "—") { return String(value === null || value === undefined || value === "" ? fallback : value); }
 /** Residue counts and their share of the sequence, split into two aligned
- *  halves with a total row that shows the shares add up to the whole. */
+ *  halves with a total row that shows the shares add up to the whole. Bars
+ *  take the side-chain class colour; a row opens that residue's details. */
 function CompositionTable({ residues }: { residues: [string, unknown][] }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const container = useRef<HTMLDivElement>(null);
   const rows = residues.map(([aa, raw]) => {
     const row = asObject(raw);
-    return { aa, name: text(row.name, aa), count: Number(row.count ?? 0), percent: Number(row.percent ?? 0) };
+    return { aa, name: text(row.name, aa), count: Number(row.count ?? 0), percent: Number(row.percent ?? 0), acid: aminoAcid(aa), family: residueFamily(aa) };
   });
+  const details = rows.flatMap((row) => row.acid ? [{ acid: row.acid, count: row.count, percent: row.percent }] : []);
   if (!rows.length) return <p className="composition-empty">Run the calculation to see the residue composition.</p>;
   const totalCount = rows.reduce((sum, row) => sum + row.count, 0);
   const totalPercent = rows.reduce((sum, row) => sum + row.percent, 0);
   const largest = Math.max(...rows.map((row) => row.percent));
   const half = Math.ceil(rows.length / 2);
-  return <div className="composition">
+  const show = (aa: string) => { const index = details.findIndex((detail) => detail.acid.code === aa); if (index >= 0) setOpen(index); };
+  return <div className="composition" ref={container}>
     <div className="composition-halves">
       {[rows.slice(0, half), rows.slice(half)].map((group, index) => <table className="composition-table" key={index}>
         <thead><tr><th scope="col">Residue</th><th scope="col" className="num">Count</th><th scope="col" className="num">% of protein</th><th scope="col" aria-label="Relative abundance"/></tr></thead>
-        <tbody>{group.map((row) => <tr key={row.aa}>
-          <th scope="row"><strong>{row.aa}</strong><span>{row.name}</span></th>
+        <tbody>{group.map((row) => <tr key={row.aa} className={`aa-family-${row.family}${row.acid ? " is-clickable" : ""}`} onClick={row.acid ? () => show(row.aa) : undefined}>
+          <th scope="row">{row.acid
+            ? <button type="button" className="composition-residue" data-residue={row.aa} onClick={(event) => { event.stopPropagation(); show(row.aa); }} aria-label={`${row.name}, ${sideChainClassLabels[row.acid.family].toLowerCase()}: ${row.count} residues, ${row.percent.toFixed(2)}%. Show residue details`}><strong>{row.aa}</strong><span>{row.name}</span></button>
+            : <><strong>{row.aa}</strong><span>{row.name}</span></>}</th>
           <td className="num">{row.count}</td>
           <td className="num">{row.percent.toFixed(2)}%</td>
           <td className="composition-bar-cell"><span className="composition-bar"><i style={{ width: `${largest ? (row.percent / largest) * 100 : 0}%` }}/></span></td>
@@ -110,6 +120,8 @@ function CompositionTable({ residues }: { residues: [string, unknown][] }) {
       </table>)}
     </div>
     <p className="composition-total"><span>Total</span><strong>{totalCount} residues</strong><strong>{totalPercent.toFixed(2)}%</strong></p>
+    <div className="composition-footer"><ResidueClassLegend present={new Set(rows.map((row) => row.family))}/><small><MousePointerClick aria-hidden="true"/> Select a residue for its structure and properties.</small></div>
+    <ResidueDetailDialog rows={details} index={open} onIndexChange={setOpen} onClose={() => setOpen(null)} onReturnFocus={(code) => container.current?.querySelector<HTMLButtonElement>(`[data-residue="${code}"]`)?.focus()}/>
   </div>;
 }
 
@@ -155,7 +167,9 @@ function PropertiesJob({ bundle, onChanged }: JobProps) {
     finally { setBusy(false); }
   }
   const extinction = asObject(result.extinctionCoefficient280);
-  const metrics: [string,string][] = [["Molecular weight", `${metric(result.molecularWeightDa, 1)} Da`], ["Monoisotopic mass", `${metric(result.monoisotopicMassDa, 1)} Da`], ["Theoretical pI", metric(result.theoreticalPI, 2)], ["Instability index", `${metric(result.instabilityIndex, 2)} · ${text(result.stabilityPrediction)}`], ["Aliphatic index", metric(result.aliphaticIndex, 2)], ["GRAVY", metric(result.gravy, 3)], ["Aromaticity", metric(result.aromaticity, 3)], ["Chemical formula", text(result.chemicalFormula)], ["Total atoms", text(result.totalAtoms)]];
+  const stability = typeof result.instabilityIndex === "number" ? (result.stabilityPrediction === "stable" ? "pass" : "warning") : null;
+  // Label, value, unit, and what the number means.
+  const metrics: [string, string, string, string][] = [["Molecular weight", metric(result.molecularWeightDa, 1), "Da", "Average isotopic mass of the chain"], ["Monoisotopic mass", metric(result.monoisotopicMassDa, 1), "Da", "Lightest isotopes only, for mass spectra"], ["Theoretical pI", metric(result.theoreticalPI, 2), "", "The pH at which net charge is zero"], ["Instability index", metric(result.instabilityIndex, 2), "", "Below 40 predicts a stable protein"], ["Aliphatic index", metric(result.aliphaticIndex, 2), "", "Relative volume of A, V, I and L side chains"], ["GRAVY", metric(result.gravy, 3), "", "Mean Kyte–Doolittle hydropathy; below 0 is hydrophilic"], ["Aromaticity", metric(result.aromaticity, 3), "fraction", "Share of F, W and Y residues"], ["Chemical formula", text(result.chemicalFormula), "", "Neutral, unmodified chain"], ["Total atoms", text(result.totalAtoms), "atoms", "Including hydrogens"]];
   const composition = asObject(result.aminoAcidComposition);
   const residues = Object.entries(composition).sort((a, b) => a[0].localeCompare(b[0]));
   const charged = asObject(result.chargedResidues);
@@ -164,7 +178,7 @@ function PropertiesJob({ bundle, onChanged }: JobProps) {
   const sequenceLength = Number(sequenceSummary.length ?? bundle.protein.sequence.length);
   const terminus = (letter: unknown, position: number) => letter ? `${text(asObject(composition[String(letter)]).name, String(letter))}${position}` : "—";
   const secondaryRows:[string,number,string][]=[["Helix",Number(secondary.helix??0),"#52c7b8"],["Turn",Number(secondary.turn??0),"#e5ab55"],["Sheet",Number(secondary.sheet??0),"#8d83e8"]];
-  return <div className="properties-layout"><Panel title="Complete ProtParam profile" hint={`ExPASy-compatible definitions calculated locally for the current ${bundle.protein.sequence.length} aa construct.`} className="span-two"><div className="metric-grid">{metrics.map(([label, value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><div className="panel-actions"><small>{text(asObject(result.algorithm).compatibility,"Biopython ProtParam definitions")}</small><Button onClick={() => void calculate()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <Play />} Recalculate and save</Button></div><Notice message={message} error={message.toLowerCase().includes("error")} /></Panel><Panel title="Extinction coefficient at 280 nm" hint="Reported for reduced cysteines and maximally oxidized cystines."><div className="property-detail-grid"><span>Reduced molar</span><strong>{metric(extinction.reducedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Oxidized molar</span><strong>{metric(extinction.oxidizedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Reduced A(0.1%)</span><strong>{metric(extinction.reducedAbsorbance01Percent,3)}</strong><span>Oxidized A(0.1%)</span><strong>{metric(extinction.oxidizedAbsorbance01Percent,3)}</strong></div></Panel><Panel title="Estimated half-life" hint={text(halfLife.warning,"")}><div className="property-detail-grid"><span>N-terminal residue</span><strong>{text(halfLife.nTerminalResidue)}</strong><span>Mammalian reticulocytes</span><strong>{text(halfLife.mammalianReticulocytesInVitro)}</strong><span>Yeast in vivo</span><strong>{text(halfLife.yeastInVivo)}</strong><span>E. coli in vivo</span><strong>{text(halfLife.ecoliInVivo)}</strong></div></Panel><Panel title="Secondary-structure propensity"><div className="secondary-bars">{secondaryRows.map(([label,value,color])=><div key={label}><span><b>{label}</b><small>{metric(value*100,1)}%</small></span><i><em style={{width:`${value*100}%`,background:color}}/></i></div>)}</div></Panel><Panel title="Sequence and charge summary" hint="Residues are numbered from the N-terminus to the C-terminus."><div className="terminus-strip" role="img" aria-label={`${sequenceLength} residues, from the N-terminus at ${terminus(sequenceSummary.nTerminus, 1)} to the C-terminus at ${terminus(sequenceSummary.cTerminus, sequenceLength)}`}><span><b>N-terminus</b><small>{terminus(sequenceSummary.nTerminus, 1)}</small></span><i><em>{sequenceLength} residues</em></i><span><b>C-terminus</b><small>{terminus(sequenceSummary.cTerminus, sequenceLength)}</small></span></div><div className="check-list"><span><CircleCheck/> Net charge at pH 7: {metric(charged.predictedChargeAtPH7,2)}</span><span><CircleCheck/> Acidic D + E: {text(charged.negativeAspGlu)} residues</span><span><CircleCheck/> Basic R + K: {text(charged.positiveArgLys)} residues</span><span><CircleCheck/> Atomic composition: {Object.entries(atomic).map(([element,count])=>`${element}${count}`).join(" ")}</span></div></Panel><OligomericStatePanel bundle={bundle} result={result} onChanged={onChanged}/><Panel title="Amino-acid composition" hint="Share of each residue in the full sequence; the bar is scaled to the most abundant residue." className="span-two"><CompositionTable residues={residues}/></Panel><Panel title="Calculation assumptions" className="span-two"><div className="assumption-list">{(Array.isArray(result.assumptions)?result.assumptions:[]).map((value,index)=><span key={index}><CircleAlert/>{String(value)}</span>)}</div></Panel></div>;
+  return <div className="properties-layout"><Panel title="Complete ProtParam profile" hint={`ExPASy-compatible definitions calculated locally for the current ${bundle.protein.sequence.length} aa construct.`} className="span-two"><div className="metric-grid">{metrics.map(([label, value, unit, meaning]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}{unit && value !== "—" && <small>{unit}</small>}{label === "Instability index" && stability && <StatusChip tone={stability} label={text(result.stabilityPrediction)}/>}</strong><p>{meaning}</p></div>)}</div><div className="panel-actions"><small>{text(asObject(result.algorithm).compatibility,"Biopython ProtParam definitions")}</small><Button onClick={() => void calculate()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <Play />} Recalculate and save</Button></div><Notice message={message} error={message.toLowerCase().includes("error")} /></Panel><Panel title="Extinction coefficient at 280 nm" hint="Reported for reduced cysteines and maximally oxidized cystines."><div className="property-detail-grid"><span>Reduced molar</span><strong>{metric(extinction.reducedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Oxidized molar</span><strong>{metric(extinction.oxidizedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Reduced A(0.1%)</span><strong>{metric(extinction.reducedAbsorbance01Percent,3)}</strong><span>Oxidized A(0.1%)</span><strong>{metric(extinction.oxidizedAbsorbance01Percent,3)}</strong></div></Panel><Panel title="Estimated half-life" hint={text(halfLife.warning,"")}><div className="property-detail-grid"><span>N-terminal residue</span><strong>{text(halfLife.nTerminalResidue)}</strong><span>Mammalian reticulocytes</span><strong>{text(halfLife.mammalianReticulocytesInVitro)}</strong><span>Yeast in vivo</span><strong>{text(halfLife.yeastInVivo)}</strong><span>E. coli in vivo</span><strong>{text(halfLife.ecoliInVivo)}</strong></div></Panel><Panel title="Secondary-structure propensity" hint="Share of residues in each ProtParam propensity set (helix V I Y F W L, turn N P G S, sheet E M A L); not a structure prediction."><div className="secondary-bars">{secondaryRows.map(([label,value,color])=><div key={label}><span><b>{label}</b><small>{metric(value*100,1)}%</small></span><i><em style={{width:`${value*100}%`,background:color}}/></i></div>)}</div></Panel><Panel title="Sequence and charge summary" hint="Residues are numbered from the N-terminus to the C-terminus."><div className="terminus-strip" role="img" aria-label={`${sequenceLength} residues, from the N-terminus at ${terminus(sequenceSummary.nTerminus, 1)} to the C-terminus at ${terminus(sequenceSummary.cTerminus, sequenceLength)}`}><span><b>N-terminus</b><small>{terminus(sequenceSummary.nTerminus, 1)}</small></span><i><em>{sequenceLength} residues</em></i><span><b>C-terminus</b><small>{terminus(sequenceSummary.cTerminus, sequenceLength)}</small></span></div><div className="check-list"><span><CircleCheck/> Net charge at pH 7: {metric(charged.predictedChargeAtPH7,2)}</span><span><CircleCheck/> Acidic D + E: {text(charged.negativeAspGlu)} residues</span><span><CircleCheck/> Basic R + K: {text(charged.positiveArgLys)} residues</span><span><CircleCheck/> Atomic composition: {Object.entries(atomic).map(([element,count])=>`${element}${count}`).join(" ")}</span></div></Panel><OligomericStatePanel bundle={bundle} result={result} onChanged={onChanged}/><Panel title="Amino-acid composition" hint="Share of each residue in the full sequence; the bar is scaled to the most abundant residue and coloured by side-chain class." className="span-two"><CompositionTable residues={residues}/></Panel><Panel title="Calculation assumptions" className="span-two"><div className="assumption-list">{(Array.isArray(result.assumptions)?result.assumptions:[]).map((value,index)=><span key={index}><CircleAlert/>{String(value)}</span>)}</div></Panel></div>;
 }
 
 /** The assembly the protein forms, recorded by the scientist and saved with the properties job. */
