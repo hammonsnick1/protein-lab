@@ -173,12 +173,32 @@ def test_blast_job_progress_and_local_cancellation(tmp_path):
     assert waiting["canCancel"] is True
     assert waiting["progress"] is None
     assert "UniProt" in waiting["stage"]
+    assert waiting["stageId"] == "queued"  # legacy saved job remains readable
+    assert waiting["querySequence"] is None
 
     canceled = service.cancel_blast("TEST-RID")
     assert canceled["status"] == "canceled"
     assert canceled["stage"] == "Terminated locally"
     assert canceled["canCancel"] is False
     assert service.poll_blast("TEST-RID")["status"] == "canceled"
+
+
+def test_submitted_blast_returns_query_sequence_and_machine_stage(tmp_path):
+    service = planner(tmp_path)
+    protein_id = service.create_protein({"sequence": "ACDEFGHIK"})["protein"]["id"]
+
+    class FakeBlast:
+        def submit(self, sequence, *, database, hitlist_size):
+            assert sequence == "ACDEFGHIK"
+            return {"rid": "NEW-RID", "estimatedSeconds": 7, "database": database,
+                    "hitlistSize": hitlist_size, "provider": "ncbi-url-api"}
+
+    service.blast = FakeBlast()
+    job = service.submit_blast(protein_id)
+
+    assert job["status"] == "waiting"  # legacy status remains stable
+    assert job["stageId"] == "submitted"
+    assert job["querySequence"] == "ACDEFGHIK"
 
 
 def test_new_search_supersedes_only_matching_waiting_purpose(tmp_path):
@@ -222,6 +242,7 @@ def test_completed_blast_batch_imports_uniprot_hits(tmp_path):
             return {
                 "rid": rid,
                 "status": "complete",
+                "stageId": "done",
                 "results": [{
                     "uniprotAccession": "P02067",
                     "identity": 0.993,
@@ -241,6 +262,7 @@ def test_completed_blast_batch_imports_uniprot_hits(tmp_path):
     saved = service.database.get_bundle(protein_id)["uniprotMatches"]
 
     assert completed["status"] == "complete"
+    assert completed["stageId"] == "done"
     assert completed["results"][0]["uniprotAccession"] == "P02067"
     assert saved[0]["accession"] == "P02067"
     assert saved[0]["identity"] == 0.993

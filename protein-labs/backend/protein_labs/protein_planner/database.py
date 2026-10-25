@@ -2148,23 +2148,31 @@ class Database:
         status: str,
         results: list[dict[str, Any]] | None = None,
         error: str | None = None,
+        stage_id: str | None = None,
     ) -> None:
         with self.connect() as connection:
+            row = connection.execute(
+                "SELECT params_json FROM blast_jobs WHERE rid = ?", (rid,)
+            ).fetchone()
+            if row is None:
+                raise LookupError(f"BLAST job {rid!r} was not found")
+            parameters = _loads(row["params_json"], {})
+            if stage_id:
+                parameters["stageId"] = stage_id
             cursor = connection.execute(
                 """
-                UPDATE blast_jobs SET status = ?, results_json = ?, error = ?, updated_at = ?
+                UPDATE blast_jobs SET status = ?, results_json = ?, error = ?, params_json = ?, updated_at = ?
                 WHERE rid = ?
                 """,
                 (
                     status,
                     None if results is None else json.dumps(results, allow_nan=False),
                     error,
+                    json.dumps(parameters),
                     utc_now(),
                     rid,
                 ),
             )
-            if cursor.rowcount == 0:
-                raise LookupError(f"BLAST job {rid!r} was not found")
 
     def get_blast_job(self, rid: str) -> dict[str, Any]:
         with self.connect() as connection:
@@ -2417,6 +2425,7 @@ class Database:
         status = row["status"]
         purpose = parameters.get("purpose", "blast")
         provider = parameters.get("provider", "ncbi-url-api")
+        stage_id = parameters.get("stageId")
         if status == "waiting":
             if provider == "ebi-ncbiblast":
                 stage = (
@@ -2444,9 +2453,13 @@ class Database:
             "proteinId": row["protein_id"],
             "status": status,
             "stage": stage,
+            # Machine-readable state for live UI progress.  ``stage`` remains
+            # the legacy human-readable message, so old clients still render.
+            "stageId": stage_id or {"waiting": "queued", "complete": "done", "canceled": "cancelled"}.get(status, status),
             "progress": progress,
             "canCancel": status not in {"complete", "failed", "canceled"},
             "parameters": parameters,
+            "querySequence": parameters.get("querySequence"),
             "results": _loads(row["results_json"], None),
             "submittedAt": row["submitted_at"],
             "updatedAt": row["updated_at"],

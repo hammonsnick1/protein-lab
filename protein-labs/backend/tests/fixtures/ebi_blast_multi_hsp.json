@@ -1,0 +1,41 @@
+{
+  "query_len": 20,
+  "hits": [{
+    "hit_num": 1,
+    "hit_id": "HBB_PIG",
+    "hit_acc": "P02067",
+    "hit_desc": "Hemoglobin subunit beta",
+    "hit_os": "Sus scrofa",
+    "hit_uni_ox": "9823",
+    "hit_len": 147,
+    "hit_hsps": [{
+      "hsp_bit_score": 42.5,
+      "hsp_expect": 1e-12,
+      "hsp_align_len": 10,
+      "hsp_identity": 80,
+      "hsp_positive": 9,
+      "hsp_gaps": 1,
+      "hsp_query_from": 2,
+      "hsp_query_to": 11,
+      "hsp_hit_from": 7,
+      "hsp_hit_to": 16,
+      "hsp_qseq": "ACD-EFGHIK",
+      "hsp_hseq": "ACDTEFGHIK",
+      "hsp_midline": "ACD EFGHIK"
+    }, {
+      "hsp_bit_score": 18.0,
+      "hsp_expect": 0.004,
+      "hsp_align_len": 5,
+      "hsp_identity": 80,
+      "hsp_positive": 5,
+      "hsp_gaps": 0,
+      "hsp_query_from": 14,
+      "hsp_query_to": 18,
+      "hsp_hit_from": 30,
+      "hsp_hit_to": 34,
+      "hsp_qseq": "LMNPQ",
+      "hsp_hseq": "LMNAQ",
+      "hsp_midline": "LMN Q"
+    }]
+  }]
+}
