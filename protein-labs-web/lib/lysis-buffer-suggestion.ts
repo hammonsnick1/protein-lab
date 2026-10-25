@@ -10,7 +10,7 @@ import { findLibraryComponent, purposeById, resolvePurpose, type BufferPurposeId
 
 /** The capture chemistry that decides what the lysate may and may not contain. */
 export type CaptureChemistry = "imac"|"gst"|"strep"|"mbp"|"calcium"|"other"|"none";
-export type LysisHost = "bacteria"|"yeast"|"insect"|"mammalian"|"";
+export type LysisHost = "bacteria"|"yeast"|"insect"|"mammalian"|"cellfree"|"";
 export type LysisContext = {
   /** Saved Affinity capture: column id and tag text, and its binding buffer when one was saved. */
   capture?: { columnId?:string; shortName?:string; tag?:string; binding?:BufferStep|null }|null;
@@ -36,9 +36,9 @@ export function captureChemistry(columnId?:string,tag?:string):CaptureChemistry{
   return"other";
 }
 
-export const lysisHostLabels:Record<Exclude<LysisHost,"">,string>={bacteria:"E. coli",yeast:"yeast",insect:"insect cells",mammalian:"mammalian cells"};
-/** Normalizes the saved expression-system host into the four families. */
-export function lysisHost(value:unknown):LysisHost{const raw=String(value??"").toLowerCase();if(!raw)return"";if(raw.includes("yeast")||raw.includes("pichia")||raw.includes("cerevisiae"))return"yeast";if(raw.includes("insect")||raw.includes("sf9")||raw.includes("baculo"))return"insect";if(raw.includes("mamm")||raw.includes("hek")||raw.includes("cho"))return"mammalian";return"bacteria"}
+export const lysisHostLabels:Record<Exclude<LysisHost,"">,string>={bacteria:"E. coli",yeast:"yeast",insect:"insect cells",mammalian:"mammalian cells",cellfree:"cell-free reaction"};
+/** Normalizes the saved expression-system host into the four cell families, or "cellfree" when there are no cells to lyse. */
+export function lysisHost(value:unknown):LysisHost{const raw=String(value??"").toLowerCase();if(!raw)return"";if(/cell-?\s?free|in vitro/.test(raw))return"cellfree";if(raw.includes("yeast")||raw.includes("pichia")||raw.includes("cerevisiae"))return"yeast";if(raw.includes("insect")||raw.includes("sf9")||raw.includes("baculo"))return"insect";if(raw.includes("mamm")||raw.includes("hek")||raw.includes("cho"))return"mammalian";return"bacteria"}
 
 const chemistryLabel:Record<CaptureChemistry,string>={imac:"Ni²⁺/Co²⁺ IMAC",gst:"glutathione (GST)",strep:"Strep-Tactin",mbp:"amylose (MBP)",calcium:"calcium-dependent",other:"the chosen affinity",none:"affinity"};
 const row=(name:string,concentration:number|string,unit:string,purpose:BufferPurposeId):BufferComponent=>({name,concentration,unit,role:purposeById(purpose).label});
@@ -104,6 +104,7 @@ export function suggestLysisBuffer(context:LysisContext):LysisSuggestion{
   add(row(edtaFree?"EDTA-free protease inhibitor":"Protease inhibitor cocktail",1,"×","protease-inhibitor"),chemistry==="imac"?"EDTA-free protease inhibitor: blocks host proteases without stripping the IMAC resin.":chemistry==="calcium"?"EDTA-free protease inhibitor: EDTA would remove the calcium the resin needs.":cleanupImac?`EDTA-free protease inhibitor: Subtractive cleanup uses ${context.cleanup?.shortName||"IMAC"}, so keep chelators out upstream.`:"Protease inhibitor cocktail blocks host proteases released during lysis.");
   if(context.host==="bacteria")add(row("Lysozyme",1,"mg/mL","lysis-enzyme"),"E. coli: lysozyme weakens the cell wall, so cells break with gentler sonication or homogenization.");
   else if(context.host==="yeast")reasons.push({component:"Lysozyme",text:"Yeast: lysozyme does not digest yeast walls; break cells by bead beating or homogenization (or zymolyase)."});
+  else if(context.host==="cellfree")reasons.push({component:"Lysozyme",text:"Cell-free reaction: there are no cells to break, so no lysis enzyme is needed. Clarify the reaction mix by centrifugation before loading."});
   else if(context.host)reasons.push({component:"Lysozyme",text:`${context.host==="insect"?"Insect":"Mammalian"} cells have no cell wall, so no lysis enzyme is needed.`});
   else reasons.push({component:"Lysozyme",text:"No expression host is saved yet; lysozyme is added for E. coli once that is chosen."});
 
