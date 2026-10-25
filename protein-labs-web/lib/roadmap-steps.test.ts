@@ -1,6 +1,6 @@
 // The step list a gel lane can be bound to. Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import type { ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
 import { roadmapStepOptions, stageBindingLabel } from "./roadmap-steps.ts";

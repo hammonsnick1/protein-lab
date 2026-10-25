@@ -1,6 +1,6 @@
 // BLAST alignment viewers (HOM-214). Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { alignmentBlocks, blastStepIndex, buildMsa, cleanDescription, clustalColours, columnConservation, formatElapsed, formatEvalue, isTerminalStatus, msaFasta, normalizeHits, organismOf, readHsp, sortHits } from "./blast-alignment.ts";
 import type { BlastHit, BlastHsp } from "./blast-alignment.ts";

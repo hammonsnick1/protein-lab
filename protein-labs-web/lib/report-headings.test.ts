@@ -1,6 +1,6 @@
 // Editable report headings (HOM-79). Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { headingIgnoresKey, singleLineHeading } from "./report-headings.ts";
 

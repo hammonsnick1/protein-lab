@@ -1,6 +1,6 @@
 // Engine request errors (HOM-79). Run with `npm run test`.
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, describe, it } from "vitest";
 
 import { ENGINE_UNREACHABLE_MESSAGE, request } from "./protein-labs-api.ts";
 import { classifySourceError } from "./vector-library.ts";
