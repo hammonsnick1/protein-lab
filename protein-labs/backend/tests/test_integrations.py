@@ -4,6 +4,7 @@ from protein_labs.protein_planner.integrations import (
     HttpResponse,
     NCBIBlastClient,
     RCSBClient,
+    RemoteServiceError,
     global_sequence_metrics,
     local_alignment_metrics,
     normalize_uniprot,
@@ -340,12 +341,13 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
             return HttpResponse(200, json.dumps({"result_set": [
                 {"identifier": "1AAA_1", "score": 1.0, "services": [{"nodes": [{"match_context": [{"sequence_identity": 0.42, "evalue": 1e-30}]}]}]},
                 {"identifier": "2BBB_1", "score": 0.9, "services": [{"nodes": [{"match_context": [{"sequence_identity": 1.0, "evalue": 1e-90}]}]}]},
+                {"identifier": "2BBB_1", "score": 0.8, "services": []},
             ]}), {})
         if "/polymer_entity/" in url:
             pdb_id = url.split("/polymer_entity/")[1].split("/")[0]
-            return HttpResponse(200, json.dumps({"entity_poly": {"pdbx_seq_one_letter_code_can": entities[pdb_id]}, "rcsb_polymer_entity": {"pdbx_description": "Hemoglobin"}}), {})
+            return HttpResponse(200, json.dumps({"entity_poly": {"pdbx_seq_one_letter_code_can": entities[pdb_id]}, "rcsb_polymer_entity": {"pdbx_description": "Hemoglobin"}, "rcsb_polymer_entity_container_identifiers": {"auth_asym_ids": ["A", "C"]}}), {})
         if "/entry/" in url:
-            return HttpResponse(200, json.dumps({"struct": {"title": "Hemoglobin"}}), {})
+            return HttpResponse(200, json.dumps({"struct": {"title": "Hemoglobin"}, "exptl": [{"method": "X-RAY DIFFRACTION"}], "rcsb_entry_info": {"resolution_combined": [1.74]}}), {})
         return HttpResponse(200, "data_test\n", {})
 
     records = RCSBClient(HttpClient(transport=transport)).search_sequence(HUMAN_HBA)
@@ -357,4 +359,42 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
     assert round(records[1]["similarity"] * 100) == 59
     assert records[1]["rcsbIdentity"] == 0.42
     assert records[1]["evalue"] == 1e-30
+    assert records[0]["chainId"] == "A" and records[0]["chainIds"] == ["A", "C"]
+    assert records[0]["coverage"] == 1.0
+    assert records[0]["method"] == "X-RAY DIFFRACTION" and records[0]["resolution"] == 1.74
+
+
+def test_rcsb_search_rejects_invalid_query_and_malformed_result_list():
+    client = RCSBClient(HttpClient(transport=lambda *args, **kwargs: HttpResponse(200, '{"result_set": {}}', {})))
+
+    for query, message in (("AC", "at least 10"), ("ACDUFGHIKL", "standard amino-acid"), ("A" * 10_001, "at most 10,000")):
+        try:
+            client.search_sequence(query)
+        except ValueError as error:
+            assert message in str(error)
+        else:  # pragma: no cover - assertion guard
+            assert False, "invalid PDB query should fail before making a request"
+
+    try:
+        client.search_sequence("ACDEFGHIKL")
+    except RemoteServiceError as error:
+        assert error.service == "RCSB PDB search"
+        assert "invalid result list" in str(error)
+    else:  # pragma: no cover - assertion guard
+        assert False, "malformed RCSB result list should be reported"
+
+
+def test_http_client_retries_rcsb_rate_limit_with_bounded_backoff(monkeypatch):
+    attempts = []
+    pauses = []
+
+    def transport(method, url, *, data, headers):
+        attempts.append(url)
+        if len(attempts) < 3:
+            return HttpResponse(429, "", {"Retry-After": "0"})
+        return HttpResponse(200, '{"result_set": []}', {})
+
+    monkeypatch.setattr("protein_labs.protein_planner.integrations.time.sleep", pauses.append)
+    assert RCSBClient(HttpClient(transport=transport)).search_sequence("ACDEFGHIKL") == []
+    assert len(attempts) == 3 and pauses == [0.0, 0.0]
 

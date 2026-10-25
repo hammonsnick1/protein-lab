@@ -68,24 +68,41 @@ class HttpClient:
         elif json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        if self.transport is not None:
-            return self.transport(method, url, data=data, headers=headers)
-        request = Request(url, data=data, headers=headers, method=method)
-        try:
-            with urlopen(request, timeout=timeout or self.timeout) as response:
-                charset = response.headers.get_content_charset() or "utf-8"
-                return HttpResponse(
-                    status=response.status,
-                    text=response.read().decode(charset, errors="replace"),
-                    headers=dict(response.headers.items()),
-                )
-        except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")[:500]
-            raise RemoteServiceError(service, detail or error.reason, error.code) from error
-        except URLError as error:
-            raise RemoteServiceError(service, str(error.reason)) from error
-        except (TimeoutError, ConnectionError, OSError) as error:
-            raise RemoteServiceError(service, str(error)) from error
+        # GET/POST searches are idempotent at every provider we call here.  A
+        # bounded retry makes transient timeouts and RCSB's 429s recoverable
+        # without leaving the UI in a spinner forever.
+        for attempt in range(3):
+            response: HttpResponse | None = None
+            try:
+                if self.transport is not None:
+                    response = self.transport(method, url, data=data, headers=headers)
+                else:
+                    request = Request(url, data=data, headers=headers, method=method)
+                    with urlopen(request, timeout=timeout or self.timeout) as remote_response:
+                        charset = remote_response.headers.get_content_charset() or "utf-8"
+                        response = HttpResponse(
+                            status=remote_response.status,
+                            text=remote_response.read().decode(charset, errors="replace"),
+                            headers=dict(remote_response.headers.items()),
+                        )
+                if 200 <= response.status < 300:
+                    return response
+                detail = response.text.strip()[:500]
+                if response.status == 429:
+                    detail = detail or "rate limited; please try again shortly"
+                error = RemoteServiceError(service, detail or f"HTTP {response.status}", response.status)
+            except HTTPError as caught:
+                detail = caught.read().decode("utf-8", errors="replace")[:500]
+                error = RemoteServiceError(service, detail or str(caught.reason), caught.code)
+            except URLError as caught:
+                error = RemoteServiceError(service, str(caught.reason))
+            except (TimeoutError, ConnectionError, OSError) as caught:
+                error = RemoteServiceError(service, str(caught))
+            if error.status not in {None, 429, 500, 502, 503, 504} or attempt == 2:
+                raise error
+            retry_after = _number(response.headers.get("Retry-After")) if response else None
+            time.sleep(min(4.0, retry_after if retry_after is not None else 0.25 * (2 ** attempt)))
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def json(self, method: str, url: str, **kwargs: Any) -> dict[str, Any]:
         response = self.request(method, url, **kwargs)
@@ -495,6 +512,7 @@ class RCSBClient:
         evalue_cutoff: float = 1e-3,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
+        sequence = _normalize_pdb_query(sequence)
         payload = {
             "query": {
                 "type": "terminal",
@@ -518,17 +536,30 @@ class RCSBClient:
         raw = self.http.json(
             "POST", self.search_url, json_body=payload, service="RCSB PDB search"
         )
+        result_set = raw.get("result_set", [])
+        if not isinstance(result_set, list):
+            raise RemoteServiceError("RCSB PDB search", "returned an invalid result list")
         records: list[dict[str, Any]] = []
-        for result in raw.get("result_set", []):
+        seen: set[tuple[str, str]] = set()
+        for result in result_set:
+            if not isinstance(result, dict):
+                continue
             identifier = str(result.get("identifier", ""))
             match = re.fullmatch(r"([0-9A-Za-z]{4})_(\d+)", identifier)
             if not match:
                 continue
             pdb_id, entity_id = match.group(1).upper(), match.group(2)
+            if (pdb_id, entity_id) in seen:
+                continue
+            seen.add((pdb_id, entity_id))
             services = result.get("services") or []
-            nodes = services[0].get("nodes", []) if services else []
-            match_context = nodes[0].get("match_context", []) if nodes else []
+            first_service = services[0] if services and isinstance(services[0], dict) else {}
+            nodes = first_service.get("nodes", []) if isinstance(first_service.get("nodes", []), list) else []
+            first_node = nodes[0] if nodes and isinstance(nodes[0], dict) else {}
+            match_context = first_node.get("match_context", []) if isinstance(first_node.get("match_context", []), list) else []
             context = match_context[0] if match_context else {}
+            if not isinstance(context, dict):
+                context = {}
             records.append(
                 self.fetch_record(
                     pdb_id,
@@ -540,7 +571,11 @@ class RCSBClient:
                 )
             )
         # Closest structures first.
-        records.sort(key=lambda record: record.get("identity") or 0, reverse=True)
+        records.sort(key=lambda record: (
+            -(record.get("identity") or 0),
+            -(record.get("coverage") or 0),
+            record["pdbId"], record["entityId"],
+        ))
         return records
 
     def fetch_record(
@@ -567,6 +602,10 @@ class RCSBClient:
         struct = entry.get("struct") or {}
         polymer = entity.get("rcsb_polymer_entity") or {}
         identifiers = entity.get("rcsb_polymer_entity_container_identifiers") or {}
+        chain_ids = identifiers.get("auth_asym_ids") or identifiers.get("asym_ids") or []
+        if not isinstance(chain_ids, list):
+            chain_ids = []
+        chain_ids = [str(value) for value in chain_ids if str(value).strip()]
         entity_sequence = re.sub(
             r"\s+", "", str((entity.get("entity_poly") or {}).get("pdbx_seq_one_letter_code_can") or "")
         )
@@ -584,12 +623,18 @@ class RCSBClient:
         return {
             "pdbId": pdb_id,
             "entityId": str(entity_id),
+            # Stable Structure Viewer contract.  All metrics are fractions
+            # (0..1); resolution is in Angstrom; chain IDs are author chain
+            # IDs when RCSB supplies them.
+            "chainId": chain_ids[0] if chain_ids else None,
+            "chainIds": chain_ids,
             "score": score,
             # Identity and similarity come from our own BLOSUM62 alignment so
             # they are measured the same way; RCSB's identity is kept beside it.
             "identity": comparison["identity"] if comparison else identity,
             "similarity": comparison["similarity"] if comparison else None,
             "comparison": comparison,
+            "coverage": comparison["queryCoverage"] if comparison else None,
             "rcsbIdentity": identity,
             "evalue": evalue,
             "entitySequenceLength": len(entity_sequence) or None,
@@ -597,7 +642,9 @@ class RCSBClient:
             "entityDescription": polymer.get("pdbx_description", ""),
             "uniprotIds": [str(value) for value in identifiers.get("uniprot_ids") or []],
             "experimentalMethods": [item.get("method") for item in experimental if item.get("method")],
-            "resolutionAngstrom": entry_info.get("resolution_combined") or [],
+            "resolutionAngstrom": _resolutions(entry_info.get("resolution_combined")),
+            "method": "; ".join(str(item.get("method")) for item in experimental if item.get("method")) or None,
+            "resolution": min(_resolutions(entry_info.get("resolution_combined")), default=None),
             "sourceOrganisms": _organism_names(sources),
             "crystallizationConditions": conditions["crystallizationConditions"],
             "purificationConditions": conditions["purificationConditions"],
@@ -867,6 +914,31 @@ def _number(value: Any) -> float | None:
         return None if value is None else float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _normalize_pdb_query(sequence: str) -> str:
+    """Validate an RCSB protein sequence query before it reaches the network."""
+    normalized = re.sub(r"\s+", "", str(sequence).upper())
+    # RCSB's protein sequence service rejects values below ten residues.
+    # Validate locally so the desktop can explain short-peptide failures
+    # without showing an upstream JSON error.
+    if len(normalized) < 10:
+        raise ValueError("PDB sequence search requires at least 10 standard amino-acid residues")
+    if len(normalized) > 10_000:
+        raise ValueError("PDB sequence search supports at most 10,000 residues per query")
+    nonstandard = sorted(set(normalized) - set("ACDEFGHIKLMNPQRSTVWY"))
+    if nonstandard:
+        raise ValueError(
+            "PDB sequence search accepts standard amino-acid residues only; "
+            f"found {''.join(nonstandard)}"
+        )
+    return normalized
+
+
+def _resolutions(value: Any) -> list[float]:
+    """Keep only numeric RCSB resolutions, which are reported in Angstrom."""
+    values = value if isinstance(value, list) else []
+    return [number for item in values if (number := _number(item)) is not None]
 
 
 def _uniprot_accession(accession: str, hit_id: str) -> str | None:
