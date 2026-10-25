@@ -1496,6 +1496,13 @@ p {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.85fr);
   gap: 18px;
+  align-items: start;
+}
+/* The family rail and the comparison table run the whole width: five families
+   across a half-width column would slice the last one off. */
+.expression-full {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 .expression-host-panel {
   min-width: 0;
@@ -1523,107 +1530,6 @@ p {
   max-height: 670px;
   overflow: auto;
   padding-right: 3px;
-}
-.host-card {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--host-color);
-  border-radius: 11px;
-  background: var(--card);
-  color: inherit;
-  padding: 9px;
-  text-align: left;
-  cursor: pointer;
-  transition: transform var(--speed-fast) var(--ease-out), border-color var(--speed-fast) ease, background var(--speed-fast) ease;
-}
-.host-card:hover {
-  border-color: var(--host-color);
-  background: color-mix(in srgb, var(--host-color) 7%, var(--card));
-}
-.host-card.selected {
-  border-color: var(--host-color);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--host-color) 20%, transparent);
-  background: color-mix(in srgb, var(--host-color) 9%, var(--card));
-}
-.host-card > span:not(.host-cartoon) {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.host-card strong {
-  font-size: 12px;
-}
-.host-card small {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  margin-top: 2px;
-}
-.host-card em {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  font-style: normal;
-  line-height: 1.25;
-  margin-top: 4px;
-}
-.host-card > svg {
-  width: 15px;
-  color: var(--host-color);
-  flex: none;
-}
-.host-cartoon {
-  --host-color: #35b99a;
-  width: 58px;
-  height: 48px;
-  position: relative;
-  flex: none;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 35% 35%,
-    color-mix(in srgb, var(--host-color) 78%, white),
-    var(--host-color) 60%,
-    color-mix(in srgb, var(--host-color) 50%, black)
-  );
-  box-shadow: 0 5px 16px color-mix(in srgb, var(--host-color) 30%, transparent);
-  overflow: hidden;
-}
-.host-cartoon i {
-  position: absolute;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.65);
-  left: 18px;
-  top: 13px;
-}
-.host-cartoon i:nth-child(2) {
-  left: 31px;
-  top: 27px;
-}
-.host-cartoon i:nth-child(3) {
-  left: 40px;
-  top: 10px;
-}
-.host-cartoon.compact {
-  width: 38px;
-  height: 32px;
-  border-radius: 45%;
-}
-.host-cartoon.compact i {
-  transform: scale(0.7);
-  left: 10px;
-  top: 8px;
-}
-.host-cartoon.compact i:nth-child(2) {
-  left: 20px;
-  top: 18px;
-}
-.host-cartoon.compact i:nth-child(3) {
-  left: 26px;
-  top: 6px;
 }
 .host-profile-heading {
   display: flex;
@@ -1701,13 +1607,6 @@ p {
   font-size: 12px;
   line-height: 1.4;
   margin-top: 3px;
-}
-.host-reference {
-  display: block;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 1.4;
-  margin-top: 12px;
 }
 .vector-family-list {
   display: flex;
@@ -6739,20 +6638,54 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   color: var(--muted-foreground);
 }
 .host-card {
-  display: grid !important;
-  grid-template-columns: 1fr auto;
-  padding: 0 !important;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  padding: 0;
   overflow: hidden;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--host-color);
+  border-radius: 11px;
+  background: var(--card);
+  color: inherit;
+  text-align: left;
+  transition: border-color var(--speed-fast) ease, background var(--speed-fast) ease;
+}
+.host-card:hover {
+  border-color: var(--host-color);
+  background: color-mix(in srgb, var(--host-color) 6%, var(--card));
+}
+.host-card.selected {
+  border-color: var(--host-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--host-color) 20%, transparent);
+  background: color-mix(in srgb, var(--host-color) 9%, var(--card));
+}
+.host-card strong {
+  font-size: 13px;
+}
+.host-card small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.host-card em {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-style: normal;
+  line-height: 1.35;
+  margin-top: 5px;
 }
 .host-card > button {
   display: flex;
-  align-items: center;
-  gap: 9px;
+  align-items: flex-start;
+  gap: 10px;
   border: 0;
   background: transparent;
   color: inherit;
   text-align: left;
-  padding: 9px;
+  padding: 10px;
   min-width: 0;
   cursor: pointer;
 }
@@ -6765,54 +6698,473 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .host-card > button > svg {
   width: 15px;
   color: var(--host-color);
+  flex: none;
 }
-.host-card > label {
-  align-self: stretch;
+/* The alias a strain is also sold under, under its catalogue name. */
+.host-card strong i {
+  display: block;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+/* Two or three facts that fit on a card; the rest is in the table and the
+   inspector. The reference count is here so a card never looks unsourced. */
+.host-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.host-card-chips b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--muted) 35%, var(--card));
+}
+.host-card-chips b svg {
+  width: 12px;
+}
+.host-card-chips .metric-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.host-card-chips small {
+  margin-top: 0;
+}
+.host-card-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
-  border-left: 1px solid var(--border);
-  padding: 7px;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--muted) 28%, var(--card));
+}
+.host-card-actions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: var(--muted-foreground);
   cursor: pointer;
-  writing-mode: vertical-rl;
 }
-.host-comparison {
+
+/* --- Host families -------------------------------------------------------
+   The five production routes, each drawn as what it is. The rail is the
+   primary navigation and also shows where the chosen cell line lives. */
+.host-family-rail {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
   gap: 8px;
 }
-.host-comparison article {
-  display: flex;
-  flex-direction: column;
+.host-family-card {
+  --host-color: var(--primary);
+  display: grid;
+  justify-items: start;
+  gap: 1px;
   border: 1px solid var(--border);
-  border-top: 4px solid var(--host-color);
-  border-radius: 9px;
+  border-top: 3px solid color-mix(in srgb, var(--host-color) 65%, var(--border));
+  border-radius: 12px;
   background: var(--card);
-  padding: 10px;
+  color: inherit;
+  padding: 10px 11px 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--speed-fast) ease, background var(--speed-fast) ease, transform var(--speed-fast) var(--ease-out);
+}
+.host-family-card:hover {
+  border-color: var(--host-color);
+  background: color-mix(in srgb, var(--host-color) 7%, var(--card));
+  transform: translateY(-1px);
+}
+.host-family-card.browsing {
+  border-color: var(--host-color);
+  background: color-mix(in srgb, var(--host-color) 11%, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--host-color) 35%, transparent);
+}
+.host-family-card strong {
+  font-size: 13px;
+  margin-top: 7px;
+}
+.host-family-card small {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+.host-family-card em {
+  font-size: 12px;
+  font-style: normal;
+  color: color-mix(in srgb, var(--host-color) 70%, var(--foreground));
+  margin-top: 5px;
+}
+.host-family-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--host-color);
+  border: 1px solid color-mix(in srgb, var(--host-color) 45%, var(--border));
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-top: 7px;
+}
+.host-family-flag svg {
+  width: 12px;
+}
+.host-family-summary {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* --- Comparison table ---------------------------------------------------
+   Criteria down the rows, systems or strains across the columns, so adding a
+   column never reflows the criteria. The criterion column stays put while the
+   columns scroll. */
+.metric-panel,
+.host-family-panel {
   min-width: 0;
 }
-.host-comparison article > strong {
-  font-size: 12px;
-  margin-top: 7px;
+.metric-mode {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 55%, var(--card));
+  margin-bottom: 12px;
 }
-.host-comparison article > small {
+.metric-mode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
   color: var(--muted-foreground);
+  padding: 6px 10px;
+  cursor: pointer;
 }
-.host-comparison dl {
+.metric-mode button svg {
+  width: 14px;
+}
+.metric-mode button.on {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+.metric-mode button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+.metric-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background:
+    linear-gradient(to right, var(--card) 40%, color-mix(in srgb, var(--card) 0%, transparent)) left / 26px 100% no-repeat local,
+    linear-gradient(to left, var(--card) 40%, color-mix(in srgb, var(--card) 0%, transparent)) right / 26px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--foreground) 24%, transparent), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--foreground) 24%, transparent), transparent) right / 14px 100% no-repeat scroll,
+    var(--card);
+}
+.metric-table {
+  width: 100%;
+  min-width: calc(172px + var(--columns, 4) * 152px);
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 12px;
 }
-.host-comparison dt {
-  font-weight: 800;
-  color: var(--primary);
-  margin-top: 7px;
+.metric-table th,
+.metric-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 9px 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
 }
-.host-comparison dd {
-  margin: 2px 0;
+.metric-table td {
+  min-width: 152px;
+}
+.metric-table thead th {
+  background: color-mix(in srgb, var(--muted) 45%, var(--card));
+  border-bottom: 1px solid var(--border);
+}
+.metric-table th[scope="row"] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 170px;
+  max-width: 210px;
+  background: color-mix(in srgb, var(--muted) 32%, var(--card));
+  border-right: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+}
+.metric-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.metric-table th[scope="row"] strong {
+  display: block;
+  font-size: 12px;
+}
+.metric-table th[scope="row"] small,
+.metric-table .metric-corner {
+  display: block;
+  font-size: 12px;
   color: var(--muted-foreground);
   line-height: 1.35;
+  margin-top: 3px;
+}
+.metric-table .metric-corner {
+  margin-top: 0;
+  font-weight: 700;
+}
+.metric-table tbody tr:last-child th,
+.metric-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.metric-table tfoot th,
+.metric-table tfoot td {
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--muted) 25%, var(--card));
+}
+.metric-table .chosen {
+  background: color-mix(in srgb, var(--host-color) 9%, transparent);
+}
+.metric-table thead th.chosen {
+  box-shadow: inset 0 3px 0 var(--host-color);
+}
+.metric-head {
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+}
+.metric-head strong {
+  font-size: 12px;
+  margin-top: 5px;
+}
+.metric-head small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.3;
+}
+.metric-head-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.metric-head-remove svg {
+  width: 12px;
+}
+.metric-head-remove:hover {
+  color: var(--destructive);
+  border-color: var(--destructive);
+}
+.metric-table thead th {
+  position: relative;
+}
+/* An ordinal value is drawn as filled pips and always written out, so the
+   scale reads the same in greyscale as in colour. */
+.metric-meter {
+  display: grid;
+  gap: 5px;
+}
+.metric-pips {
+  display: inline-flex;
+  gap: 3px;
+}
+.metric-pips b {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--host-color, var(--primary)) 55%, var(--border));
+}
+.metric-pips b.on {
+  background: var(--host-color, var(--primary));
+}
+.metric-meter small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.3;
+}
+.metric-text {
+  display: block;
+  line-height: 1.4;
+}
+.metric-text.inherited {
+  color: var(--muted-foreground);
+}
+.metric-text.inherited em {
+  display: block;
+  font-style: normal;
+  font-size: 12px;
+  margin-top: 3px;
+  letter-spacing: .03em;
+  color: color-mix(in srgb, var(--muted-foreground) 75%, transparent);
+}
+
+/* --- Profile, evidence and insight blocks ------------------------------- */
+.host-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 15px;
+}
+.host-metric-grid > div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 9px;
+  background: color-mix(in srgb, var(--muted) 22%, var(--card));
+}
+.host-metric-grid dt {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  line-height: 1.3;
+}
+.host-metric-grid dd {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.host-insight {
+  margin: 0 0 14px;
+}
+.host-insight > strong {
+  display: block;
+  font-size: 12px;
+  letter-spacing: .03em;
+  color: var(--muted-foreground);
+  margin-bottom: 6px;
+}
+.host-insight ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.host-insight li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.host-insight li svg {
+  width: 14px;
+  flex: none;
+  margin-top: 1px;
+}
+.host-insight.strength li svg {
+  color: #43c49b;
+}
+.host-insight.limit li svg {
+  color: #dfa33e;
+}
+/* Literature and vendor documentation are labelled, not just coloured, so a
+   vendor claim is never mistaken for a peer-reviewed one. */
+.host-reference-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.host-reference-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: var(--card);
+}
+.host-reference-list li.vendor {
+  border-left-color: color-mix(in srgb, var(--muted-foreground) 50%, var(--border));
+}
+.host-reference-kind {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  letter-spacing: .05em;
+  color: var(--muted-foreground);
+}
+.host-reference-list li > span:not(.host-reference-kind) {
+  display: grid;
+  min-width: 0;
+}
+.host-reference-list strong {
+  font-size: 12px;
+  line-height: 1.35;
+}
+.host-reference-list small {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+  margin-top: 3px;
+}
+.host-reference-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.host-reference-list a svg {
+  width: 12px;
+}
+.host-reference-list a:hover {
+  text-decoration: underline;
+}
+/* The family cartoon is drawn at the size its container needs. */
+.host-cartoon.catalog-cartoon {
+  --catalog-color: var(--host-color, var(--primary));
+  width: 40px;
+  height: 42px;
+  flex: none;
+}
+.host-family-card .host-cartoon.catalog-cartoon {
+  width: 44px;
+  height: 46px;
+}
+.host-card .host-cartoon.catalog-cartoon {
+  width: 34px;
+  height: 36px;
+}
+.metric-head .host-cartoon.catalog-cartoon {
+  width: 30px;
+  height: 32px;
+}
+.host-profile-heading .host-cartoon.catalog-cartoon {
+  width: 42px;
+  height: 44px;
 }
 .compatibility.warning {
   border-left: 3px solid #dfa33e;
@@ -6827,8 +7179,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   .host-filter-row {
     grid-template-columns: 1fr;
   }
-  .host-comparison {
-    grid-template-columns: repeat(2, 1fr);
+  .host-family-rail {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   }
 }
 
