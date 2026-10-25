@@ -315,8 +315,8 @@ export const identityTier = (value: number | null): Tier => (value ?? 0) >= 0.9 
 export const coverageTier = (value: number | null): Tier => (value ?? 0) >= 0.9 ? "high" : (value ?? 0) >= 0.6 ? "mid" : "low";
 export const evalueTier = (value: number | null): Tier => value === null ? "low" : value <= 1e-50 ? "high" : value <= 1e-5 ? "mid" : "low";
 
-// Remote job stages. NCBI only reports WAITING/READY, so "Running" and
-// "Parsing hits" light up only when the engine reports them (HOM-215).
+// Remote job stages. Pass the engine's `stageId` (HOM-215) when the job has
+// one; older jobs only carry `status` (waiting/complete/…) and stage text.
 export const BLAST_STEPS = ["Submitting", "Queued", "Running", "Parsing hits", "Done"] as const;
 const TERMINAL = new Set(["complete", "done", "failed", "canceled", "cancelled", "unknown"]);
 export const isTerminalStatus = (status: string) => TERMINAL.has(status.toLowerCase());
