@@ -4656,8 +4656,35 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   font: 24px var(--font-mono);
 }
 .review-metrics small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: var(--muted-foreground);
   font-size: 12px;
+}
+.review-metrics small svg {
+  width: 13px;
+  height: 13px;
+  color: currentColor;
+}
+.review-metrics .error small svg { color: #e56565; }
+.review-metrics .warning small svg { color: #e0a53c; }
+.review-metrics .pass small svg { color: #4ac59d; }
+.review-section-head {
+  margin-bottom: 12px;
+}
+.review-section-head > span {
+  display: flex;
+  flex-direction: column;
+}
+.review-section-head strong {
+  font-size: 14px;
+}
+.review-section-head small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 2px;
 }
 .review-metrics .error {
   color: #e56565;
@@ -4677,8 +4704,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .review-checks article {
   display: grid;
-  grid-template-columns: 20px 1fr auto;
-  gap: 8px;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
   align-items: start;
   border: 1px solid var(--border);
   border-left: 3px solid currentColor;
@@ -4695,10 +4722,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .review-checks article.error {
   color: #e56565;
 }
-.review-checks svg {
-  width: 16px;
-}
-.review-checks span {
+.review-checks article > span:first-child {
   display: flex;
   flex-direction: column;
   color: var(--foreground);
@@ -4712,10 +4736,6 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   line-height: 1.4;
   margin-top: 3px;
 }
-.review-checks article > b {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-}
 .bench-workflow > header {
   display: flex;
   align-items: center;
@@ -4723,7 +4743,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   padding-bottom: 13px;
   border-bottom: 1px solid var(--border);
 }
-.bench-workflow > header > span {
+.bench-workflow > header > span:first-child {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -4759,6 +4779,38 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .bench-workflow article small {
   color: var(--muted-foreground);
   font-size: 12px;
+}
+.bench-workflow article small b {
+  margin-right: 6px;
+  color: var(--foreground);
+  font-weight: 700;
+}
+.review-empty {
+  display: flex;
+  gap: 9px;
+  margin-top: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+  background: var(--muted);
+  padding: 11px;
+}
+.review-empty > svg {
+  width: 18px;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.review-empty > span {
+  display: flex;
+  flex-direction: column;
+}
+.review-empty strong {
+  font-size: 12px;
+}
+.review-empty small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 3px;
 }
 .purification-message {
   position: fixed;
@@ -6021,6 +6073,34 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   }
 }
 
+/* Verdict chip for readiness and compile checks: colour, icon and label together. */
+.status-chip {
+  --chip: #8b79d4;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--chip) 40%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chip) 13%, var(--card));
+  color: color-mix(in srgb, var(--chip) 70%, var(--foreground));
+  padding: 2px 8px 2px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.status-chip > svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+.status-chip.pass { --chip: #36ad89; }
+.status-chip.attention,
+.status-chip.warning { --chip: #df9a36; }
+.status-chip.review { --chip: #8b79d4; }
+.status-chip.error { --chip: #e56565; }
+
 /* Protein-readiness evidence and researcher override workspace. */
 .readiness-workspace {
   max-width: 1280px;
@@ -6048,16 +6128,40 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+.readiness-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.readiness-section-head > span:first-child {
+  display: flex;
+  flex-direction: column;
+}
+.readiness-section-head h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.readiness-section-head small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.readiness-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .readiness-overview article {
-  display: grid;
-  grid-template-columns: 22px 1fr auto;
-  gap: 9px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   border: 1px solid var(--border);
   border-left: 4px solid currentColor;
   border-radius: 10px;
   background: var(--card);
-  padding: 11px;
+  padding: 11px 13px;
 }
 .readiness-overview article.pass {
   color: #36ad89;
@@ -6068,27 +6172,25 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .readiness-overview article.review {
   color: #8b79d4;
 }
-.readiness-overview article > svg {
-  width: 18px;
-}
-.readiness-overview article > span {
+.readiness-overview article > header {
   display: flex;
-  flex-direction: column;
-  color: var(--foreground);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
 .readiness-overview article strong {
+  color: var(--foreground);
   font-size: 12px;
+}
+.readiness-overview article > b {
+  color: var(--foreground);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 .readiness-overview article small {
   font-size: 12px;
   line-height: 1.45;
   color: var(--muted-foreground);
-  margin-top: 3px;
-}
-.readiness-overview article > b {
-  max-width: 150px;
-  text-align: right;
-  font-size: 12px;
 }
 .readiness-editor {
   display: grid;
@@ -6102,8 +6204,23 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   background: color-mix(in srgb, var(--card) 83%, transparent);
   padding: 16px;
 }
+.readiness-editor > section > header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
 .readiness-editor h3 {
   font-size: 15px;
+  margin: 0;
+}
+.readiness-editor > section > header small,
+.readiness-editor .field-hint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
 }
 .readiness-editor label {
   display: flex;
@@ -6125,8 +6242,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .readiness-answer-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
+  grid-template-columns: repeat(2, 1fr);
+  column-gap: 10px;
 }
 .evidence-block {
   display: flex;
@@ -6143,6 +6260,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   color: var(--muted-foreground);
   line-height: 1.45;
   margin-top: 3px;
+}
+.evidence-block .evidence-empty {
+  font-style: italic;
 }
 .readiness-method {
   display: flex;
