@@ -113,6 +113,59 @@ small {
     linear-gradient(145deg, color-mix(in srgb, var(--card) 88%, #061115), var(--background));
   --project-pattern: radial-gradient(circle, color-mix(in srgb, var(--foreground) 8%, transparent) 1px, transparent 1.5px);
 }
+/* Side-chain classes colour the composition bars and the residue window.
+   Monochrome appearances use greys plus a hatch per class, so the classes
+   stay apart without hue; the legend always names them. */
+:root,
+.app-shell.visual-paper {
+  --aa-aliphatic: #a86f12;
+  --aa-aromatic: #7f52c9;
+  --aa-polar: #1f8174;
+  --aa-acidic: #c43d30;
+  --aa-basic: #3565c9;
+  --aa-sulfur: #5f7f1c;
+  --aa-special: #756b5c;
+  --aa-other: #a39a8c;
+  --aa-hatch-aromatic: none;
+  --aa-hatch-polar: none;
+  --aa-hatch-acidic: none;
+  --aa-hatch-basic: none;
+  --aa-hatch-sulfur: none;
+  --aa-hatch-special: none;
+}
+:root:has(.app-shell.visual-mono-dark),
+.app-shell.visual-mono-dark,
+:root:has(.app-shell.visual-mono-light),
+.app-shell.visual-mono-light {
+  --aa-hatch-aromatic: repeating-linear-gradient(45deg, transparent 0 3px, var(--card) 3px 5px);
+  --aa-hatch-polar: repeating-linear-gradient(90deg, transparent 0 3px, var(--card) 3px 5px);
+  --aa-hatch-acidic: repeating-linear-gradient(-45deg, transparent 0 3px, var(--card) 3px 5px);
+  --aa-hatch-basic: repeating-linear-gradient(0deg, transparent 0 2px, var(--card) 2px 4px);
+  --aa-hatch-sulfur: repeating-linear-gradient(45deg, transparent 0 2px, var(--card) 2px 3px), repeating-linear-gradient(-45deg, transparent 0 2px, var(--card) 2px 3px);
+  --aa-hatch-special: radial-gradient(circle, var(--card) 1px, transparent 1.4px) 0 0 / 4px 4px;
+}
+:root:has(.app-shell.visual-mono-dark),
+.app-shell.visual-mono-dark {
+  --aa-aliphatic: #f2f2f3;
+  --aa-aromatic: #d0d0d4;
+  --aa-polar: #b4b4ba;
+  --aa-acidic: #e2e2e5;
+  --aa-basic: #a2a2a8;
+  --aa-sulfur: #c4c4c9;
+  --aa-special: #8e8e95;
+  --aa-other: #5c5c62;
+}
+:root:has(.app-shell.visual-mono-light),
+.app-shell.visual-mono-light {
+  --aa-aliphatic: #0b0b0c;
+  --aa-aromatic: #2a2a2e;
+  --aa-polar: #45454b;
+  --aa-acidic: #1c1c1f;
+  --aa-basic: #55555c;
+  --aa-sulfur: #3a3a3f;
+  --aa-special: #6c6c73;
+  --aa-other: #a5a5ac;
+}
 /* Monochrome dark: black surfaces, white type and rules, no hue anywhere.
    Mirrored onto :root while active so portalled dialogs follow it too. */
 :root:has(.app-shell.visual-mono-dark),
@@ -1205,6 +1258,30 @@ p {
 }
 .metric-card strong {
   font: 17px var(--font-mono);
+}
+/* Properties metric cards: value with its unit, a verdict chip where the
+   engine gives one, and a line saying what the number means. */
+.properties-layout .metric-card { gap: 5px; padding: 13px 15px; }
+.properties-layout .metric-card > span { font-weight: 700; letter-spacing: 0.01em; }
+.properties-layout .metric-card strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  font-size: 19px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.properties-layout .metric-card strong > small {
+  color: var(--muted-foreground);
+  font: 600 12px var(--font-sans);
+}
+.properties-layout .metric-card strong > .status-chip { align-self: center; font-family: var(--font-sans); text-transform: capitalize; }
+.properties-layout .metric-card p {
+  margin: auto 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
 }
 .bar-list {
   display: flex;
@@ -5964,6 +6041,20 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   padding: 8px;
   font-size: 12px;
 }
+/* Values sit on the same row line as their labels. */
+.properties-layout .property-detail-grid { gap: 0 16px; }
+.properties-layout .property-detail-grid > span { align-items: center; color: var(--muted-foreground); font-size: 13px; }
+.properties-layout .property-detail-grid > strong {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.properties-layout .panel-actions { align-items: center; margin-top: 14px; }
+.properties-layout .panel-actions > small { color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
 .secondary-bars {
   display: flex;
   flex-direction: column;
@@ -6046,6 +6137,134 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .composition-total span { margin-right: auto; color: var(--muted-foreground); font-weight: 700; }
 .composition-empty { color: var(--muted-foreground); font-size: 12px; }
+.aa-family-aliphatic { --aa: var(--aa-aliphatic); --aa-hatch: none; }
+.aa-family-aromatic { --aa: var(--aa-aromatic); --aa-hatch: var(--aa-hatch-aromatic); }
+.aa-family-polar { --aa: var(--aa-polar); --aa-hatch: var(--aa-hatch-polar); }
+.aa-family-acidic { --aa: var(--aa-acidic); --aa-hatch: var(--aa-hatch-acidic); }
+.aa-family-basic { --aa: var(--aa-basic); --aa-hatch: var(--aa-hatch-basic); }
+.aa-family-sulfur { --aa: var(--aa-sulfur); --aa-hatch: var(--aa-hatch-sulfur); }
+.aa-family-special { --aa: var(--aa-special); --aa-hatch: var(--aa-hatch-special); }
+.aa-family-other { --aa: var(--aa-other); --aa-hatch: none; }
+.composition-table tr[class*="aa-family-"] .composition-bar { background: color-mix(in srgb, var(--aa) 12%, transparent); }
+.composition-table tr[class*="aa-family-"] .composition-bar i { background: var(--aa-hatch), var(--aa); }
+.composition-table tr.is-clickable { cursor: pointer; }
+.composition-table tr.is-clickable:hover > * { background: color-mix(in srgb, var(--aa) 8%, transparent); }
+.composition-table tr:has(.composition-residue:focus-visible) > * { background: color-mix(in srgb, var(--aa) 10%, transparent); }
+.composition-residue {
+  display: inline-flex;
+  align-items: baseline;
+  border: 0;
+  border-radius: 6px;
+  margin: -3px -6px;
+  padding: 3px 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.composition-residue:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.composition-table tbody th .composition-residue strong { display: inline-block; width: 1.5em; font-weight: 800; color: color-mix(in srgb, var(--aa) 75%, var(--foreground)); }
+.composition-table tr.is-clickable:hover .composition-residue span { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+.composition-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  margin-top: 14px;
+}
+.composition-footer > small { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-foreground); font-size: 12px; }
+.composition-footer > small svg { width: 14px; height: 14px; }
+.residue-class-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.residue-class-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.residue-class-legend li.is-absent { color: var(--muted-foreground); opacity: 0.6; }
+.residue-class-legend i,
+.residue-class-chip i { width: 14px; height: 9px; border-radius: 3px; background: var(--aa-hatch), var(--aa); flex: none; }
+
+/* Residue detail window, opened from a composition row. */
+.residue-dialog {
+  max-width: min(780px, calc(100% - 2rem)) !important;
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  border-color: var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+}
+.residue-detail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.residue-detail-header { flex-direction: row; align-items: center; gap: 14px; text-align: left; padding-right: 28px; }
+.residue-detail-header h2 { font-size: 20px; }
+.residue-letter {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border: 2px solid var(--aa);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--aa) 14%, var(--popover));
+  color: color-mix(in srgb, var(--aa) 70%, var(--foreground));
+  font: 800 26px var(--font-mono);
+}
+.residue-class-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.residue-class-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--aa) 45%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--aa) 10%, var(--popover));
+  padding: 2px 9px 2px 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.residue-detail-body { display: grid; grid-template-columns: minmax(200px, 0.8fr) minmax(0, 1.2fr); gap: 18px; align-items: start; }
+.residue-structure-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 14px 10px 10px;
+}
+.residue-structure { max-width: 100%; height: auto; overflow: visible; }
+.residue-structure line { stroke: var(--foreground); stroke-width: 0.06; stroke-linecap: round; }
+.residue-structure .residue-structure-side line { stroke: color-mix(in srgb, var(--aa) 80%, var(--foreground)); stroke-width: 0.075; }
+.residue-structure-halo line { stroke: color-mix(in srgb, var(--aa) 22%, transparent); stroke-width: 0.42; }
+.residue-structure text { fill: var(--foreground); font: 600 0.42px var(--font-sans); text-anchor: middle; dominant-baseline: central; }
+.residue-structure text.residue-structure-side { fill: color-mix(in srgb, var(--aa) 75%, var(--foreground)); font-weight: 750; }
+.residue-structure-card figcaption { display: inline-flex; align-items: center; gap: 7px; color: var(--muted-foreground); font-size: 12px; }
+.residue-structure-key { width: 18px; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--aa) 30%, transparent); box-shadow: inset 0 0 0 1.5px var(--aa); }
+.residue-facts { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.residue-numbers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; margin: 0; }
+.residue-numbers > div { display: flex; flex-direction: column; gap: 2px; border-bottom: 1px solid var(--border); padding: 7px 0; }
+.residue-numbers dt { color: var(--muted-foreground); font-size: 12px; font-weight: 700; }
+.residue-numbers dd { margin: 0; font: 600 14px var(--font-mono); font-variant-numeric: tabular-nums; }
+.residue-numbers dd small { color: var(--muted-foreground); font: 600 12px var(--font-sans); }
+.residue-numbers .residue-text { font: 600 13px var(--font-sans); }
+.residue-numbers .residue-none { color: var(--muted-foreground); font-family: var(--font-sans); font-style: italic; font-weight: 500; }
+.residue-location-note { margin: -4px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; }
+.residue-facts section { display: flex; flex-direction: column; gap: 7px; }
+.residue-detail h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; font-size: 13px; font-weight: 750; }
+.residue-detail h3 small { color: var(--muted-foreground); font-size: 12px; font-weight: 500; }
+.residue-scale > span { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+.residue-scale > span small { font: 600 12px var(--font-mono); }
+.residue-scale > i { position: relative; display: block; height: 7px; border-radius: 4px; background: color-mix(in srgb, var(--foreground) 9%, transparent); }
+.residue-scale em { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--aa-hatch), var(--aa); }
+.residue-scale u { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--foreground); }
+.residue-fun-facts { border: 1px solid var(--border); border-radius: 12px; background: var(--card); padding: 12px 14px; }
+.residue-fun-facts ul { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 0; padding-left: 18px; list-style: disc; font-size: 13px; line-height: 1.45; }
+.residue-fun-facts li::marker { color: var(--aa); }
+.residue-sources { margin: -6px 0 0; color: var(--muted-foreground); font-size: 12px; line-height: 1.4; }
+.residue-dialog-footer { align-items: center; gap: 8px; }
+.residue-dialog-footer > small { margin-right: auto; color: var(--muted-foreground); font-size: 12px; }
+@media (max-width: 640px) {
+  .residue-detail-body,
+  .residue-numbers { grid-template-columns: 1fr; }
+}
 /* Sequence direction: the chain drawn N-terminus → C-terminus with its end residues. */
 .terminus-strip {
   display: grid;
