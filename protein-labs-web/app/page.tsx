@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderCog, FolderOpen, FolderSearch, GitBranch, HelpCircle, Keyboard, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, TestTubes, Workflow } from "lucide-react";
 import { Menubar as MenubarPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,7 @@ import { ProjectDashboard, ProjectWorkflow } from "@/components/protein-labs/pro
 import { ProjectTrees } from "@/components/protein-labs/project-trees";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { PurificationRoadmapWorkspace } from "@/components/protein-labs/purification-roadmap";
-import { VectorLibrary } from "@/components/protein-labs/vector-library";
-import { ProteinLibrary } from "@/components/protein-labs/protein-library";
+import { LibraryHub } from "@/components/protein-labs/library-hub";
 import { UserManual } from "@/components/protein-labs/user-manual";
 import { JsonObject, ProteinBundle, ProteinRecord, proteinLabsApi } from "@/lib/protein-labs-api";
 import { definitionFor } from "@/lib/workflow";
@@ -23,14 +22,15 @@ import { loadProjectTrees, type StorageMode } from "@/lib/project-tree-store";
 import { useProteinLabsWebMcp } from "@/hooks/use-protein-labs-webmcp";
 import { runViewTransition } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
+import { createLibraryOpener, libraryStorage, type LibraryTab } from "@/lib/library-hub";
 
-type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "vectors" | "proteins" | "manual" | "roadmap" | "reports" | "job";
+type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "library" | "manual" | "roadmap" | "reports" | "job";
 // Baked in by desktop/vite.config.ts from package.json.
 declare const __PROTEIN_LABS_VERSION__: string;
 const appVersion = __PROTEIN_LABS_VERSION__;
 
 // Depth of each view; moving to a shallower view animates as "back".
-const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, vectors: 1, proteins: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
+const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, library: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
 type VisualTheme = "paper" | "mono-dark" | "mono-light";
 
 // Each appearance carries its own light or dark mode, so the appearance is the
@@ -64,6 +64,9 @@ export default function Home() {
   const [splashReady, setSplashReady] = useState(false);
   const [splashLeaving, setSplashLeaving] = useState(false);
   const [view, setViewState] = useState<View>("home");
+  // The latest view for callbacks that outlive a render (WebMCP tools, shortcuts).
+  const viewRef = useRef<View>(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const [proteins, setProteins] = useState<ProteinRecord[]>([]);
   const [projectTrees, setProjectTrees] = useState<ProjectTree[]>([]);
   const [treeStorage, setTreeStorage] = useState<StorageMode>("local");
@@ -86,6 +89,7 @@ export default function Home() {
   const [manualVisit, setManualVisit] = useState<{ section?: string; visit: number }>({ visit: 0 });
   const [enginePath, setEnginePath] = useState("");
   const [projectDirectory, setProjectDirectory] = useState<ProjectDirectoryState | null>(null);
+  const [libraryTab, setLibraryTab] = useState<LibraryTab>("vectors");
 
   const dark = visualThemes.find((theme) => theme.id === visualTheme)?.dark ?? false;
   const bundle = bundles[selectedId] ?? null;
@@ -116,24 +120,28 @@ export default function Home() {
     const timer = window.setTimeout(() => setSplashReady(true), 1150);
     return () => window.clearTimeout(timer);
   }, []);
-  // Ctrl+Shift+L opens the vector library, Ctrl+Shift+P the protein library
+  // Ctrl+Shift+L opens the library on its Vectors tab, Ctrl+Shift+P on Proteins,
   // and F1 the manual from anywhere.
   useEffect(() => {
     if (!started) return;
-    const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "l") { event.preventDefault(); setView("vectors"); } if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "p") { event.preventDefault(); setView("proteins"); } if (event.key === "F1") { event.preventDefault(); openManual(); } };
+    const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "l") { event.preventDefault(); openLibrary("vectors"); } if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "p") { event.preventDefault(); openLibrary("proteins"); } if (event.key === "F1") { event.preventDefault(); openManual(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [started, view]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { desktopBridge()?.getProjectDirectory().then(setProjectDirectory).catch(() => undefined); }, []);
   useEffect(() => { const saved = savedVisualTheme(localStorage.getItem("protein-labs-visual-theme")); if (saved) queueMicrotask(() => setVisualTheme(saved)); }, []);
 
-  function setView(next: View, update?: () => void) { runViewTransition(() => { update?.(); setViewState(next); }, viewDepth[next] < viewDepth[view] ? "back" : "forward"); }
+  function setView(next: View, update?: () => void) { runViewTransition(() => { update?.(); setViewState(next); }, viewDepth[next] < viewDepth[viewRef.current] ? "back" : "forward"); }
   async function openProject(id: string, destination: View = "dashboard") { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView(destination, () => { setSelectedId(id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   async function createProject() { const sequence = newSequence.replace(/\s+/g, "").toUpperCase(); if (!sequence) { setError("Paste an amino-acid sequence before creating the project."); return; } setBusy(true); setError(""); try { const created = await proteinLabsApi.createProtein({ name: newName.trim() || `Protein project ${proteins.length + 1}`, sequence }); setNewName(""); setNewSequence(""); setCreateOpen(false); await loadProject(created.protein.id, undefined, false); setView("dashboard", () => { setSelectedId(created.protein.id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   // The store already persisted the change; this keeps the dashboard count in
   // step, and mirrors engine-held trees locally as an offline read cache.
   function updateProjectTrees(next: ProjectTree[]) { setProjectTrees(next); if (treeStorage === "engine") writeProjectTrees(next); }
   async function openProjectJob(id: string, job: string) { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView("job", () => { setSelectedId(id); setActiveJob(definitionFor(job).id); setJobReturn("planning"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
+  // Switching tabs inside the library keeps the page; arriving from elsewhere animates in.
+  // Reads the view through a ref: the WebMCP actions are memoised once, so a
+  // captured `view` would stay "home" and replay the page transition.
+  const openLibrary = createLibraryOpener({ currentView: () => viewRef.current, switchTab: setLibraryTab, openView: (tab) => setView("library", () => setLibraryTab(tab)) });
   function openJob(value: string, returnTo: "planning" | "roadmap" = "planning") { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }); }
   function chooseVisualTheme(theme: VisualTheme) { setVisualTheme(theme); localStorage.setItem("protein-labs-visual-theme", theme); }
   async function shareProject() { if (!bundle) return; const text = `${bundle.protein.name}\n${bundle.protein.sequence.length} aa\n${bundle.projectJobs.length} saved workflow jobs`; try { await navigator.clipboard.writeText(text); setError("Project summary copied to the clipboard."); } catch { setError("Clipboard access was not available."); } }
@@ -171,7 +179,7 @@ export default function Home() {
     }, 520);
   }
 
-  useProteinLabsWebMcp(useMemo(() => ({ openProject: (id: string) => { void openProject(id, "dashboard"); }, openJob: (id: string) => openJob(id), openNotebook: () => setView("reports") }), [])); // eslint-disable-line react-hooks/exhaustive-deps
+  useProteinLabsWebMcp(useMemo(() => ({ openProject: (id: string) => { void openProject(id, "dashboard"); }, openJob: (id: string) => openJob(id), openNotebook: () => setView("reports"), openLibrary: (tab: LibraryTab) => openLibrary(tab) }), [])); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!started) {
     return <div className={`app-shell visual-${visualTheme} ${dark ? "dark" : ""}`} data-visual-theme={visualTheme}>
@@ -209,8 +217,8 @@ export default function Home() {
         <DesktopMenu label="Tools" container={shellNode}>
           <MenuItem icon={<LayoutGrid/>} onSelect={() => setView("projects")}>Project gallery</MenuItem>
           <MenuItem icon={<GitBranch/>} onSelect={() => setView("project-trees")}>Project trees</MenuItem>
-          <MenuItem icon={<Disc3/>} shortcut="Ctrl+Shift+L" onSelect={() => setView("vectors")}>Vector library</MenuItem>
-          <MenuItem icon={<TestTubes/>} shortcut="Ctrl+Shift+P" onSelect={() => setView("proteins")}>Protein library</MenuItem>
+          <MenuItem icon={<Disc3/>} shortcut="Ctrl+Shift+L" onSelect={() => openLibrary("vectors")}>Vector library</MenuItem>
+          <MenuItem icon={<TestTubes/>} shortcut="Ctrl+Shift+P" onSelect={() => openLibrary("proteins")}>Protein library</MenuItem>
           <MenuItem icon={<Workflow/>} disabled={!bundle} onSelect={() => setView("workflow")}>Project workflow</MenuItem>
           <MenuItem icon={<FlaskConical/>} disabled={!bundle} onSelect={() => setView("roadmap")}>Purification roadmap</MenuItem>
           <MenuItem icon={<BookOpen/>} disabled={!bundle} onSelect={() => setView("reports")}>Purification report</MenuItem>
@@ -223,18 +231,17 @@ export default function Home() {
         </DesktopMenu>
       </MenubarPrimitive.Root>
       <div className="topbar-spacer"/>
-      <div className="top-actions"><Button variant={view === "vectors" ? "secondary" : "ghost"} size="sm" className="topbar-vector-library" aria-pressed={view === "vectors"} title="Vector library (Ctrl+Shift+L)" onClick={() => setView("vectors")}><Disc3/> Vector library</Button><Button variant={view === "proteins" ? "secondary" : "ghost"} size="sm" className="topbar-protein-library" aria-pressed={view === "proteins"} title="Protein library (Ctrl+Shift+P)" onClick={() => setView("proteins")}><TestTubes/> Protein library</Button><TopGoogleAccount/></div>
+      <div className="top-actions"><Button variant={view === "library" && libraryTab === "vectors" ? "secondary" : "ghost"} size="sm" className="topbar-vector-library" aria-pressed={view === "library" && libraryTab === "vectors"} title="Vector library (Ctrl+Shift+L)" onClick={() => openLibrary("vectors")}><Disc3/> Vector library</Button><Button variant={view === "library" && libraryTab === "proteins" ? "secondary" : "ghost"} size="sm" className="topbar-protein-library" aria-pressed={view === "library" && libraryTab === "proteins"} title="Protein library (Ctrl+Shift+P)" onClick={() => openLibrary("proteins")}><TestTubes/> Protein library</Button><TopGoogleAccount/></div>
     </header>
 
     {error && <div className="global-error"><CircleAlert/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
     {busy && <div className="global-working"><LoaderCircle className="spin"/> Working with the local scientific engine…</div>}
 
     <div className={`workspace-view-transition ${view === "home" ? "is-dashboard" : ""}`} key={`${view}:${selectedId}:${view === "job" ? activeJob : ""}`}>
-      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} onVectors={() => setView("vectors")} onCreate={() => setCreateOpen(true)}/>
+      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} storage={libraryStorage(projectDirectory, enginePath)} onLibrary={openLibrary} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()} onCreate={() => setCreateOpen(true)}/>
         : view === "projects" ? <ProjectGallery proteins={proteins} onOpen={(id) => void openProject(id)} onCreate={() => { setError(""); setCreateOpen(true); }}/>
         : view === "manual" ? <UserManual key={manualVisit.visit} initialSection={manualVisit.section}/>
-        : view === "vectors" ? <VectorLibrary mode="page" proteins={proteins} onOpenProject={(id) => void openProjectJob(id, "expression-vector")}/>
-        : view === "proteins" ? <ProteinLibrary/>
+        : view === "library" ? <LibraryHub tab={libraryTab} onTabChange={setLibraryTab} proteins={proteins} storage={libraryStorage(projectDirectory, enginePath)} onOpenVectorProject={(id) => void openProjectJob(id, "expression-vector")} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()}/>
         : view === "project-trees" ? <ProjectTrees proteins={proteins} trees={projectTrees} storageMode={treeStorage} loading={treesLoading} onChange={updateProjectTrees} onOpenProject={(id) => void openProject(id)}/>
         : bundle ? <>{view === "dashboard" && <ProjectDashboard bundle={bundle} onResume={() => setView("workflow")} onRoadmap={() => setView("roadmap")} onReports={() => setView("reports")}/>} {view === "workflow" && <ProjectWorkflow bundle={bundle} onOpenJob={(id) => openJob(id, "planning")} onRoadmap={() => setView("roadmap")} onRefresh={() => refreshBundle(selectedId)}/>} {view === "roadmap" && <PurificationRoadmapWorkspace bundle={bundle} onOpenJob={(id) => openJob(id, "roadmap")} onBackToWorkflow={() => setView("workflow")} onChanged={() => refreshBundle(selectedId)}/>} {view === "job" && <JobWorkspace key={`${selectedId}:${activeJob}:${jobReturn}`} jobId={activeJob} bundle={bundle} returnTo={jobReturn} onBack={() => setView(jobReturn === "roadmap" ? "roadmap" : "workflow")} onOpenJob={(id) => openJob(id, "planning")} onReports={() => setView("reports")} onRoadmap={() => setView("roadmap")} onChanged={() => refreshBundle(selectedId)}/>} {view === "reports" && <ReportsWorkspace bundle={bundle} onChanged={() => refreshBundle(selectedId)}/>}</>
         : <main className="gallery"><p>Select a saved protein project.</p></main>}

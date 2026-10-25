@@ -29,7 +29,7 @@ Protein Lab is an offline workspace for planning protein expression, recording p
 ![The Protein Lab start screen with the Start button and the engine status underneath](manual/start-screen.webp)
 *The start screen. "Scientific engine ready" means the local engine is running.*
 
-The dashboard is the way back to your local workspace. Use its cards to open a saved project, your project trees, the vector library, or reports. Select the Protein Lab mark at the upper left from another workspace to return here.
+The dashboard is the way back to your local workspace. Use its cards to open a saved project, your project trees, the vector and protein library, or reports. Select the Protein Lab mark at the upper left from another workspace to return here.
 
 ![The dashboard with lab statistics, projects, project trees and reports cards](manual/dashboard.webp)
 *The dashboard after clicking Start.*
@@ -45,7 +45,7 @@ The menu bar is always available after you start the workspace. Click a menu nam
 | **File** | New project, open a project, save or export its record, share a summary, and choose the project directory |
 | **Edit** | Refresh the workspace and open the current project’s report |
 | **Settings** | The app's appearance |
-| **Tools** | Project gallery, project trees, vector library, and the current project's workflow, roadmap and report |
+| **Tools** | Project gallery, project trees, the vector and protein library, and the current project's workflow, roadmap and report |
 | **Help** | This manual, keyboard and mouse controls, and the app version |
 
 To use it:
@@ -202,7 +202,13 @@ To prepare a report:
 5. Click **Save report**. Edits also autosave shortly after you stop typing; wait for **All changes saved** before closing the app.
 6. Use **Print / PDF** to use your system print dialog, or export a **Standalone HTML** or **Markdown** copy.
 
-## Vector library
+## Vector and protein library
+
+Your saved vectors and your purified proteins share one page with a tab for each: **Vectors** and **Proteins**. Open it from the **Vector and protein library** card on the dashboard, which counts both libraries and shows where they are saved. You can also use **Tools** → **Vector library** (<kbd>Ctrl+Shift+L</kbd>) or **Tools** → **Protein library** (<kbd>Ctrl+Shift+P</kbd>). Switch tabs by clicking them, or focus a tab and press <kbd>←</kbd> or <kbd>→</kbd>.
+
+Both libraries are saved in the project database inside your project directory. The folder is shown above each tab. In the desktop app, **Open folder** shows it in your file manager, and **Change location…** moves the whole workspace to another folder, just like **File** → **Set project directory…**.
+
+### Vectors
 
 The vector library holds your own vectors next to the standard catalogue, and searches public collections when they are enabled and reachable. Organise vectors into collections and tags, then load a backbone into a project.
 
@@ -210,7 +216,7 @@ The vector library holds your own vectors next to the standard catalogue, and se
 
 To find a vector:
 
-1. Open **Tools** → **Vector library**, or press <kbd>Ctrl+Shift+L</kbd>.
+1. Open **Tools** → **Vector library**, or press <kbd>Ctrl+Shift+L</kbd>. The library opens on its **Vectors** tab.
 2. Pick a view on the left. **All vectors**, **Favourites**, **Recent**, **My imports**, **Standard catalogue** and **Unsorted** are built in; your collections and tags are listed below them with their counts.
 3. Search by name, promoter, tag, marker or accession; press <kbd>/</kbd> to jump to the search box. Open **Filters** to narrow by host, promoter, tag, marker, copy number or supplier.
 4. Switch between cards and a compact list with the buttons above the results, and choose a sort: name, size, date added or last used. The library remembers both.
@@ -245,6 +251,10 @@ Inside **Expression vector design**, **Load backbone** opens the same library as
 
 > **Note:** Public-source search can be unavailable while offline. The local catalogue is still searched, and the app explains which source could not be reached.
 
+### Proteins
+
+The **Proteins** tab lists every purified batch: how much is left, its status, and exactly where it is kept (for example a freezer, shelf and box). Search by name, gene, construct, buffer or location; press <kbd>/</kbd> to jump to the search box. Narrow the list by status, temperature, location, method or tag. Select a batch to see its storage, stock and history, and click **Add protein** to record a new one. The dashboard card names the busiest storage places and warns when batches are running low.
+
 ## Project trees
 
 Project trees connect related saved projects, such as construct variants, and describe differences on each branch.
@@ -276,7 +286,8 @@ To change appearance:
 | Keys | Action |
 | --- | --- |
 | <kbd>F1</kbd> | Open this manual |
-| <kbd>Ctrl+Shift+L</kbd> | Open the vector library |
+| <kbd>Ctrl+Shift+L</kbd> | Open the library on its Vectors tab |
+| <kbd>Ctrl+Shift+P</kbd> | Open the library on its Proteins tab |
 | <kbd>Tab</kbd> to a menu, then <kbd>↓</kbd> | Open that menu |
 | <kbd>←</kbd> <kbd>→</kbd> | Move between menus while one is open |
 | <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Enter</kbd> | Choose a menu item |

@@ -17,7 +17,7 @@ declare global {
   }
 }
 
-export function useProteinLabsWebMcp(actions: { openProject: (id: string) => void; openJob: (id: string) => void; openNotebook: () => void }) {
+export function useProteinLabsWebMcp(actions: { openProject: (id: string) => void; openJob: (id: string) => void; openNotebook: () => void; openLibrary: (tab: "vectors" | "proteins") => void }) {
   useEffect(() => {
     const context = document.modelContext;
     if (!context?.registerTool) return;
@@ -46,6 +46,14 @@ export function useProteinLabsWebMcp(actions: { openProject: (id: string) => voi
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: false },
       execute() { actions.openNotebook(); return { view: "notebook" }; },
+    });
+    register({
+      name: "open_vector_and_protein_library",
+      title: "Open vector and protein library",
+      description: "Open the vector and protein library on its Vectors or Proteins tab, where saved vectors and purified proteins are browsed and searched.",
+      inputSchema: { type: "object", properties: { tab: { type: "string", enum: ["vectors", "proteins"] } }, additionalProperties: false },
+      annotations: { readOnlyHint: true, untrustedContentHint: false },
+      execute(input) { const tab = input.tab ?? "vectors"; if (tab !== "vectors" && tab !== "proteins") throw new Error("Unknown library tab"); actions.openLibrary(tab); return { tab, view: "library" }; },
     });
     return () => lifecycle.abort();
   }, [actions]);
