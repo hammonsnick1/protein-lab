@@ -2,8 +2,8 @@
 
 Warning, project is in beta testing. There may be incorrect information or inaccessable features.
 
-Protein Lab is an offline desktop workspace for protein expression and
-purification. Use it to plan a construct, design an expression vector, plan a
+Protein Lab is a desktop workspace for protein expression and
+purification. Use it to plan a protein construct to purify, design an expression vector, plan a
 purification, and analyse chromatograms and gels. The app runs a local Python
 engine. Your projects stay on your computer.
 
