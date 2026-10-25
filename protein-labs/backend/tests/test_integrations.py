@@ -399,7 +399,7 @@ def test_http_client_retries_rcsb_rate_limit_with_bounded_backoff(monkeypatch):
     assert len(attempts) == 3 and pauses == [0.0, 0.0]
 
 
-def test_http_client_retries_timeout_before_returning_response(monkeypatch):
+def test_http_client_retries_timeout_only_when_explicitly_enabled(monkeypatch):
     attempts = []
     pauses = []
 
@@ -410,8 +410,26 @@ def test_http_client_retries_timeout_before_returning_response(monkeypatch):
         return HttpResponse(200, "{}", {})
 
     monkeypatch.setattr("protein_labs.protein_planner.integrations.time.sleep", pauses.append)
-    response = HttpClient(transport=transport).request("GET", "https://example.test", service="RCSB PDB search")
+    response = HttpClient(transport=transport).request(
+        "GET", "https://example.test", service="RCSB PDB search", retry_attempts=2
+    )
 
     assert response.status == 200
     assert len(attempts) == 3 and pauses == [0.25, 0.5]
+
+
+def test_http_client_does_not_retry_job_submission_post_by_default():
+    attempts = []
+
+    def transport(method, url, *, data, headers):
+        attempts.append((method, url))
+        raise TimeoutError("simulated timeout")
+
+    try:
+        HttpClient(transport=transport).request("POST", "https://example.test/jobs", form={"query": "ACD"})
+    except RemoteServiceError as error:
+        assert "simulated timeout" in str(error)
+    else:  # pragma: no cover - assertion guard
+        assert False, "submission timeout should be returned without a retry"
+    assert attempts == [("POST", "https://example.test/jobs")]
 

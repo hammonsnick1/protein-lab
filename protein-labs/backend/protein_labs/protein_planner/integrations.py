@@ -57,6 +57,7 @@ class HttpClient:
         accept: str = "application/json",
         service: str = "Remote service",
         timeout: float | None = None,
+        retry_attempts: int = 0,
     ) -> HttpResponse:
         if params:
             url = f"{url}?{urlencode(params, doseq=True)}"
@@ -68,10 +69,11 @@ class HttpClient:
         elif json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        # GET/POST searches are idempotent at every provider we call here.  A
-        # bounded retry makes transient timeouts and RCSB's 429s recoverable
-        # without leaving the UI in a spinner forever.
-        for attempt in range(3):
+        # The default deliberately makes one request.  Some shared-client POST
+        # callers submit remote jobs, so retry is opt-in and only used by RCSB
+        # read/search traffic, whose requests are safe to repeat.
+        retries = max(0, min(int(retry_attempts), 2))
+        for attempt in range(retries + 1):
             response: HttpResponse | None = None
             try:
                 if self.transport is not None:
@@ -98,7 +100,7 @@ class HttpClient:
                 error = RemoteServiceError(service, str(caught.reason))
             except (TimeoutError, ConnectionError, OSError) as caught:
                 error = RemoteServiceError(service, str(caught))
-            if error.status not in {None, 429, 500, 502, 503, 504} or attempt == 2:
+            if error.status not in {None, 429, 500, 502, 503, 504} or attempt == retries:
                 raise error
             retry_after = _number(response.headers.get("Retry-After")) if response else None
             time.sleep(min(4.0, retry_after if retry_after is not None else 0.25 * (2 ** attempt)))
@@ -445,6 +447,7 @@ class RCSBClient:
             },
             service="RCSB PDB accession search",
             timeout=10,
+            retry_attempts=2,
         )
         identifiers = [
             str(result.get("identifier") or "").upper()
@@ -466,6 +469,7 @@ class RCSBClient:
             f"{self.data_url}/entry/{pdb_id}",
             service="RCSB PDB data",
             timeout=10,
+            retry_attempts=2,
         )
         experimental = entry.get("exptl") or []
         info = entry.get("rcsb_entry_info") or {}
@@ -499,6 +503,7 @@ class RCSBClient:
             accept="text/plain",
             service="RCSB PDB files",
             timeout=15,
+            retry_attempts=2,
         )
         if not response.text.lstrip().startswith("data_"):
             raise RemoteServiceError("RCSB PDB files", "returned an invalid mmCIF record")
@@ -534,7 +539,8 @@ class RCSBClient:
             },
         }
         raw = self.http.json(
-            "POST", self.search_url, json_body=payload, service="RCSB PDB search"
+            "POST", self.search_url, json_body=payload, service="RCSB PDB search",
+            retry_attempts=2,
         )
         result_set = raw.get("result_set", [])
         if not isinstance(result_set, list):
@@ -589,12 +595,14 @@ class RCSBClient:
         query_sequence: str = "",
     ) -> dict[str, Any]:
         entry = self.http.json(
-            "GET", f"{self.data_url}/entry/{pdb_id}", service="RCSB PDB data"
+            "GET", f"{self.data_url}/entry/{pdb_id}", service="RCSB PDB data",
+            retry_attempts=2,
         )
         entity = self.http.json(
             "GET",
             f"{self.data_url}/polymer_entity/{pdb_id}/{entity_id}",
             service="RCSB PDB data",
+            retry_attempts=2,
         )
         conditions = parse_mmcif_conditions(self.fetch_mmcif(pdb_id))
         experimental = entry.get("exptl") or []
