@@ -6721,6 +6721,13 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .confidence-legend .very-low {
   background: #ff7d45;
 }
+/* Mol* secondary-structure colours (desaturated as Mol* draws them) and its red-yellow-green hydrophobicity scale. */
+.confidence-legend .ss-helix { background: #c63d7f; }
+.confidence-legend .ss-310 { background: #84306f; }
+.confidence-legend .ss-strand { background: #e2b33c; }
+.confidence-legend .ss-turn { background: #2f9668; }
+.confidence-legend .ss-coil { background: #f2f2f2; box-shadow: inset 0 0 0 1px #9a9a9a; }
+.confidence-legend .hydrophobicity-scale { width: 56px; height: 8px; margin: 0 4px; border-radius: 4px; background: linear-gradient(90deg, #d73027, #ffffbf, #1a9850); }
 .confidence-legend small {
   margin-left: auto;
   color: #a4b9bd;
@@ -8938,7 +8945,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .structure-id-form { margin: 0 0 12px; }
 .structure-id-form .lab-field { margin-bottom: 0; }
 .structure-id-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
-.structure-id-row input { text-transform: uppercase; font-family: var(--font-mono, ui-monospace, monospace); }
+.structure-id-row input { height: 36px; padding: 0 10px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; letter-spacing: .04em; }
+.structure-id-row input::placeholder { font-family: var(--font-sans, inherit); letter-spacing: 0; }
+.structure-id-row .btn, .structure-id-row button { height: 36px; }
 .structure-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .region-picker { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
 .region-picker select {
