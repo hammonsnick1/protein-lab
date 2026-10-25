@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { LOW_EXTINCTION_THRESHOLD_M1CM1, formatExtinction, isLowExtinction, resolveExtinctionThreshold } from "./readiness.ts";
 

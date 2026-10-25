@@ -1,6 +1,6 @@
 // Sequence research hits → Structure Viewer choices. Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { choiceKey, defaultChoiceKey, mappedChainIds, nextChoiceKey, normalizePdbId, percentText, researchHits, structureChoices } from "./structure-hits.ts";
 import type { StructureEntry } from "./structure-regions.ts";

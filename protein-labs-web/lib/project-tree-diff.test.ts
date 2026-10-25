@@ -2,7 +2,7 @@
 // service; this file guards the browser fallback that renders the same shape.
 // Run with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import {
   alignSequences,

@@ -1,6 +1,6 @@
 // Tests for the dashboard statistics. Run with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { completedByStage, jobStatusRows, niceMax, perWeek, projectsOverTime, weekStart } from "./dashboard-stats.ts";
 import type { ProjectJob, ProteinRecord } from "./protein-labs-api.ts";

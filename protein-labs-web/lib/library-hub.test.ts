@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import assert from "node:assert/strict";
 import { LIBRARY_TABS, createLibraryOpener, LIBRARY_TILE, isLibraryTab, libraryCount, libraryStorage, nextLibraryTab, storageSentence, summarizePlaces } from "./library-hub.ts";
 

@@ -1,6 +1,6 @@
 // Region-to-selection conversion for the Structure Viewer. Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { regionSections, regionSelection, residueLabel, stepRegion, structureOptionLabel, type MappedResidue, type StructureRegion } from "./structure-regions.ts";
 
