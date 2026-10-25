@@ -1,0 +1,121 @@
+# Downloads the installers of a published release, installs them the way a
+# user would, and launches the installed app. The app's --smoke-test starts
+# the bundled engine, waits for it to answer, renders the workspace and exits.
+#
+#   gh workflow run install-check.yml -f tag=v0.3.0-beta.1
+#
+# It also runs by itself when a release is published.
+name: Install check
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to check (for example v0.3.0-beta.1)
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.event.release.tag_name }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download the disk image
+        run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "*-${{ matrix.arch }}.dmg" -D "$RUNNER_TEMP/download"
+      - name: Install into Applications
+        run: |
+          dmg=$(ls "$RUNNER_TEMP"/download/*.dmg)
+          # A browser download carries the quarantine flag; keep the same state.
+          xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" "$dmg"
+          hdiutil attach -nobrowse -mountpoint "$RUNNER_TEMP/dmg" "$dmg"
+          cp -R "$RUNNER_TEMP/dmg/Protein Lab.app" /Applications/
+          hdiutil detach "$RUNNER_TEMP/dmg"
+          codesign --verify --deep --verbose=2 "/Applications/Protein Lab.app"
+          # The step from the README for an unsigned app.
+          xattr -dr com.apple.quarantine "/Applications/Protein Lab.app"
+      - name: Launch
+        timeout-minutes: 5
+        run: node protein-labs-web/scripts/smoke-app.mjs "/Applications/Protein Lab.app/Contents/MacOS/Protein Lab"
+
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download the installer
+        shell: bash
+        run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "*-x64.exe" -D "$RUNNER_TEMP/download"
+      # PowerShell, because Git Bash rewrites the /S switch into the path S:/.
+      - name: Install
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $installer = Get-ChildItem "$env:RUNNER_TEMP/download/*.exe" | Select-Object -First 1
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+          Get-ChildItem "$env:LOCALAPPDATA/Programs" -Recurse -Filter "Protein Lab.exe" | Select-Object -First 1 FullName
+          $shortcut = Join-Path $env:APPDATA "Microsoft/Windows/Start Menu/Programs/Protein Lab.lnk"
+          if (-not (Test-Path $shortcut)) { throw "No Start menu shortcut at $shortcut" }
+      - name: Launch
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          app=$(find "$(cygpath "$LOCALAPPDATA")/Programs" -name "Protein Lab.exe" -print -quit)
+          node protein-labs-web/scripts/smoke-app.mjs "$app"
+
+  ubuntu:
+    name: Ubuntu ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download the .deb
+        run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "*-amd64.deb" -D "$RUNNER_TEMP/download"
+      - name: Install
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb "$RUNNER_TEMP"/download/*.deb
+          command -v protein-labs
+          test -f /usr/share/applications/protein-labs.desktop
+      - name: Launch
+        timeout-minutes: 5
+        run: xvfb-run -a node protein-labs-web/scripts/smoke-app.mjs "$(readlink -f "$(command -v protein-labs)")"
+
+  arch:
+    name: Arch Linux
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download the package
+        run: |
+          pacman -Syu --noconfirm --needed github-cli nodejs xorg-server-xvfb
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "*.pkg.tar.zst" -D /tmp/download
+      - name: Install
+        run: |
+          pacman -U --noconfirm /tmp/download/*.pkg.tar.zst
+          pacman -Qi protein-labs
+      - name: Launch
+        # Containers run as root, which Chromium only allows unsandboxed.
+        timeout-minutes: 5
+        run: xvfb-run -a node protein-labs-web/scripts/smoke-app.mjs /usr/bin/protein-labs --no-sandbox

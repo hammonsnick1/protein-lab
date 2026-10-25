@@ -1,12 +1,12 @@
 {
   "name": "protein-labs",
-  "version": "0.2.0",
+  "version": "0.3.0-beta.1",
   "license": "MIT",
   "description": "Offline protein planning, analysis, purification, and research workspace.",
-  "homepage": "https://proteinlabs.local",
+  "homepage": "https://github.com/hammonsnick1/protein-lab",
   "author": {
-    "name": "Protein Lab",
-    "email": "protein-labs@localhost.invalid"
+    "name": "Nicholas Hammons",
+    "email": "hammonsnick1@gmail.com"
   },
   "desktopName": "protein-labs.desktop",
   "private": true,
@@ -88,7 +88,7 @@
       "category": "Science;Biology",
       "icon": "desktop/assets/icons",
       "executableName": "protein-labs",
-      "maintainer": "Protein Lab <protein-labs@localhost.invalid>",
+      "maintainer": "Nicholas Hammons <hammonsnick1@gmail.com>",
       "synopsis": "Offline protein science workspace",
       "syncDesktopName": true,
       "desktop": {

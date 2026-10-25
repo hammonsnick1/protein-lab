@@ -202,11 +202,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l release
+          sed "s/<version>/${GITHUB_REF_NAME#v}/g" protein-labs-web/docs/release-notes.md > notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release/* --clobber
           else
             prerelease=$([[ "$GITHUB_REF_NAME" == *-* ]] && echo --prerelease || true)
             gh release create "$GITHUB_REF_NAME" release/* --draft $prerelease \
               --title "Protein Lab ${GITHUB_REF_NAME#v}" \
-              --notes-file protein-labs-web/docs/release-notes.md
+              --notes-file notes.md
           fi
