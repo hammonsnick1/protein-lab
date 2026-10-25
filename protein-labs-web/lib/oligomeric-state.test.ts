@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
-import { assemblyValue, oligomericLabel, oligomericStateConfig, oligomericStateProblem, oligomericSummary, readOligomericState, subunitCount, unknownState, type OligomericState } from "./oligomeric-state.ts";
+import { assemblyValue, oligomericLabel, oligomericStateConfig, oligomericStateProblem, oligomericStateSave, oligomericSummary, readOligomericState, recalculatedProtparamConfig, subunitCount, unknownState, type OligomericState } from "./oligomeric-state.ts";
 import { proteinProperties, reportHtml, reportMarkdown, type ReportPage } from "./report-export.ts";
 
 const state = (patch: Partial<OligomericState>): OligomericState => ({ ...unknownState, ...patch });
@@ -50,6 +50,41 @@ describe("oligomeric state save and load", () => {
     assert.match(oligomericStateProblem(state({ kind: "hetero-complex", complexNote: " " })) ?? "", /Describe the hetero-complex/);
     assert.equal(oligomericStateProblem(state({ kind: "homo-oligomer", subunits: 6 })), null);
     assert.equal(oligomericStateProblem(state({ kind: "unknown" })), null);
+  });
+});
+
+describe("protparam job persistence", () => {
+  const job = (status: ProjectJob["status"], config: ProjectJob["config"]): ProjectJob => ({ id: "pp", proteinId: "p1", name: "Protein properties", appType: "protparam", status, config, createdAt: "", updatedAt: "" });
+  const dimer = state({ kind: "homodimer", evidence: "SEC" });
+
+  it("keeps a recorded state, and any other saved field, through Recalculate and save", () => {
+    const saved = oligomericStateSave(job("complete", { reviewStatus: "calculated", analyzedAt: "2026-01-01T00:00:00Z", reviewer: "NH" }), dimer).config;
+    const recalculated = recalculatedProtparamConfig(saved, "2026-10-25T00:00:00Z");
+    assert.deepEqual(recalculated, { reviewStatus: "calculated", analyzedAt: "2026-10-25T00:00:00Z", reviewer: "NH", oligomericState: { kind: "homodimer", evidence: "SEC" } });
+    assert.deepEqual(readOligomericState(recalculated), dimer);
+  });
+
+  it("recalculates a job that has no saved config", () => {
+    assert.deepEqual(recalculatedProtparamConfig(undefined, "t"), { reviewStatus: "calculated", analyzedAt: "t" });
+  });
+
+  it("leaves a job created by recording the state in progress, not complete", () => {
+    const first = oligomericStateSave(undefined, dimer);
+    assert.equal(first.status, "in_progress");
+    assert.deepEqual(first.config, { oligomericState: { kind: "homodimer", evidence: "SEC" } });
+  });
+
+  it("keeps an existing job's status and calculation stamp when the state changes", () => {
+    const calculated = job("complete", { reviewStatus: "calculated", analyzedAt: "a" });
+    const update = oligomericStateSave(calculated, state({ kind: "homotetramer" }));
+    assert.equal(update.status, "complete");
+    assert.deepEqual(update.config, { reviewStatus: "calculated", analyzedAt: "a", oligomericState: { kind: "homotetramer" } });
+    assert.equal(oligomericStateSave(job("in_progress", {}), dimer).status, "in_progress");
+  });
+
+  it("replaces, rather than merges, a previously recorded state", () => {
+    const before = job("complete", { oligomericState: { kind: "hetero-complex", complexNote: "α2β2", notes: "old" } });
+    assert.deepEqual(oligomericStateSave(before, state({ kind: "monomer" })).config, { oligomericState: { kind: "monomer" } });
   });
 });
 
