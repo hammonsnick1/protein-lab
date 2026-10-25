@@ -1,4 +1,4 @@
-// Residue reference data for the composition detail window (HOM-213). Run
+// Residue reference data for the composition detail window. Run
 // with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";

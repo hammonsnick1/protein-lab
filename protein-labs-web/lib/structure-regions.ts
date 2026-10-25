@@ -1,4 +1,4 @@
-// Structure Viewer data from the engine (HOM-126, protein-labs/backend/STRUCTURE_API.md)
+// Structure Viewer data from the engine (protein-labs/backend/STRUCTURE_API.md)
 // and the pure logic that turns it into the regions-of-interest dropdown and
 // into residue selections for the 3D view. The engine computes every region
 // and residue mapping; nothing here infers a position the engine left null.
@@ -136,7 +136,7 @@ export function regionSelection(region: StructureRegion): RegionSelection {
     ? { labelAsymId: meta.labelChainId, authSeqId: String(meta.authSeqId), insertionCode: typeof meta.insertionCode === "string" && meta.insertionCode ? meta.insertionCode : null, compId: meta.ccdId }
     : null;
   // The engine drops unmodelled rows today; `unmappedPositions` is the field
-  // requested on HOM-126 so a partly mapped region can say what it left out.
+  // added so a partly mapped region can say what it left out.
   const reported = Array.isArray(meta.unmappedPositions) ? meta.unmappedPositions.length : 0;
   const unmappedCount = unaddressable + reported;
   const status = !residues.length && !ligand ? "unmapped" : unmappedCount > 0 ? "partial" : "mapped";

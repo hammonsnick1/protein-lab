@@ -40,7 +40,7 @@ describe("library tab switching", () => {
   });
 
   it("switches tabs in place once the library is open, even through an opener made earlier", () => {
-    // Mirrors the WebMCP actions: the opener is made once while the dashboard
+    // The opener is made once while the dashboard
     // shows, then used after the library page has opened.
     let view = "home";
     const calls: string[] = [];

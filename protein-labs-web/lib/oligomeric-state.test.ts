@@ -1,4 +1,4 @@
-// The oligomeric state recorded in Protein properties (HOM-193). Run with
+// The oligomeric state recorded in Protein properties. Run with
 // `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";

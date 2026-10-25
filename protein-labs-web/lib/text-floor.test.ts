@@ -1,4 +1,4 @@
-// App-wide text floor (HOM-99). Run with `npm run test` in protein-labs-web.
+// App-wide text floor. Run with `npm run test` in protein-labs-web.
 // Interface text must be at least 12px. The only rules allowed below that are
 // listed in EXEMPT, each with the reason it may stay smaller.
 import assert from "node:assert/strict";
@@ -31,7 +31,7 @@ const EXEMPT: Record<string, string> = {
   ".mascot-zzz span:nth-child(3)": "decorative sleeping glyph",
 };
 
-// Figures drawn at their export size (HOM-120). Their text is sized in SVG
+// Figures drawn at their export size. Their text is sized in SVG
 // attributes rather than CSS, so the stylesheet scan never sees it, but the
 // on-screen preview scales the whole figure down and the text falls below the
 // floor at window widths of 1440px or less. The exported file is full size.

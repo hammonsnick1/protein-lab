@@ -2288,7 +2288,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .single-project-workflow .workflow-card-section button > strong { display: flex; align-items: center; gap: 6px; }
 .single-project-workflow .workflow-card-section button > strong i { width: 17px; height: 17px; display: inline-grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--job-color) 16%, var(--muted)); color: var(--job-color); font-size: 12px; font-style: normal; }
 
-/* Project trees (HOM-137): a layered DAG with per-branch difference labels and
+/* Project trees: a layered DAG with per-branch difference labels and
    a diff panel. Change categories carry a fixed hue plus a code and glyph, so
    the picture still reads in greyscale. */
 .project-trees-workspace {
@@ -10490,7 +10490,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .structure-render-warning strong { margin-right: 7px; color: #b46e14; }
 .structure-render-warning span { color: var(--muted-foreground); }
 
-/* Structure Viewer (HOM-127): Mol* canvas with our own chrome, sequence strip below. */
+/* Structure Viewer: Mol* canvas with our own chrome, sequence strip below. */
 .molstar-viewer { display: flex; flex-direction: column; }
 .molstar-stage { position: relative; flex: 1; min-height: 0; }
 .molstar-viewer .molecular-webgl canvas { filter: none; }
@@ -13510,7 +13510,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .cleavage-chooser,
 .affinity-buffers { margin-bottom: 28px; }
 .affinity-buffers { margin-top: 28px; }
-/* Buffer composer (HOM-227): library-backed component rows for one buffer step.
+/* Buffer composer: library-backed component rows for one buffer step.
    The picker's list drops below its row, so the planner card must not clip it. */
 .affinity-buffers .buffer-planner { overflow: visible; }
 .buffer-composer-table {
@@ -13704,7 +13704,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 
 /* ---------------------------------------------------------------------------
-   Vector editor: synchronised maps, sequence, enzymes, cloning (HOM-50)
+   Vector editor: synchronised maps, sequence, enzymes, cloning
    --------------------------------------------------------------------------- */
 .vector-main {
   display: flex;
@@ -14862,7 +14862,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 
 /* ===========================================================================
-   Dashboard overview (HOM-67): a statistics column on the left, tiles that
+   Dashboard overview: a statistics column on the left, tiles that
    show an overview and flip to their full list, and a lab companion that
    only appears when asked for.
    ======================================================================== */
@@ -15400,7 +15400,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .molstar-footer .confidence-legend { position: static; }
 .molstar-footer .confidence-legend { align-self: stretch; }
 
-/* Top-bar menu notes and the Help > User manual view (HOM-147). */
+/* Top-bar menu notes and the Help > User manual view. */
 .desktop-menu-note .menu-path { display: block; color: var(--foreground); font: 12px/1.45 var(--font-mono); overflow-wrap: break-word; }
 .desktop-menu-note.warning { color: var(--destructive); }
 .about-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 4px 0 0; font-size: 13px; }

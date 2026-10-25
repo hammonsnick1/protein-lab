@@ -1,6 +1,6 @@
-// Local project diff (HOM-137).
+// Local project diff.
 //
-// The engine owns the real diff service (HOM-136) and this file deliberately
+// The engine owns the real diff service and this file deliberately
 // produces exactly its contract, so the tree view never branches on where a
 // diff came from: the API client tries the engine first and falls back here.
 // That also keeps the screen useful offline and before the engine ships.
@@ -29,8 +29,8 @@ export function diffSourceFromBundle(bundle: ProteinBundle): DiffSource {
 
 // --- sequence alignment ------------------------------------------------------
 
-// The engine aligns with Biopython's PairwiseAligner in global mode (HOM-136
-// `_sequence_diff`). The browser fallback has to produce the *same* alignment,
+// The engine aligns with Biopython's PairwiseAligner in global mode
+// (`_sequence_diff`). The browser fallback has to produce the *same* alignment,
 // not merely a plausible one: gap placement decides the 1-based edit
 // positions, the mutation labels, the identity figure and the branch summary,
 // and the view presents all of those as fact. So this is Gotoh affine

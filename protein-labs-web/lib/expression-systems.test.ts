@@ -1,4 +1,4 @@
-// Expression host catalog contract (HOM-228). The screen presents this data as
+// Expression host catalog contract. The screen presents this data as
 // referenced evidence and other jobs read the saved config keys, so both are
 // pinned here.
 import assert from "node:assert/strict";

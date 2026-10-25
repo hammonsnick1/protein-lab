@@ -9,7 +9,7 @@ type Matrix = { a: number; b: number; c: number; d: number; e: number; f: number
 export const FIGURE_SIZE: Size = { width: 1000, height: 700 };
 // The interactive plot's fallback size before its box has been measured.
 export const INTERACTIVE_SIZE: Size = { width: 1000, height: 590 };
-// Interface text floor (HOM-99) applied to plot text drawn on screen.
+// Interface text floor applied to plot text drawn on screen.
 export const SCREEN_TEXT_FLOOR_PX = 12;
 
 /**

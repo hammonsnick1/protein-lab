@@ -11,8 +11,8 @@ Installing, launching and rebuilding are covered in the
 [top-level README](../README.md): `./build-and-install.sh` builds and installs
 the app, and `./protein-lab` runs it with its data kept in `data/`.
 
-Protein Lab uses native Wayland on Wayland desktops (X11 on X11 desktops), with Vulkan
-disabled. To choose a different display platform, set
+Protein Lab uses native Wayland on Wayland desktops (X11 on X11 desktops),
+with Vulkan disabled. To choose a different display platform, set
 `PROTEIN_LABS_OZONE_PLATFORM=wayland` or `PROTEIN_LABS_OZONE_PLATFORM=x11`.
 
 The UI connects to the engine at `http://127.0.0.1:8770`. Set

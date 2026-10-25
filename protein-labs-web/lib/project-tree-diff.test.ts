@@ -1,4 +1,4 @@
-// Tests for the local project diff (HOM-137). The engine owns the real diff
+// Tests for the local project diff. The engine owns the real diff
 // service; this file guards the browser fallback that renders the same shape.
 // Run with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
@@ -30,7 +30,7 @@ function job(appType: string, config: JsonObject, status: ProjectJob["status"] =
 
 /**
  * Alignments produced by the engine itself — Biopython's PairwiseAligner in
- * global mode with the HOM-136 scoring (match 2, mismatch -1, gap-open -4,
+ * global mode with the engine scoring (match 2, mismatch -1, gap-open -4,
  * gap-extend -0.5). The browser fallback must reproduce these exactly,
  * because the gap placement decides the 1-based edit positions, the mutation
  * labels, the identity figure and the branch summary that the view presents

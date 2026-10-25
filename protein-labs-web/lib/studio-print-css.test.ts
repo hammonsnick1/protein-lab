@@ -1,4 +1,4 @@
-// Layout and print rules fixed in the HOM-79 final check. Run with
+// Layout and print rules checked before release. Run with
 // `npm run test`. Each rule is read from app/globals.css.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

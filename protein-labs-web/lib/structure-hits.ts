@@ -1,6 +1,6 @@
 // PDB hits saved by the Sequence research job (`bundle.pdbMatches`) turned
-// into Structure Viewer choices. The saved record shape is changing under
-// HOM-192, so this adapter reads both the original fields (`experimentalMethods`,
+// into Structure Viewer choices. The saved record shape changed between
+// versions, so this adapter reads both the original fields (`experimentalMethods`,
 // `resolutionAngstrom` as a list, `comparison.queryCoverage`) and the stable
 // ones (`method`, `resolution`, `coverage`, `chainIds`). It never computes a
 // metric the engine did not report; a missing value stays null.
@@ -111,7 +111,7 @@ export function structureChoices(structures: readonly StructureEntry[], hits: re
 
 /**
  * The structure shown first: the AlphaFold model, else the engine's first
- * entry (as before HOM-194), else the best Sequence research hit.
+ * entry (as in older versions), else the best Sequence research hit.
  */
 export function defaultChoiceKey(structures: readonly StructureEntry[], choices: readonly StructureChoice[]): string {
   const preferred = structures.find((entry) => entry.source === "alphafold_db") ?? structures[0];

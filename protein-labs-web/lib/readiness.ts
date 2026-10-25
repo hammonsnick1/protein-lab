@@ -7,7 +7,7 @@
 /** Below this reduced-Cys ε₂₈₀, A₂₈₀ quantitation is unreliable at working concentrations. */
 export const LOW_EXTINCTION_THRESHOLD_M1CM1 = 10_000;
 
-/** The old default, saved by readiness checks before HOM-195. It was a unit slip, not a choice. */
+/** The old default, saved by readiness checks in older versions. It was a unit slip, not a choice. */
 const LEGACY_DEFAULT_THRESHOLD_M1CM1 = 10;
 
 /**

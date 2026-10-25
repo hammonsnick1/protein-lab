@@ -27,8 +27,8 @@ const smokeTest = app.commandLine.hasSwitch("smoke-test");
 // electron-builder also writes into the installer's shortcuts.
 if (process.platform === "win32") app.setAppUserModelId("org.proteinlabs.desktop");
 
-// Use the compositor actually running on Linux. Forcing X11 on a Wayland desktop can
-// leave an invisible process while Xwayland repeatedly restarts. Vulkan must
+// Use the compositor actually running on Linux. Forcing X11 on a Wayland desktop can leave
+// an invisible process while Xwayland repeatedly restarts. Vulkan must
 // be disabled separately; changing Ozone platforms does not disable it.
 const requestedOzone = process.env.PROTEIN_LABS_OZONE_PLATFORM;
 const onWayland = Boolean(process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === "wayland");

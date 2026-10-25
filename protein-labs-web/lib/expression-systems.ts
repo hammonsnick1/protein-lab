@@ -1,4 +1,4 @@
-// Expression host catalog for the Expression system job (HOM-228).
+// Expression host catalog for the Expression system job.
 //
 // Every host family and strain carries referenced information so the screen can
 // show where a claim comes from. References are split into `literature` entries,

@@ -64,7 +64,7 @@ describe("primer response guard", () => {
   const designed = { id: "f", name: "PCR forward", sequence: "ACGT", annealingSequence: "ACGT", overhang: "", start: 0, end: 4, strand: 1, totalLength: 4, gcPercent: 50, tmCelsius: 60.1, tmDeltaCelsius: 0.1, tmMethod: "NN", withinGcLimits: true, hairpin: screen, selfDimer: screen, heteroDimer: screen };
 
   it("reports an older engine's successful legacy response as incompatible", () => {
-    // The pre-HOM-49 engine saves primers and returns the vector, with no designedPrimers.
+    // An older engine saves primers and returns the vector, with no designedPrimers.
     const legacy = { id: "v1", name: "pUC19", primers: [{ id: "p1", name: "Insert PCR forward", sequence: "ACGT", start: 0, end: 4, strand: 1, tmCelsius: 52, gcPercent: 50 }] };
     assert.deepEqual(readDesignedPrimers(legacy), { primers: [], error: PRIMER_ENGINE_TOO_OLD });
   });
@@ -74,7 +74,7 @@ describe("primer response guard", () => {
     assert.equal(readDesignedPrimers(partial).error, PRIMER_ENGINE_TOO_OLD);
   });
 
-  it("accepts the HOM-49 primer shape", () => {
+  it("accepts the current primer shape", () => {
     const result = readDesignedPrimers({ designedPrimers: [designed, { ...designed, id: "r", strand: -1 }] });
     assert.equal(result.error, "");
     assert.equal(result.primers.length, 2);

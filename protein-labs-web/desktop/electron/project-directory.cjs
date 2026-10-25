@@ -1,4 +1,4 @@
-// File > Set project directory (HOM-147). The engine keeps every project in one
+// File > Set project directory. The engine keeps every project in one
 // SQLite database, so the project directory is the folder that database lives
 // in. These helpers hold no Electron state so they can be tested with Node.
 const fs = require("node:fs");

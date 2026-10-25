@@ -1,4 +1,4 @@
-// BLAST alignment viewers (HOM-214). Run with `npm run test`.
+// BLAST alignment viewers. Run with `npm run test`.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
@@ -31,7 +31,7 @@ describe("readHsp", () => {
 });
 
 describe("normalizeHits", () => {
-  it("reads HOM-215 nested HSPs and cleans the NCBI description", () => {
+  it("reads nested HSPs and cleans the NCBI description", () => {
     const [value] = normalizeHits([{ rank: 1, accession: "P68871", uniprotAccession: "P68871", description: "RecName: Full=Hemoglobin subunit beta; AltName: Full=Beta-globin", scientificName: "Homo sapiens", hitLength: 147, identity: 1, queryCoverage: 1, evalue: 1e-100, bitScore: 300, hsps: [{ queryFrom: 1, queryTo: 19, hitFrom: 1, hitTo: 19, qseq: QUERY, hseq: QUERY, midline: QUERY, identity: 1.0, positives: 19, gaps: 0, alignLength: 19, evalue: 0.0, bitScore: 40.0 }] }]);
     assert.equal(value.description, "Hemoglobin subunit beta");
     assert.equal(value.organism, "Homo sapiens");

@@ -1,6 +1,6 @@
-// Shared vocabulary for the project tree screen (HOM-137).
+// Shared vocabulary for the project tree screen.
 //
-// These types mirror the engine contract agreed on HOM-136/HOM-137: the tree
+// These types mirror the engine contract: the tree
 // endpoint embeds a one-line summary per branch so the whole tree draws in one
 // call, and the full diff is fetched lazily when a branch is selected. The
 // local fallback in lib/project-tree-diff.ts produces the same shapes, so the

@@ -320,11 +320,11 @@ export function importableFiles<T extends { name: string }>(files: T[], accepts:
 }
 
 // ---------------------------------------------------------------------------
-// Local organisation store (until the engine stores it, HOM-153)
+// Local organisation store (until the engine stores it)
 // ---------------------------------------------------------------------------
 
 /**
- * Organisation the UI keeps for itself while the engine endpoints from HOM-153
+ * Organisation the UI keeps for itself while the engine organisation endpoints
  * are not available: collections, tags, colour, notes, names, and which
  * vectors this workspace imported. Keyed by library vector id.
  */

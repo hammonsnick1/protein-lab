@@ -20,9 +20,6 @@ __pycache__/
 tsconfig.tsbuildinfo
 .eslintcache
 
-# Active local Git worktrees managed by the engineering harness
-.worktrees/
-
 # Installed app, your data and old copies live beside the source but are
 # never committed (anchored so protein-labs-web/app/ stays tracked).
 /app/

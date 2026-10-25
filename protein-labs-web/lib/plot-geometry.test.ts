@@ -1,4 +1,4 @@
-// Chromatogram Studio plot geometry (HOM-79). Run with `npm run test`.
+// Chromatogram Studio plot geometry. Run with `npm run test`.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 

@@ -1,4 +1,4 @@
-// Roadmap step-menu placement (HOM-79). Run with `npm run test`.
+// Roadmap step-menu placement. Run with `npm run test`.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 

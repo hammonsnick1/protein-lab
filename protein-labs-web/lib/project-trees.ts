@@ -2,7 +2,7 @@ import type { ProteinRecord } from "./protein-labs-api.ts";
 import type { ChangeCategory, ProjectTree, ProjectTreeBranch } from "./project-tree-types.ts";
 import { isChangeCategory } from "./project-tree-types.ts";
 
-/** The pre-HOM-137 localStorage record. Still read once, for the import. */
+/** The older localStorage record. Still read once, for the import. */
 export type ProjectRelationship = {
   id: string;
   fromProjectId: string;

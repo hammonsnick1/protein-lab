@@ -111,7 +111,7 @@ export function ExpressionVectorJob({ bundle, onChanged }: { bundle: ProteinBund
   const mcs = useMemo(() => locateMcs(features, recordCuts, length), [features, recordCuts, length]);
   // "Flanks the MCS" means a unique cutter in or just beside the cloning region,
   // which is what a cloner looks for. (The engine's flag requires sites on both
-  // sides, which only multi-cutters can satisfy; raised on HOM-49.)
+  // sides, which only multi-cutters can satisfy.)
   const rawEnzymeRows = valueFor(enzymeResult, selectedId);
   const enzymeRows = useMemo(() => rawEnzymeRows?.map((row) => ({ ...row, mcsFlanking: row.uniqueCutter && !!mcs && row.cutPositions.some((position) => position - 1 >= mcs.start - 40 && position - 1 <= mcs.end + 40) })) ?? null, [rawEnzymeRows, mcs]);
   const allCuts = useMemo(() => enzymeRows ? cutSitesFromEnzymeRows(enzymeRows, length) : recordCuts, [enzymeRows, recordCuts, length]);

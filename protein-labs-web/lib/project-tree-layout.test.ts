@@ -1,4 +1,4 @@
-// Layout guarantees for the project tree view (HOM-137).
+// Layout guarantees for the project tree view.
 // Run with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";

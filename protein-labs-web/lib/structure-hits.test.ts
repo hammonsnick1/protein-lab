@@ -5,9 +5,9 @@ import { describe, it } from "vitest";
 import { choiceKey, defaultChoiceKey, mappedChainIds, nextChoiceKey, normalizePdbId, percentText, researchHits, structureChoices } from "./structure-hits.ts";
 import type { StructureEntry } from "./structure-regions.ts";
 
-// The record shape saved on main before HOM-192: methods and resolutions as lists, coverage inside `comparison`.
+// The record shape saved by older versions: methods and resolutions as lists, coverage inside `comparison`.
 const legacy4hhb = { pdbId: "4HHB", entityId: "2", title: "THE CRYSTAL STRUCTURE OF HUMAN DEOXYHAEMOGLOBIN AT 1.74 ANGSTROMS RESOLUTION", entityDescription: "Hemoglobin subunit beta", experimentalMethods: ["X-RAY DIFFRACTION"], resolutionAngstrom: [1.74], identity: 1, similarity: 1, comparison: { queryCoverage: 1 } };
-// The stable HOM-192 shape: scalar method/resolution/coverage and author chain IDs.
+// The current shape: scalar method/resolution/coverage and author chain IDs.
 const stable1a3n = { pdbId: "1a3n", entityId: "2", chainId: "B", chainIds: ["B", "D"], title: "DEOXY HUMAN HEMOGLOBIN", entityDescription: "HEMOGLOBIN (BETA CHAIN)", method: "X-RAY DIFFRACTION", resolution: 1.8, resolutionAngstrom: [1.8], identity: 0.993, coverage: 0.98 };
 
 const alphaFold: StructureEntry = { id: "AF-P68871-F1", source: "alphafold_db", format: "cif", chains: [], ligands: [] };

@@ -1,8 +1,8 @@
 // BLAST hits → pairwise alignment blocks and a query-anchored multiple
-// sequence alignment (HOM-214). Pure module: no `@/` imports, so `node --test`
+// sequence alignment. Pure module: no `@/` imports, so `node --test`
 // runs it directly.
 //
-// Hit shape (HOM-215): each hit carries `hsps[]` with 1-based inclusive
+// Hit shape: each hit carries `hsps[]` with 1-based inclusive
 // `queryFrom/queryTo/hitFrom/hitTo` and gapped `qseq/hseq/midline`. Jobs saved
 // before that only have the flat best-HSP metrics, so every reader here
 // tolerates missing alignment strings.
@@ -54,7 +54,7 @@ const first = (source: JsonObject, keys: string[]) => keys.map((key) => source[k
 const text = (value: unknown) => (typeof value === "string" ? value : value === undefined || value === null ? "" : String(value));
 const objects = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.filter((item): item is JsonObject => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : []);
 
-/** Reads one HSP in the HOM-215 shape or the snake/alias spellings other providers use. */
+/** Reads one HSP in the engine shape or the snake/alias spellings other providers use. */
 export function readHsp(raw: JsonObject): BlastHsp | null {
   const qseq = text(first(raw, ["qseq", "querySeq", "queryAlignment", "hsp_qseq"])).toUpperCase();
   const hseq = text(first(raw, ["hseq", "hitSeq", "subjectSeq", "hitAlignment", "hsp_hseq"])).toUpperCase();
@@ -315,7 +315,7 @@ export const identityTier = (value: number | null): Tier => (value ?? 0) >= 0.9 
 export const coverageTier = (value: number | null): Tier => (value ?? 0) >= 0.9 ? "high" : (value ?? 0) >= 0.6 ? "mid" : "low";
 export const evalueTier = (value: number | null): Tier => value === null ? "low" : value <= 1e-50 ? "high" : value <= 1e-5 ? "mid" : "low";
 
-// Remote job stages. Pass the engine's `stageId` (HOM-215) when the job has
+// Remote job stages. Pass the engine's `stageId` when the job has
 // one; older jobs only carry `status` (waiting/complete/…) and stage text.
 export const BLAST_STEPS = ["Submitting", "Queued", "Running", "Parsing hits", "Done"] as const;
 const TERMINAL = new Set(["complete", "done", "failed", "canceled", "cancelled", "unknown"]);

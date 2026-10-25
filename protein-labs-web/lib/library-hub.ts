@@ -26,7 +26,7 @@ export function isLibraryTab(value: unknown): value is LibraryTab {
  * Opens a library tab. When the library page is already showing it only
  * switches the tab; from anywhere else it navigates there with the page
  * transition. The current view is read through a getter on every call,
- * because callers (the WebMCP tools) create the opener once and keep it.
+ * because callers may create the opener once and keep it.
  */
 export function createLibraryOpener({ currentView, switchTab, openView }: {
   currentView: () => string;

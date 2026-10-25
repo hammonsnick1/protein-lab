@@ -1,4 +1,4 @@
-// The report exports carry the protein's numbers (HOM-120). Run with
+// The report exports carry the protein's numbers. Run with
 // `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";

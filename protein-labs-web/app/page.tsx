@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderCog, FolderOpen, FolderSearch, GitBranch, HelpCircle, Keyboard, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, TestTubes, Workflow } from "lucide-react";
 import { Menubar as MenubarPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ import { definitionFor } from "@/lib/workflow";
 import { writeProjectTrees } from "@/lib/project-trees";
 import type { ProjectTree } from "@/lib/project-tree-types";
 import { loadProjectTrees, type StorageMode } from "@/lib/project-tree-store";
-import { useProteinLabsWebMcp } from "@/hooks/use-protein-labs-webmcp";
 import { runViewTransition } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
 import { createLibraryOpener, libraryStorage, type LibraryTab } from "@/lib/library-hub";
@@ -64,7 +63,7 @@ export default function Home() {
   const [splashReady, setSplashReady] = useState(false);
   const [splashLeaving, setSplashLeaving] = useState(false);
   const [view, setViewState] = useState<View>("home");
-  // The latest view for callbacks that outlive a render (WebMCP tools, shortcuts).
+  // The latest view for callbacks that outlive a render (shortcuts).
   const viewRef = useRef<View>(view);
   useEffect(() => { viewRef.current = view; }, [view]);
   const [proteins, setProteins] = useState<ProteinRecord[]>([]);
@@ -139,7 +138,7 @@ export default function Home() {
   function updateProjectTrees(next: ProjectTree[]) { setProjectTrees(next); if (treeStorage === "engine") writeProjectTrees(next); }
   async function openProjectJob(id: string, job: string) { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView("job", () => { setSelectedId(id); setActiveJob(definitionFor(job).id); setJobReturn("planning"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   // Switching tabs inside the library keeps the page; arriving from elsewhere animates in.
-  // Reads the view through a ref: the WebMCP actions are memoised once, so a
+  // Reads the view through a ref: callbacks made once keep the opener, so a
   // captured `view` would stay "home" and replay the page transition.
   const openLibrary = createLibraryOpener({ currentView: () => viewRef.current, switchTab: setLibraryTab, openView: (tab) => setView("library", () => setLibraryTab(tab)) });
   function openJob(value: string, returnTo: "planning" | "roadmap" = "planning") { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }); }
@@ -179,7 +178,6 @@ export default function Home() {
     }, 520);
   }
 
-  useProteinLabsWebMcp(useMemo(() => ({ openProject: (id: string) => { void openProject(id, "dashboard"); }, openJob: (id: string) => openJob(id), openNotebook: () => setView("reports"), openLibrary: (tab: LibraryTab) => openLibrary(tab) }), [])); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!started) {
     return <div className={`app-shell visual-${visualTheme} ${dark ? "dark" : ""}`} data-visual-theme={visualTheme}>
@@ -280,7 +278,7 @@ function StartupScreen({ mounted, ready, leaving, engineOnline, onStart }: { mou
 // The top-bar menus. Radix supplies the menubar keyboard model (arrows move
 // between and within menus, Escape closes, typeahead) and renders each menu in
 // a portal: the top bar has paint containment for scroll performance, which
-// clipped the old in-place dropdowns to its own 62px height (HOM-147).
+// clipped the old in-place dropdowns to its own 62px height.
 function DesktopMenu({ label, container, children }: { label: string; container: HTMLElement | null; children: React.ReactNode }) {
   return <MenubarPrimitive.Menu>
     <MenubarPrimitive.Trigger className="desktop-menu-trigger">{label}</MenubarPrimitive.Trigger>

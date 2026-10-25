@@ -1,4 +1,4 @@
-// Editable report headings (HOM-79). Run with `npm run test`.
+// Editable report headings. Run with `npm run test`.
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 

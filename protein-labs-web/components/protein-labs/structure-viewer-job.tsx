@@ -257,7 +257,7 @@ function AlphaFoldActions({ bundle, onChanged }: JobProps) {
   </details>;
 }
 
-/** Shown when the engine has no structure endpoints: the saved AlphaFold model, as before HOM-127. */
+/** Shown when the engine has no structure endpoints: the saved AlphaFold model, as in older versions. */
 function LegacyPreview({ bundle }: { bundle: ProteinBundle }) {
   const model = bundle.alphaFoldModels[0] ?? null;
   const [geometry, setGeometry] = useState<JsonObject | null>(null);

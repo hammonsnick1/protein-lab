@@ -1,5 +1,5 @@
 /**
- * Presentation of the Protein readiness checkpoint (HOM-216): how the seven
+ * Presentation of the Protein readiness checkpoint: how the seven
  * checks are grouped, ordered, counted and scored. The rules that decide a
  * check's tone live with the check itself; nothing here changes a verdict, it
  * only arranges what the rules produced.

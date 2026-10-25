@@ -1,4 +1,4 @@
-// File > Set project directory helpers (HOM-147).
+// File > Set project directory helpers.
 // Run with `node --test desktop/electron/project-directory.node-test.cjs`.
 // Kept on the Node runner, and named .node-test.cjs so Vitest does not collect it.
 const assert = require("node:assert/strict");

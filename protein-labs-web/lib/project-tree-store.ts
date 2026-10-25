@@ -1,6 +1,6 @@
-// Storage for project trees (HOM-137).
+// Storage for project trees.
 //
-// The engine owns trees and diffs (HOM-136). Until that lands — and whenever
+// The engine owns trees and diffs. Until that lands — and whenever
 // the engine is unreachable — the screen stays usable on the old localStorage
 // record and computes diffs in the browser. One probe at load decides which
 // mode the session runs in, so no call site has to branch.
@@ -54,7 +54,7 @@ async function importLocalTrees(engineTrees: ProjectTree[]): Promise<LoadResult 
   try {
     const result = await proteinLabsApi.importProjectTrees(local as unknown as Record<string, unknown>[]);
     // The engine answers `confirmed: true` only once the trees are durably
-    // stored (HOM-136). Without that exact acknowledgement the local record
+    // stored. Without that exact acknowledgement the local record
     // stays authoritative and the import is retried on the next launch.
     if (result.confirmed === true) localStorage.setItem(PROJECT_TREES_IMPORTED_KEY, now());
     return { mode: "engine", trees: result.trees ?? engineTrees, imported: result.imported ?? 0 };

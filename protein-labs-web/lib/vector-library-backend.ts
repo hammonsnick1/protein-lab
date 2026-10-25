@@ -2,7 +2,7 @@
 // interface; this module decides how each call reaches the engine.
 //
 // The engine's organisation endpoints (collections, tags, colour, notes,
-// soft delete, duplicate-aware multi-file import) arrive with HOM-153. Until
+// soft delete, duplicate-aware multi-file import) arrive with a later engine. Until
 // they do, `localBackend` keeps that organisation in this browser's storage
 // on top of the engine's existing search, favourite, import, export and
 // delete routes, so the library is fully usable today.
@@ -54,7 +54,7 @@ export type ImportFile = { filename: string; path: string; content: string };
 export type ImportOutcome = { filename: string; status: "added" | "merged" | "skipped" | "failed"; id?: string; name?: string; message?: string };
 
 export interface VectorLibraryBackend {
-  /** "local" while organisation lives in this browser; "engine" once HOM-153 ships. */
+  /** "local" while organisation lives in this browser; "engine" once the engine has the routes. */
   readonly kind: "engine" | "local";
   search(query: LibraryQuery): Promise<LibraryPage>;
   detail(id: string): Promise<OrganizedVector>;
@@ -156,8 +156,8 @@ export function createLocalBackend(): VectorLibraryBackend {
     },
 
     async duplicate() {
-      // The engine keeps one record per sequence until HOM-153 adds duplicate.
-      throw new Error("Duplicating a vector needs the library engine update (HOM-153). Use it in a project and save a copy from there for now.");
+      // The engine keeps one record per sequence until the engine adds duplicate.
+      throw new Error("Duplicating a vector needs the library engine update. Use it in a project and save a copy from there for now.");
     },
 
     async remove(ids) {
@@ -245,7 +245,7 @@ export function createLocalBackend(): VectorLibraryBackend {
 }
 
 // ---------------------------------------------------------------------------
-// The engine's own organisation routes (HOM-153 api-contract)
+// The engine's own organisation routes
 // ---------------------------------------------------------------------------
 
 const SMART_VIEW_IDS: SmartView[] = ["all", "favorites", "recent", "imports", "standard", "unsorted"];
@@ -422,7 +422,7 @@ export function createEngineBackend(): VectorLibraryBackend {
 }
 
 /**
- * The engine's routes when it has them (HOM-153), otherwise the browser-kept
+ * The engine's routes when it has them, otherwise the browser-kept
  * organisation. Decided once, on the first call.
  */
 export function createLibraryBackend(): VectorLibraryBackend {

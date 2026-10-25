@@ -1,4 +1,4 @@
-// Tests for the purified-protein library helpers (HOM-159).
+// Tests for the purified-protein library helpers.
 // Run with `npm run test` in protein-labs-web (Vitest).
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";

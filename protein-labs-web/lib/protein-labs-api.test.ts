@@ -1,4 +1,4 @@
-// Engine request errors (HOM-79). Run with `npm run test`.
+// Engine request errors. Run with `npm run test`.
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 

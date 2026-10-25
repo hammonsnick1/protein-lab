@@ -51,7 +51,7 @@ export type ProteinBundle = {
   projectNotebook: { title: string; summary: string; sections: JsonObject[]; updatedAt: string } | null;
 };
 
-// Shapes returned by the vector engine (HOM-49). Coordinates are zero-based, half-open.
+// Shapes returned by the vector engine. Coordinates are zero-based, half-open.
 export type StructureScreen = { longestComplementaryRun: number; complementaryMotif: string; threePrimeComplementarity: number; risk: "low" | "moderate" | "high"; method: string; limitation: string };
 export type DesignedPrimer = {
   id: string; name: string; sequence: string; annealingSequence: string; overhang: string;
@@ -135,7 +135,7 @@ export const proteinLabsApi = {
   alphaFoldServer: (proteinId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/server-job`),
   importAlphaFold: (proteinId: string, path: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/import`, { path }),
   getAlphaFoldModel: (proteinId: string, modelId: string) => request<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/alphafold/models/${encodeURIComponent(modelId)}`),
-  // Structure Viewer (HOM-126): AlphaFold and experimental PDB entries, mmCIF + residue mapping, regions of interest.
+  // Structure Viewer: AlphaFold and experimental PDB entries, mmCIF + residue mapping, regions of interest.
   listStructures: (proteinId: string, limit = 10) => request<StructureListResponse>(`/v1/protein-planner/proteins/${proteinId}/structures?limit=${limit}`),
   getStructure: (proteinId: string, source: StructureSource, structureId: string) => request<StructureDetail>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}`),
   getStructureRegions: (proteinId: string, source: StructureSource, structureId: string) => request<RegionsResponse>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}/regions`),
@@ -149,11 +149,11 @@ export const proteinLabsApi = {
   deleteVector: (proteinId: string, vectorId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}`, { method: "DELETE" }),
   importVector: (proteinId: string, filename: string, content: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/import`, { filename, content }),
   vectorLibrary: () => request<{ vectors: JsonObject[] }>("/v1/protein-planner/vector-library"),
-  // Catalogue search (HOM-48): `params` comes from librarySearchParams in lib/vector-library.
+  // Catalogue search: `params` comes from librarySearchParams in lib/vector-library.
   searchVectorLibrary: (params: string) => request<{ vectors: JsonObject[]; total: number; limit: number; offset: number; facets: Record<string, { value: string; count: number }[]> }>(`/v1/protein-planner/vector-library?${params}`),
   recentLibraryVectors: (limit = 8) => request<{ vectors: JsonObject[] }>(`/v1/protein-planner/vector-library/recent?limit=${limit}`),
   setLibraryFavorite: (libraryId: string, favorite: boolean) => patch<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { favorite }),
-  // Purified-protein library (HOM-158). `params` comes from librarySearchParams
+  // Purified-protein library. `params` comes from librarySearchParams
   // in lib/protein-library; records and events are typed there.
   searchProteinLibrary: (params: string) => request<{ proteins: JsonObject[]; total: number; facets: Record<string, { value: string; count: number }[]> }>(`/v1/protein-planner/protein-library?${params}`),
   getLibraryProtein: (id: string) => request<JsonObject>(`/v1/protein-planner/protein-library/${encodeURIComponent(id)}`),
@@ -166,7 +166,7 @@ export const proteinLabsApi = {
   getLibraryVector: (libraryId: string) => request<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`),
   deleteLibraryVector: (libraryId: string) => request<{ deleted: string }>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, { method: "DELETE" }),
   copyLibraryVector: (proteinId: string, libraryId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/library/${encodeURIComponent(libraryId)}`),
-  // Library organisation (HOM-153 api-contract): collections, tags, per-vector metadata, bulk actions, import review.
+  // Library organisation: collections, tags, per-vector metadata, bulk actions, import review.
   updateLibraryVector: (libraryId: string, fields: JsonObject) => patch<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}`, fields),
   duplicateLibraryVector: (libraryId: string) => post<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/duplicate`),
   restoreLibraryVector: (libraryId: string) => post<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/restore`),
@@ -198,7 +198,7 @@ export const proteinLabsApi = {
   insertIntoVector: (proteinId: string, vectorId: string, fields: JsonObject) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/insert`, fields),
   digestVector: (proteinId: string, vectorId: string, enzymeNames: string[]) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/digest`, { enzymeNames }),
   alignVectors: (proteinId: string, vectorId: string, queryVectorId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/align`, { queryVectorId }),
-  // Project trees and the project diff service (HOM-136). The tree response
+  // Project trees and the project diff service. The tree response
   // embeds a one-line summary per branch so the tree view draws in one call;
   // the full diff is fetched lazily when a branch is selected.
   listProjectTrees: () => request<{ trees: ProjectTree[] }>("/v1/protein-planner/project-trees"),

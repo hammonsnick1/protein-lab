@@ -1,4 +1,4 @@
-// Pure helpers for the purified-protein library (HOM-159): search parameters,
+// Pure helpers for the purified-protein library: search parameters,
 // facets, status, storage location, dates, quantities, the event timeline and
 // the add / edit form. No React and no `@/` imports, so `node --test` can load
 // this module directly.
@@ -17,7 +17,7 @@ export type ProteinEvent = {
   createdAt: string;
 };
 
-/** One purified batch, as the engine returns it (camelCase, HOM-158). */
+/** One purified batch, as the engine returns it (camelCase). */
 export type LibraryProtein = {
   id: string;
   name: string;

@@ -1,5 +1,5 @@
 // Reference data for the 20 standard amino acids, shown when a residue is
-// clicked in the Protein properties composition table (HOM-213).
+// clicked in the Protein properties composition table.
 //
 // Sources:
 // - Average residue masses: Biopython's IUPAC average masses, the values the

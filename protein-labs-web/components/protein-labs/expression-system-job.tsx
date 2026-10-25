@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Expression system job (HOM-228).
+ * Expression system job.
  *
  * Three questions, in order: which host family, which strain in it, and what
  * is the evidence. The family rail answers the first, the comparison table
