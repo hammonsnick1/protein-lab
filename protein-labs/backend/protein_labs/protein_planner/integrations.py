@@ -58,6 +58,7 @@ class HttpClient:
         service: str = "Remote service",
         timeout: float | None = None,
         retry_attempts: int = 0,
+        allowed_statuses: Iterable[int] = (),
     ) -> HttpResponse:
         if params:
             url = f"{url}?{urlencode(params, doseq=True)}"
@@ -73,6 +74,7 @@ class HttpClient:
         # callers submit remote jobs, so retry is opt-in and only used by RCSB
         # read/search traffic, whose requests are safe to repeat.
         retries = max(0, min(int(retry_attempts), 2))
+        allowed = {int(status) for status in allowed_statuses}
         for attempt in range(retries + 1):
             response: HttpResponse | None = None
             try:
@@ -87,7 +89,7 @@ class HttpClient:
                             text=remote_response.read().decode(charset, errors="replace"),
                             headers=dict(remote_response.headers.items()),
                         )
-                if 200 <= response.status < 300:
+                if 200 <= response.status < 300 or response.status in allowed:
                     return response
                 detail = response.text.strip()[:500]
                 if response.status == 429:
@@ -376,6 +378,7 @@ class UniProtClient:
                 accept="application/json",
                 service="UniProt peptide search",
                 timeout=8,
+                allowed_statuses=(202, 303),
             )
             if result.status == 200:
                 return [

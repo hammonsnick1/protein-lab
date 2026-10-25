@@ -5,6 +5,7 @@ from protein_labs.protein_planner.integrations import (
     NCBIBlastClient,
     RCSBClient,
     RemoteServiceError,
+    UniProtClient,
     global_sequence_metrics,
     local_alignment_metrics,
     normalize_uniprot,
@@ -360,6 +361,7 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
     assert records[1]["rcsbIdentity"] == 0.42
     assert records[1]["evalue"] == 1e-30
     assert records[0]["chainId"] == "A" and records[0]["chainIds"] == ["A", "C"]
+    assert records[0]["entityId"] == "1" and records[0]["title"] == "Hemoglobin"
     assert records[0]["coverage"] == 1.0
     assert records[0]["method"] == "X-RAY DIFFRACTION" and records[0]["resolution"] == 1.74
 
@@ -448,4 +450,22 @@ def test_rcsb_accession_search_post_does_not_retry_on_timeout():
     else:  # pragma: no cover - assertion guard
         assert False, "accession-search timeout should be returned without a retry"
     assert len(attempts) == 1 and attempts[0][0] == "POST"
+
+
+def test_uniprot_peptide_polling_accepts_303_before_completion(monkeypatch):
+    calls = []
+
+    def transport(method, url, *, data, headers):
+        calls.append((method, url))
+        if method == "POST":
+            return HttpResponse(202, "", {"Location": "https://example.test/poll"})
+        if len(calls) == 2:
+            return HttpResponse(303, "", {})
+        return HttpResponse(200, '"P69905"', {})
+
+    monkeypatch.setattr("protein_labs.protein_planner.integrations.time.sleep", lambda _: None)
+    client = UniProtClient(HttpClient(transport=transport))
+
+    assert client._peptide_candidates("ACDEFGHIKLMNP") == ["P69905"]
+    assert [method for method, _ in calls] == ["POST", "GET", "GET"]
 
