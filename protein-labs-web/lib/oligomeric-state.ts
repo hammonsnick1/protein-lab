@@ -10,7 +10,7 @@
 //
 // Only erasable TypeScript syntax and type-only imports are used, so the unit
 // tests run under Node's built-in type stripping.
-import type { JsonObject } from "./protein-labs-api.ts";
+import type { JsonObject, ProjectJob } from "./protein-labs-api.ts";
 
 export type OligomericKind = "monomer" | "homodimer" | "homotrimer" | "homotetramer" | "homo-oligomer" | "hetero-complex" | "unknown";
 
@@ -108,4 +108,21 @@ export function assemblyValue(monomer: unknown, state: OligomericState | null): 
   const count = subunitCount(state);
   if (count === null || count < 2 || typeof monomer !== "number" || !Number.isFinite(monomer)) return null;
   return monomer * count;
+}
+
+/**
+ * The protparam job config after "Recalculate and save": the new calculation
+ * stamp merged over what the scientist recorded, so the oligomeric state survives.
+ */
+export function recalculatedProtparamConfig(saved: JsonObject | null | undefined, analyzedAt: string): JsonObject {
+  return { ...(saved ?? {}), reviewStatus: "calculated", analyzedAt };
+}
+
+/**
+ * The protparam job update that records a state. It keeps the rest of the
+ * config and the job's status; recording a state before any calculation leaves
+ * the job in progress rather than marking it complete.
+ */
+export function oligomericStateSave(existing: ProjectJob | null | undefined, state: OligomericState): { config: JsonObject; status: ProjectJob["status"] } {
+  return { config: { ...(existing?.config ?? {}), oligomericState: oligomericStateConfig(state) }, status: existing?.status ?? "in_progress" };
 }

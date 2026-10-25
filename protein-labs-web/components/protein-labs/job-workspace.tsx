@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ensureProjectJob, JsonObject, ProteinBundle, proteinLabsApi } from "@/lib/protein-labs-api";
-import { assemblyValue, minimumHigherOrder, OligomericKind, oligomericEvidence, oligomericKinds, oligomericLabel, OligomericState, oligomericStateConfig, oligomericStateProblem, readOligomericState, subunitCount, unknownState } from "@/lib/oligomeric-state";
+import { assemblyValue, minimumHigherOrder, OligomericKind, oligomericEvidence, oligomericKinds, oligomericLabel, OligomericState, oligomericStateProblem, oligomericStateSave, readOligomericState, recalculatedProtparamConfig, subunitCount, unknownState } from "@/lib/oligomeric-state";
 import { ExpressionVectorJob } from "@/components/protein-labs/expression-vector-job";
 import { PurificationPlannerJob } from "@/components/protein-labs/purification-planner-job";
 import { PurificationStageJob } from "@/components/protein-labs/purification-stage-job";
@@ -147,8 +147,8 @@ function PropertiesJob({ bundle, onChanged }: JobProps) {
       const response = await proteinLabsApi.analyze(bundle.protein.id); setResult(response.result);
       const latest = await proteinLabsApi.getProtein(bundle.protein.id);
       // Keep what the scientist recorded in this job, such as the oligomeric state.
-      const saved = latest.projectJobs.find((job) => job.appType === "protparam")?.config ?? {};
-      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "protparam", "Protein properties", { ...saved, reviewStatus: "calculated", analyzedAt: new Date().toISOString() });
+      const saved = latest.projectJobs.find((job) => job.appType === "protparam")?.config;
+      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "protparam", "Protein properties", recalculatedProtparamConfig(saved, new Date().toISOString()));
       await onChanged(); setMessage("ProtParam properties recalculated and saved.");
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }
@@ -182,9 +182,8 @@ function OligomericStatePanel({ bundle, result, onChanged }: JobProps & { result
     setBusy(true); setMessage("");
     try {
       const latest = await proteinLabsApi.getProtein(bundle.protein.id);
-      const existing = latest.projectJobs.find((job) => job.appType === "protparam");
-      // Recording the state alone does not mark an uncalculated properties job complete.
-      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "protparam", "Protein properties", { ...(existing?.config ?? {}), oligomericState: oligomericStateConfig(draft) }, existing?.status ?? "in_progress");
+      const { config, status } = oligomericStateSave(latest.projectJobs.find((job) => job.appType === "protparam"), draft);
+      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "protparam", "Protein properties", config, status);
       await onChanged(); setFailed(false); setMessage(`Oligomeric state saved: ${oligomericLabel(draft)}.`);
     } catch (reason) { setFailed(true); setMessage(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }
