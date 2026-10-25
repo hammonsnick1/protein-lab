@@ -32,11 +32,14 @@ describe("readHsp", () => {
 
 describe("normalizeHits", () => {
   it("reads HOM-215 nested HSPs and cleans the NCBI description", () => {
-    const [value] = normalizeHits([{ rank: 1, accession: "P68871", uniprotAccession: "P68871", description: "RecName: Full=Hemoglobin subunit beta; AltName: Full=Beta-globin", scientificName: "Homo sapiens", hitLength: 147, identity: 1, queryCoverage: 1, evalue: 1e-100, bitScore: 300, hsps: [{ queryFrom: 1, queryTo: 19, hitFrom: 1, hitTo: 19, qseq: QUERY, hseq: QUERY, midline: QUERY }] }]);
+    const [value] = normalizeHits([{ rank: 1, accession: "P68871", uniprotAccession: "P68871", description: "RecName: Full=Hemoglobin subunit beta; AltName: Full=Beta-globin", scientificName: "Homo sapiens", hitLength: 147, identity: 1, queryCoverage: 1, evalue: 1e-100, bitScore: 300, hsps: [{ queryFrom: 1, queryTo: 19, hitFrom: 1, hitTo: 19, qseq: QUERY, hseq: QUERY, midline: QUERY, identity: 1.0, positives: 19, gaps: 0, alignLength: 19, evalue: 0.0, bitScore: 40.0 }] }]);
     assert.equal(value.description, "Hemoglobin subunit beta");
     assert.equal(value.organism, "Homo sapiens");
     assert.equal(value.hsps.length, 1);
+    // The engine's HSP `identity` is a fraction; the count comes from the strings.
     assert.equal(value.hsps[0].identities, 19);
+    assert.equal(value.hsps[0].positives, 19);
+    assert.equal(value.hsps[0].evalue, 0);
     assert.equal(value.queryStart, 1);
   });
 
@@ -184,6 +187,7 @@ describe("progress helpers", () => {
     assert.equal(blastStepIndex("running"), 2);
     assert.equal(blastStepIndex("parsing"), 3);
     assert.equal(blastStepIndex("complete"), 4);
+    assert.equal(blastStepIndex("done"), 4);
     assert.equal(blastStepIndex("checking", "Parsing hits from NCBI"), 3);
     assert.equal(isTerminalStatus("cancelled"), true);
     assert.equal(isTerminalStatus("waiting"), false);
