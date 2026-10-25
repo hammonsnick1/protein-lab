@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderCog, FolderOpen, FolderSearch, GitBranch, HelpCircle, Keyboard, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, TestTubes, Workflow } from "lucide-react";
 import { Menubar as MenubarPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import { loadProjectTrees, type StorageMode } from "@/lib/project-tree-store";
 import { useProteinLabsWebMcp } from "@/hooks/use-protein-labs-webmcp";
 import { runViewTransition } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
-import { libraryStorage, type LibraryTab } from "@/lib/library-hub";
+import { createLibraryOpener, libraryStorage, type LibraryTab } from "@/lib/library-hub";
 
 type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "library" | "manual" | "roadmap" | "reports" | "job";
 // Baked in by desktop/vite.config.ts from package.json.
@@ -64,6 +64,9 @@ export default function Home() {
   const [splashReady, setSplashReady] = useState(false);
   const [splashLeaving, setSplashLeaving] = useState(false);
   const [view, setViewState] = useState<View>("home");
+  // The latest view for callbacks that outlive a render (WebMCP tools, shortcuts).
+  const viewRef = useRef<View>(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const [proteins, setProteins] = useState<ProteinRecord[]>([]);
   const [projectTrees, setProjectTrees] = useState<ProjectTree[]>([]);
   const [treeStorage, setTreeStorage] = useState<StorageMode>("local");
@@ -128,7 +131,7 @@ export default function Home() {
   useEffect(() => { desktopBridge()?.getProjectDirectory().then(setProjectDirectory).catch(() => undefined); }, []);
   useEffect(() => { const saved = savedVisualTheme(localStorage.getItem("protein-labs-visual-theme")); if (saved) queueMicrotask(() => setVisualTheme(saved)); }, []);
 
-  function setView(next: View, update?: () => void) { runViewTransition(() => { update?.(); setViewState(next); }, viewDepth[next] < viewDepth[view] ? "back" : "forward"); }
+  function setView(next: View, update?: () => void) { runViewTransition(() => { update?.(); setViewState(next); }, viewDepth[next] < viewDepth[viewRef.current] ? "back" : "forward"); }
   async function openProject(id: string, destination: View = "dashboard") { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView(destination, () => { setSelectedId(id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   async function createProject() { const sequence = newSequence.replace(/\s+/g, "").toUpperCase(); if (!sequence) { setError("Paste an amino-acid sequence before creating the project."); return; } setBusy(true); setError(""); try { const created = await proteinLabsApi.createProtein({ name: newName.trim() || `Protein project ${proteins.length + 1}`, sequence }); setNewName(""); setNewSequence(""); setCreateOpen(false); await loadProject(created.protein.id, undefined, false); setView("dashboard", () => { setSelectedId(created.protein.id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   // The store already persisted the change; this keeps the dashboard count in
@@ -136,7 +139,9 @@ export default function Home() {
   function updateProjectTrees(next: ProjectTree[]) { setProjectTrees(next); if (treeStorage === "engine") writeProjectTrees(next); }
   async function openProjectJob(id: string, job: string) { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView("job", () => { setSelectedId(id); setActiveJob(definitionFor(job).id); setJobReturn("planning"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   // Switching tabs inside the library keeps the page; arriving from elsewhere animates in.
-  function openLibrary(tab: LibraryTab) { if (view === "library") setLibraryTab(tab); else setView("library", () => setLibraryTab(tab)); }
+  // Reads the view through a ref: the WebMCP actions are memoised once, so a
+  // captured `view` would stay "home" and replay the page transition.
+  const openLibrary = createLibraryOpener({ currentView: () => viewRef.current, switchTab: setLibraryTab, openView: (tab) => setView("library", () => setLibraryTab(tab)) });
   function openJob(value: string, returnTo: "planning" | "roadmap" = "planning") { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }); }
   function chooseVisualTheme(theme: VisualTheme) { setVisualTheme(theme); localStorage.setItem("protein-labs-visual-theme", theme); }
   async function shareProject() { if (!bundle) return; const text = `${bundle.protein.name}\n${bundle.protein.sequence.length} aa\n${bundle.projectJobs.length} saved workflow jobs`; try { await navigator.clipboard.writeText(text); setError("Project summary copied to the clipboard."); } catch { setError("Clipboard access was not available."); } }

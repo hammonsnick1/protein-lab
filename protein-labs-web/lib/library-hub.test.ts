@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { LIBRARY_TABS, LIBRARY_TILE, isLibraryTab, libraryCount, libraryStorage, nextLibraryTab, storageSentence, summarizePlaces } from "./library-hub.ts";
+import { LIBRARY_TABS, createLibraryOpener, LIBRARY_TILE, isLibraryTab, libraryCount, libraryStorage, nextLibraryTab, storageSentence, summarizePlaces } from "./library-hub.ts";
 
 describe("library tile labels", () => {
   it("names both libraries", () => {
@@ -37,6 +37,19 @@ describe("library tab switching", () => {
     assert.equal(nextLibraryTab("vectors", "End"), "proteins");
     assert.equal(nextLibraryTab("vectors", "Enter"), null);
     assert.equal(nextLibraryTab("vectors", "a"), null);
+  });
+
+  it("switches tabs in place once the library is open, even through an opener made earlier", () => {
+    // Mirrors the WebMCP actions: the opener is made once while the dashboard
+    // shows, then used after the library page has opened.
+    let view = "home";
+    const calls: string[] = [];
+    const open = createLibraryOpener({ currentView: () => view, switchTab: (tab) => calls.push(`switch:${tab}`), openView: (tab) => { calls.push(`open:${tab}`); view = "library"; } });
+    open("vectors");
+    open("proteins");
+    view = "manual";
+    open("vectors");
+    assert.deepEqual(calls, ["open:vectors", "switch:proteins", "open:vectors"]);
   });
 
   it("accepts only the two tabs", () => {

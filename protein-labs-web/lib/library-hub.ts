@@ -22,6 +22,20 @@ export function isLibraryTab(value: unknown): value is LibraryTab {
   return value === "vectors" || value === "proteins";
 }
 
+/**
+ * Opens a library tab. When the library page is already showing it only
+ * switches the tab; from anywhere else it navigates there with the page
+ * transition. The current view is read through a getter on every call,
+ * because callers (the WebMCP tools) create the opener once and keep it.
+ */
+export function createLibraryOpener({ currentView, switchTab, openView }: {
+  currentView: () => string;
+  switchTab: (tab: LibraryTab) => void;
+  openView: (tab: LibraryTab) => void;
+}) {
+  return (tab: LibraryTab) => { if (currentView() === "library") switchTab(tab); else openView(tab); };
+}
+
 /** Roving focus in the tab strip: arrows wrap, Home and End jump to the ends. */
 export function nextLibraryTab(current: LibraryTab, key: string): LibraryTab | null {
   const index = LIBRARY_TABS.findIndex((tab) => tab.id === current);
