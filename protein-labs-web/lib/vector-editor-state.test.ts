@@ -1,7 +1,7 @@
 // Tests for the vector editor's request ordering, undo history and response guards.
 // Run with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { PRIMER_ENGINE_TOO_OLD, commit, createRequestGate, readDesignedPrimers, redoStep, undoStep, valueFor } from "./vector-editor-state.ts";
 
