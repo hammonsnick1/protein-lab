@@ -11821,29 +11821,83 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .report-plasmid { width: 100%; max-width: 420px; height: auto; }
 .backbone-uses { color: var(--muted-foreground); }
 
-/* Vector database card */
-.vector-card-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; padding-top: 11px; overflow: hidden; }
-.vector-card-search { display: flex; align-items: center; gap: 7px; flex: none; border: 1px solid var(--border); border-radius: 8px; padding: 5px 9px; }
-.vector-card-search svg { width: 13px; color: var(--muted-foreground); }
-.vector-card-search input { flex: 1; min-width: 0; border: none; background: none; color: inherit; font-size: 12px; outline: none; }
-.vector-card-list { display: flex; flex-direction: column; gap: 5px; overflow: auto; min-height: 0; flex: 1; }
-.vector-card-list > article {
+/* Vector and protein library card: a row per library, then the folder both
+   are saved in. */
+.library-tile-counts { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.library-tile-counts .tile-headline > strong { font-size: 30px; min-width: 1.4em; }
+.library-card-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; padding-top: 11px; }
+.library-card-shelf,
+.library-card-storage {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  padding: 8px 10px;
+  padding: 9px 10px;
 }
-.vector-card-list > article > span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.vector-card-list strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vector-card-list small { font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vector-card-uses { margin-top: 1px; }
-.vector-card-empty { display: flex; align-items: center; gap: 9px; color: var(--muted-foreground); padding: 10px 2px; }
-.vector-card-empty svg { width: 18px; flex: none; }
-.vector-card-empty > span { display: flex; flex-direction: column; min-width: 0; }
-.vector-card-empty strong { font-size: 12px; color: var(--foreground); }
-.vector-card-empty small { font-size: 12px; line-height: 1.4; white-space: normal; overflow: visible; }
+.library-card-shelf > svg,
+.library-card-storage > svg { width: 18px; height: 18px; flex: none; color: var(--muted-foreground); }
+.library-card-shelf > span,
+.library-card-storage > span:not(.library-card-storage-actions) { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.library-card-shelf strong { font-size: 13px; }
+.library-card-shelf small,
+.library-card-storage small { font-size: 12px; line-height: 1.35; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.library-card-storage { flex-wrap: wrap; border-style: dashed; background: color-mix(in srgb, var(--muted) 40%, transparent); }
+.library-card-storage strong { font: 12px/1.35 var(--font-mono, ui-monospace, monospace); overflow-wrap: break-word; }
+.library-card-storage.warning > svg { color: #c98a12; }
+.library-card-storage-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: 28px; flex-basis: 100%; }
+/* Same size as the Open library button in the tile header. */
+.library-card-body button { height: 30px; border-radius: 9px; padding: 0 11px; font-size: 12px; flex: none; }
+.library-card-body button svg { width: 14px; }
+
+/* Vector and protein library page: tabs and the storage location over the
+   library itself, which fills the rest of the window. */
+.library-hub { display: flex; flex-direction: column; height: calc(100vh - 62px); min-width: 0; }
+.library-hub-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+  width: 100%;
+  max-width: 2200px;
+  margin: 0 auto;
+  padding: 14px clamp(16px, 2.4vw, 36px) 0;
+}
+.library-hub-tabs { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--muted); flex: none; }
+.library-hub-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.library-hub-tabs button svg { width: 15px; height: 15px; }
+.library-hub-tabs button:hover { color: var(--foreground); }
+.library-hub-tabs button.active { background: var(--background); color: var(--foreground); box-shadow: 0 1px 2px color-mix(in srgb, #000 14%, transparent); }
+.library-hub-tabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.library-hub-storage { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.library-hub-storage > svg { width: 16px; height: 16px; flex: none; color: var(--muted-foreground); }
+.library-hub-storage.warning > svg { color: #c98a12; }
+.library-hub-storage > span { display: flex; flex-direction: column; min-width: 0; text-align: right; }
+.library-hub-storage small { font-size: 12px; color: var(--muted-foreground); }
+.library-hub-path { font: 12px/1.35 var(--font-mono, ui-monospace, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: right; }
+/* The bar keeps the end of a long path; its text still reads left to right. */
+.library-hub-path > span { direction: ltr; unicode-bidi: isolate; }
+/* Line the bar up with the protein library, which is narrower. */
+.library-hub-proteins .library-hub-bar { max-width: 1560px; padding-inline: clamp(18px, 3vw, 40px); }
+.library-hub-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.library-hub-panel > .vlib-page,
+.library-hub-panel > .plib { flex: 1; width: 100%; height: auto; min-height: 0; }
+/* The tab bar already sits above, so the library needs less top padding. */
+.library-hub-panel > .vlib-page,
+.library-hub-panel > .plib { padding-top: 12px; }
 
 /* The timeline carries more than its share of the column can always show,
    so it scrolls inside the card rather than being cut off. */
@@ -13500,6 +13554,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .tile-art .art-ring { stroke: var(--art-paper); stroke-width: 6; }
 .tile-art .art-gene-coral { stroke: var(--art-coral); stroke-width: 6; stroke-linecap: butt; }
 .tile-art .art-gene-leaf { stroke: var(--art-leaf); stroke-width: 6; stroke-linecap: butt; }
+.tile-art .art-gene-sky { stroke: var(--art-sky); stroke-width: 6; stroke-linecap: butt; }
 .tile-art .art-ribbon-outline { stroke-width: 10; }
 .tile-art .art-ribbon { stroke: var(--art-coral); stroke-width: 5; }
 .flip-front:hover .tile-art,
@@ -13634,15 +13689,11 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 /* The back scrolls as one; the lists inside it no longer scroll on their own. */
 .suite-dashboard .dashboard-board .flip-back-body > *,
 .suite-dashboard .dashboard-board .flip-back-body .reports-card-body > *,
-.suite-dashboard .dashboard-board .flip-back-body .vector-card-body > * { flex: none; max-height: none; overflow: visible; margin-top: 0; }
+.suite-dashboard .dashboard-board .flip-back-body .library-card-body > * { flex: none; max-height: none; overflow: visible; margin-top: 0; }
 .suite-dashboard .dashboard-board .flip-back-body .current-job-body { padding-top: 0; }
 /* The tile grid's bleed margin would push the back sideways; its padding
    still leaves room for the hover lift. */
 .suite-dashboard .dashboard-board .flip-back-body > .project-tile-grid { margin: 0; }
-/* Vector names and details wrap on the back instead of ending in an ellipsis. */
-.suite-dashboard .dashboard-board .flip-back-body .vector-card-list strong,
-.suite-dashboard .dashboard-board .flip-back-body .vector-card-list small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
-
 @media (prefers-reduced-motion: reduce) {
   /* A cross-fade instead of the turn. */
   .suite-dashboard .dashboard-board .flip-tile { transition: none; animation: none; }
