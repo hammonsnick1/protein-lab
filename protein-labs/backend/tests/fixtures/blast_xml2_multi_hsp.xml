@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!-- Synthetic, format-faithful NCBI BLAST XML2 fixture with known HSP values. -->
+<BlastXML2 xmlns="http://www.ncbi.nlm.nih.gov">
+  <BlastOutput2><report><Report><results><Results><search><Search>
+    <query-len>20</query-len><hits><Hit><num>1</num>
+    <description><HitDescr><id>sp|P02067|HBB_PIG</id><accession>P02067</accession>
+      <title>Hemoglobin subunit beta</title><taxid>9823</taxid><sciname>Sus scrofa</sciname>
+    </HitDescr></description><len>147</len><hsps>
+      <Hsp><bit-score>42.5</bit-score><evalue>1e-12</evalue><identity>8</identity>
+        <positive>9</positive><gaps>1</gaps><query-from>2</query-from><query-to>11</query-to>
+        <hit-from>7</hit-from><hit-to>16</hit-to><align-len>10</align-len>
+        <qseq>ACD-EFGHIK</qseq><hseq>ACDTEFGHIK</hseq><midline>ACD EFGHIK</midline>
+      </Hsp>
+      <Hsp><bit-score>18.0</bit-score><evalue>0.004</evalue><identity>4</identity>
+        <positive>5</positive><gaps>0</gaps><query-from>14</query-from><query-to>18</query-to>
+        <hit-from>30</hit-from><hit-to>34</hit-to><align-len>5</align-len>
+        <qseq>LMNPQ</qseq><hseq>LMNAQ</hseq><midline>LMN Q</midline>
+      </Hsp>
+    </hsps></Hit></hits>
+  </Search></search></Results></results></Report></report></BlastOutput2>
+</BlastXML2>
