@@ -29,6 +29,14 @@ BLAST_XML = """<?xml version="1.0"?>
     <Hit_hsps><Hsp><Hsp_bit-score>80.5</Hsp_bit-score><Hsp_evalue>1e-20</Hsp_evalue>
       <Hsp_query-from>11</Hsp_query-from><Hsp_query-to>90</Hsp_query-to>
       <Hsp_identity>60</Hsp_identity><Hsp_align-len>80</Hsp_align-len>
+      <Hsp_hit-from>4</Hsp_hit-from><Hsp_hit-to>83</Hsp_hit-to>
+      <Hsp_positive>67</Hsp_positive><Hsp_gaps>2</Hsp_gaps>
+      <Hsp_qseq>ACD-EF</Hsp_qseq><Hsp_hseq>ACDGEF</Hsp_hseq><Hsp_midline>ACD EF</Hsp_midline>
+    </Hsp><Hsp><Hsp_bit-score>42</Hsp_bit-score><Hsp_evalue>1e-8</Hsp_evalue>
+      <Hsp_query-from>1</Hsp_query-from><Hsp_query-to>6</Hsp_query-to>
+      <Hsp_hit-from>20</Hsp_hit-from><Hsp_hit-to>25</Hsp_hit-to>
+      <Hsp_identity>5</Hsp_identity><Hsp_positive>6</Hsp_positive><Hsp_gaps>0</Hsp_gaps><Hsp_align-len>6</Hsp_align-len>
+      <Hsp_qseq>ACDEFG</Hsp_qseq><Hsp_hseq>ACXEFG</Hsp_hseq><Hsp_midline>AC EFG</Hsp_midline>
     </Hsp></Hit_hsps>
   </Hit></Iteration_hits></Iteration></BlastOutput_iterations>
 </BlastOutput>"""
@@ -114,6 +122,13 @@ def test_parse_blast_xml_metrics_and_accession():
     assert result["identity"] == 0.75
     assert result["queryCoverage"] == 0.8
     assert result["evalue"] == 1e-20
+    assert len(result["hsps"]) == 2
+    assert result["hsps"][0] == {
+        "queryFrom": 11, "queryTo": 90, "hitFrom": 4, "hitTo": 83,
+        "qseq": "ACD-EF", "hseq": "ACDGEF", "midline": "ACD EF",
+        "identity": 0.75, "positives": 67, "gaps": 2, "alignLength": 80,
+        "evalue": 1e-20, "bitScore": 80.5, "queryCoverage": 0.8,
+    }
 
 
 def test_parse_current_blast_xml2_metrics_and_accession():

@@ -182,7 +182,7 @@ class NCBIBlastClient:
         status_match = re.search(r"Status=(\w+)", result_response.text)
         status = status_match.group(1).upper() if status_match else ""
         if status == "WAITING":
-            return {"rid": rid, "status": "waiting", "results": None}
+            return {"rid": rid, "status": "waiting", "stageId": "queued", "results": None}
         if status in {"FAILED", "UNKNOWN"}:
             return {
                 "rid": rid,
@@ -198,7 +198,12 @@ class NCBIBlastClient:
         return {
             "rid": rid,
             "status": "complete",
-            "results": parse_blast_xml(result_response.text),
+            "stageId": "parsing",
+            "results": (
+                parse_blast_xml2(result_response.text)
+                if "BlastXML2" in result_response.text
+                else parse_blast_xml(result_response.text)
+            ),
         }
 
     def _submit_ebi(
@@ -250,7 +255,7 @@ class NCBIBlastClient:
         )
         status = response.text.strip().upper()
         if status in {"PENDING", "RUNNING", "QUEUED"}:
-            return {"rid": rid, "status": "waiting", "results": None}
+            return {"rid": rid, "status": "waiting", "stageId": status.lower(), "results": None}
         if status != "FINISHED":
             return {
                 "rid": rid,
@@ -266,6 +271,7 @@ class NCBIBlastClient:
         return {
             "rid": rid,
             "status": "complete",
+            "stageId": "parsing",
             "results": parse_ebi_blast_json(raw),
         }
 
@@ -970,34 +976,19 @@ def parse_blast_xml(xml_text: str) -> list[dict[str, Any]]:
     query_length = int(root.findtext(".//BlastOutput_query-len", "0") or 0)
     results: list[dict[str, Any]] = []
     for hit in root.findall(".//Hit"):
-        hsp = hit.find(".//Hsp")
-        if hsp is None:
+        hsps = hit.findall("./Hit_hsps/Hsp")
+        if not hsps:
             continue
-        align_length = int(hsp.findtext("Hsp_align-len", "0") or 0)
-        identities = int(hsp.findtext("Hsp_identity", "0") or 0)
-        query_from = int(hsp.findtext("Hsp_query-from", "0") or 0)
-        query_to = int(hsp.findtext("Hsp_query-to", "0") or 0)
         accession = hit.findtext("Hit_accession", "")
         hit_id = hit.findtext("Hit_id", "")
-        results.append(
-            {
-                "rank": len(results) + 1,
-                "accession": accession,
-                "uniprotAccession": _uniprot_accession(accession, hit_id),
-                "hitId": hit_id,
-                "description": hit.findtext("Hit_def", ""),
-                "hitLength": int(hit.findtext("Hit_len", "0") or 0),
-                "identity": identities / align_length if align_length else None,
-                "queryCoverage": (
-                    (abs(query_to - query_from) + 1) / query_length if query_length else None
-                ),
-                "evalue": _number(hsp.findtext("Hsp_evalue")),
-                "bitScore": _number(hsp.findtext("Hsp_bit-score")),
-                "alignmentLength": align_length,
-                "queryStart": query_from,
-                "queryEnd": query_to,
-            }
-        )
+        normalized_hsps = [_normalize_xml_hsp(hsp, query_length) for hsp in hsps]
+        # Keep the historical top-level summary fields while exposing every HSP
+        # under ``hsps`` for an alignment viewer.
+        results.append(_blast_hit(
+            rank=len(results) + 1, accession=accession, hit_id=hit_id,
+            description=hit.findtext("Hit_def", ""),
+            hit_length=int(hit.findtext("Hit_len", "0") or 0), hsps=normalized_hsps,
+        ))
     return results
 
 
@@ -1011,37 +1002,21 @@ def parse_blast_xml2(xml_text: str) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for hit in root.findall(".//{*}Hit"):
         description = hit.find("./{*}description/{*}HitDescr")
-        hsp = hit.find("./{*}hsps/{*}Hsp")
-        if description is None or hsp is None:
+        hsps = hit.findall("./{*}hsps/{*}Hsp")
+        if description is None or not hsps:
             continue
         accession = description.findtext("./{*}accession", "")
         hit_id = description.findtext("./{*}id", "")
-        align_length = int(hsp.findtext("./{*}align-len", "0") or 0)
-        identities = int(hsp.findtext("./{*}identity", "0") or 0)
-        query_from = int(hsp.findtext("./{*}query-from", "0") or 0)
-        query_to = int(hsp.findtext("./{*}query-to", "0") or 0)
-        results.append(
-            {
-                "rank": len(results) + 1,
-                "accession": accession,
-                "uniprotAccession": _uniprot_accession(accession, hit_id),
-                "description": description.findtext("./{*}title", ""),
-                "scientificName": description.findtext("./{*}sciname", ""),
-                "taxonId": _integer_or_none(
-                    description.findtext("./{*}taxid", "")
-                ),
-                "length": int(hit.findtext("./{*}len", "0") or 0),
-                "bitScore": float(hsp.findtext("./{*}bit-score", "0") or 0),
-                "evalue": float(hsp.findtext("./{*}evalue", "inf") or "inf"),
-                "identity": identities / align_length if align_length else None,
-                "queryCoverage": (
-                    (abs(query_to - query_from) + 1) / query_length
-                    if query_length and query_from and query_to
-                    else None
-                ),
-                "alignmentLength": align_length,
-            }
+        result = _blast_hit(
+            rank=len(results) + 1, accession=accession, hit_id=hit_id,
+            description=description.findtext("./{*}title", ""),
+            hit_length=int(hit.findtext("./{*}len", "0") or 0),
+            hsps=[_normalize_xml_hsp(hsp, query_length, namespace=True) for hsp in hsps],
         )
+        result["scientificName"] = description.findtext("./{*}sciname", "")
+        result["taxonId"] = _integer_or_none(description.findtext("./{*}taxid", ""))
+        result["length"] = result["hitLength"]
+        results.append(result)
     return results
 
 
@@ -1053,33 +1028,78 @@ def parse_ebi_blast_json(raw: dict[str, Any]) -> list[dict[str, Any]]:
         hsps = hit.get("hit_hsps") or []
         if not hsps:
             continue
-        hsp = hsps[0]
-        query_from = int(hsp.get("hsp_query_from") or 0)
-        query_to = int(hsp.get("hsp_query_to") or 0)
         accession = str(hit.get("hit_acc") or "")
         hit_id = str(hit.get("hit_id") or "")
-        identity = _number(hsp.get("hsp_identity"))
-        results.append(
-            {
-                "rank": int(hit.get("hit_num") or len(results) + 1),
-                "accession": accession,
-                "uniprotAccession": _uniprot_accession(accession, hit_id),
-                "description": str(hit.get("hit_desc") or hit.get("hit_def") or ""),
-                "scientificName": str(hit.get("hit_os") or ""),
-                "taxonId": _integer_or_none(str(hit.get("hit_uni_ox") or "")),
-                "length": int(hit.get("hit_len") or 0),
-                "bitScore": _number(hsp.get("hsp_bit_score")),
-                "evalue": _number(hsp.get("hsp_expect")),
-                "identity": identity / 100 if identity is not None else None,
-                "queryCoverage": (
-                    (abs(query_to - query_from) + 1) / query_length
-                    if query_length and query_from and query_to
-                    else None
-                ),
-                "alignmentLength": int(hsp.get("hsp_align_len") or 0),
-            }
+        result = _blast_hit(
+            rank=int(hit.get("hit_num") or len(results) + 1), accession=accession,
+            hit_id=hit_id, description=str(hit.get("hit_desc") or hit.get("hit_def") or ""),
+            hit_length=int(hit.get("hit_len") or 0),
+            hsps=[_normalize_ebi_hsp(hsp, query_length) for hsp in hsps],
         )
+        result["scientificName"] = str(hit.get("hit_os") or "")
+        result["taxonId"] = _integer_or_none(str(hit.get("hit_uni_ox") or ""))
+        result["length"] = result["hitLength"]
+        results.append(result)
     return results
+
+
+def _blast_hit(*, rank: int, accession: str, hit_id: str, description: str,
+               hit_length: int, hsps: list[dict[str, Any]]) -> dict[str, Any]:
+    """A hit summary plus all viewer-ready HSPs; top-level fields are HSP 1."""
+    first = hsps[0]
+    return {
+        "rank": rank, "accession": accession,
+        "uniprotAccession": _uniprot_accession(accession, hit_id), "hitId": hit_id,
+        "description": description, "hitLength": hit_length,
+        "identity": first["identity"], "queryCoverage": first["queryCoverage"],
+        "evalue": first["evalue"], "bitScore": first["bitScore"],
+        "alignmentLength": first["alignLength"], "queryStart": first["queryFrom"],
+        "queryEnd": first["queryTo"], "hsps": hsps,
+    }
+
+
+def _normalize_xml_hsp(hsp: ElementTree.Element, query_length: int,
+                       namespace: bool = False) -> dict[str, Any]:
+    prefix = "./{*}" if namespace else ""
+    get = lambda key, default="": hsp.findtext(f"{prefix}{key}", default)
+    identities = int(get("identity" if namespace else "Hsp_identity", "0") or 0)
+    align_length = int(get("align-len" if namespace else "Hsp_align-len", "0") or 0)
+    query_from = int(get("query-from" if namespace else "Hsp_query-from", "0") or 0)
+    query_to = int(get("query-to" if namespace else "Hsp_query-to", "0") or 0)
+    hit_from = int(get("hit-from" if namespace else "Hsp_hit-from", "0") or 0)
+    hit_to = int(get("hit-to" if namespace else "Hsp_hit-to", "0") or 0)
+    positives = int(get("positive" if namespace else "Hsp_positive", "0") or 0)
+    gaps = int(get("gaps" if namespace else "Hsp_gaps", "0") or 0)
+    return {
+        "queryFrom": query_from, "queryTo": query_to, "hitFrom": hit_from, "hitTo": hit_to,
+        "qseq": get("qseq" if namespace else "Hsp_qseq"),
+        "hseq": get("hseq" if namespace else "Hsp_hseq"),
+        "midline": get("midline" if namespace else "Hsp_midline"),
+        "identity": identities / align_length if align_length else None,
+        "positives": positives, "gaps": gaps, "alignLength": align_length,
+        "evalue": _number(get("evalue" if namespace else "Hsp_evalue")),
+        "bitScore": _number(get("bit-score" if namespace else "Hsp_bit-score")),
+        "queryCoverage": ((abs(query_to - query_from) + 1) / query_length
+                          if query_length and query_from and query_to else None),
+    }
+
+
+def _normalize_ebi_hsp(hsp: dict[str, Any], query_length: int) -> dict[str, Any]:
+    query_from, query_to = int(hsp.get("hsp_query_from") or 0), int(hsp.get("hsp_query_to") or 0)
+    align_length = int(hsp.get("hsp_align_len") or 0)
+    identity = _number(hsp.get("hsp_identity"))
+    return {
+        "queryFrom": query_from, "queryTo": query_to,
+        "hitFrom": int(hsp.get("hsp_hit_from") or 0), "hitTo": int(hsp.get("hsp_hit_to") or 0),
+        "qseq": str(hsp.get("hsp_qseq") or ""), "hseq": str(hsp.get("hsp_hseq") or ""),
+        "midline": str(hsp.get("hsp_midline") or ""),
+        "identity": identity / 100 if identity is not None else None,
+        "positives": int(hsp.get("hsp_positive") or 0), "gaps": int(hsp.get("hsp_gaps") or 0),
+        "alignLength": align_length, "evalue": _number(hsp.get("hsp_expect")),
+        "bitScore": _number(hsp.get("hsp_bit_score")),
+        "queryCoverage": ((abs(query_to - query_from) + 1) / query_length
+                          if query_length and query_from and query_to else None),
+    }
 
 
 def _integer_or_none(value: str) -> int | None:
