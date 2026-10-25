@@ -75,3 +75,5 @@ export const bufferPresets:BufferPreset[]=[
 ];
 
 export function cloneSteps(value:Record<string,BufferStep>){return structuredClone(value);}
+/** Saved per-step buffers as stored, or null when nothing was saved. Every step is present; components keep their saved text, and only missing fields get defaults. */
+export function normalizeBufferSteps(value:unknown):Record<string,BufferStep>|null{if(!value||typeof value!=="object"||Array.isArray(value))return null;const source=value as Record<string,unknown>;const result:Record<string,BufferStep>={};for(const [id,label] of Object.entries(bufferStepLabels)){const raw=source[id];if(!raw||typeof raw!=="object"||Array.isArray(raw))result[id]={pH:"",purpose:`${label} step`,components:[]};else{const obj=raw as Record<string,unknown>;result[id]={pH:String(obj.pH??""),purpose:String(obj.purpose??`${label} step`),components:Array.isArray(obj.components)?obj.components.map(item=>{const c=item as Record<string,unknown>;return{name:String(c.name??""),concentration:typeof c.concentration==="number"?c.concentration:String(c.concentration??""),unit:String(c.unit??"mM"),role:String(c.role??"")}}):[]}}}return result}
