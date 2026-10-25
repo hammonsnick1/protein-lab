@@ -150,8 +150,12 @@ def test_parse_current_blast_xml2_metrics_and_accession():
         "identity": 0.8, "positives": 9, "gaps": 1, "alignLength": 10,
         "evalue": 1e-12, "bitScore": 42.5, "queryCoverage": 0.5,
     }
-    assert result["hsps"][1]["queryFrom"] == 14
-    assert result["hsps"][1]["qseq"] == "LMNPQ"
+    assert result["hsps"][1] == {
+        "queryFrom": 14, "queryTo": 18, "hitFrom": 30, "hitTo": 34,
+        "qseq": "LMNPQ", "hseq": "LMNAQ", "midline": "LMN Q",
+        "identity": 0.8, "positives": 5, "gaps": 0, "alignLength": 5,
+        "evalue": 0.004, "bitScore": 18.0, "queryCoverage": 0.25,
+    }
 
 
 def test_blast_poll_uses_plain_xml_and_returns_completed_hits():
@@ -205,6 +209,7 @@ def test_ebi_ncbiblast_completes_and_normalizes_hits():
     assert submitted["provider"] == "ebi-ncbiblast"
     assert submitted["hitlistSize"] == 20
     assert completed["status"] == "complete"
+    assert completed["stageId"] == "done"
     assert completed["results"][0]["uniprotAccession"] == "P02067"
     assert completed["results"][0]["identity"] == 0.993
     assert b"scientist%40example.org" in calls[0][2]
@@ -223,8 +228,12 @@ def test_parse_ebi_blast_json_reports_query_coverage():
         "identity": 0.8, "positives": 9, "gaps": 1, "alignLength": 10,
         "evalue": 1e-12, "bitScore": 42.5, "queryCoverage": 0.5,
     }
-    assert result["hsps"][1]["queryFrom"] == 14
-    assert result["hsps"][1]["qseq"] == "LMNPQ"
+    assert result["hsps"][1] == {
+        "queryFrom": 14, "queryTo": 18, "hitFrom": 30, "hitTo": 34,
+        "qseq": "LMNPQ", "hseq": "LMNAQ", "midline": "LMN Q",
+        "identity": 0.8, "positives": 5, "gaps": 0, "alignLength": 5,
+        "evalue": 0.004, "bitScore": 18.0, "queryCoverage": 0.25,
+    }
 
 
 def test_sequence_matching_handles_removed_initiator_and_substitution():
