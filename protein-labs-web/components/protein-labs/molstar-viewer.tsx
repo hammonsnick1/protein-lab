@@ -1,9 +1,10 @@
 "use client";
 
 import { CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CircleDot, LoaderCircle, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
+import { Camera, CircleDot, LoaderCircle, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { findStructurePalette, STRUCTURE_PALETTES, structurePaletteForKey, type StructurePaletteId } from "@/lib/structure-palettes";
+import { HYDROPHOBICITY_SCALE, SECONDARY_STRUCTURE_LEGEND } from "@/lib/structure-legends";
 import { residueKey, type LigandAddress, type ResidueAddress } from "@/lib/structure-regions";
 import type { MolstarStage, StageColor, StageRepresentation, StageResidue } from "./molstar-stage";
 
@@ -54,6 +55,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   const [spin, setSpin] = useState(autoRotate);
   const [hovered, setHovered] = useState<string | null>(null);
   const [picked, setPicked] = useState<StageResidue | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
   const confidenceAvailable = confidence && hasConfidence;
   const color: StageColor = colorChoice === "plddt-confidence" && !confidenceAvailable ? "chain-id" : colorChoice ?? (confidenceAvailable ? "plddt-confidence" : "chain-id");
   const activePalette = paletteChoice === "theme" ? undefined : findStructurePalette(paletteChoice) ?? findStructurePalette(palette) ?? (paletteKey ? structurePaletteForKey(paletteKey) : undefined);
@@ -130,6 +132,19 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
     setPaletteChoice(value);
     if (paletteKey) { localStorage.setItem(`protein-labs-structure-palette:${paletteKey}`, value); window.dispatchEvent(new Event("protein-labs-structure-palette")); }
   }
+  async function saveImage() {
+    const stage = stageRef.current;
+    if (!stage) return;
+    setSaving("Saving image…");
+    try {
+      const link = document.createElement("a");
+      link.href = await stage.imageDataUri();
+      link.download = `${label.replace(/[^A-Za-z0-9._-]+/g, "_") || "structure"}.png`;
+      link.click();
+      setSaving(`Image saved as ${link.download}`);
+      window.setTimeout(() => setSaving(null), 4000);
+    } catch (reason) { setSaving(`The image could not be saved. ${messageOf(reason)}`); }
+  }
   function hoverFromStrip(residue: StageResidue | null) { setHovered(residue ? residueKey(residue.labelAsymId, residue.labelSeqId) : null); stageRef.current?.hoverResidue(residue); }
   function pickFromStrip(residue: StageResidue) { setPicked(residue); stageRef.current?.focusResidue(residue); }
 
@@ -140,7 +155,6 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
       {status.state !== "ready" && <div className={`structure-overlay ${status.state}`} role={status.state === "error" ? "alert" : "status"}>
         {status.state === "loading" ? <LoaderCircle className="spin"/> : null}<strong>{status.state === "error" ? "The 3D view is unavailable" : status.message}</strong>{status.state === "error" && <small>{status.message}</small>}
       </div>}
-      <span className="structure-badge">{label}{ready ? ` · ${residues.length} residues · ${chainCount || 1} chain${chainCount === 1 ? "" : "s"}` : ""}</span>
       <div className="structure-representation molecular-toolbar" role="toolbar" aria-label="Structure representation">
         {REPRESENTATIONS.map(({ id, label: name, icon: Icon }) => <button key={id} type="button" aria-pressed={representation === id} className={representation === id ? "active" : ""} onClick={() => chooseRepresentation(id)}><Icon/>{name}</button>)}
         <select aria-label="Colour scheme" value={color} onChange={(event) => chooseColor(event.target.value as StageColor)}>
@@ -153,14 +167,25 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
         <button type="button" aria-pressed={showWaters} className={showWaters ? "active" : ""} onClick={() => setShowWaters((value) => !value)}>Waters</button>
         <button type="button" aria-pressed={spin} className={spin ? "active" : ""} onClick={() => setSpin((value) => !value)}>Spin</button>
       </div>
-      <div className="structure-controls"><Button variant="secondary" size="icon" title="Reset view" aria-label="Reset view" onClick={() => stageRef.current?.resetCamera()}><RotateCcw/></Button><Button variant="secondary" size="icon" title="Zoom in" aria-label="Zoom in" onClick={() => stageRef.current?.zoom(0.8)}><Plus/></Button><Button variant="secondary" size="icon" title="Zoom out" aria-label="Zoom out" onClick={() => stageRef.current?.zoom(1.25)}><Minus/></Button></div>
-      <div className="confidence-legend molecular-status">
-        {color === "plddt-confidence" ? <><span><i className="very-high"/>Very high (&gt;90)</span><span><i className="confident"/>Confident</span><span><i className="low"/>Low</span><span><i className="very-low"/>Very low (&lt;50)</span></> : <span className="comic-label">{COLORS.find((item) => item.id === color)?.label}</span>}
-        <small>{picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it"}</small>
+      <div className="structure-controls"><Button variant="secondary" size="icon" title="Reset view" aria-label="Reset view" onClick={() => stageRef.current?.resetCamera()}><RotateCcw/></Button><Button variant="secondary" size="icon" title="Zoom in" aria-label="Zoom in" onClick={() => stageRef.current?.zoom(0.8)}><Plus/></Button><Button variant="secondary" size="icon" title="Zoom out" aria-label="Zoom out" onClick={() => stageRef.current?.zoom(1.25)}><Minus/></Button><Button variant="secondary" size="icon" title="Save image (PNG)" aria-label="Save image (PNG)" disabled={!ready || saving === "Saving image…"} onClick={() => void saveImage()}><Camera/></Button></div>
+      <div className="molstar-footer">
+        <span className="structure-badge">{label}{ready ? ` · ${residues.length} residues · ${chainCount || 1} chain${chainCount === 1 ? "" : "s"}` : ""}</span>
+        <div className="confidence-legend molecular-status">
+          <ColourLegend color={color}/>
+          <small role="status">{saving ?? (picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it")}</small>
+        </div>
       </div>
     </div>
     <SequenceStrip residues={residues} hovered={hovered} picked={picked} regionKeys={regionKeys} onHover={hoverFromStrip} onPick={pickFromStrip}/>
   </div>;
+}
+
+/** What the current colouring means; the swatches follow Mol*'s own colour themes. */
+function ColourLegend({ color }: { color: StageColor }) {
+  if (color === "plddt-confidence") return <><span><i className="very-high"/>Very high (&gt;90)</span><span><i className="confident"/>Confident</span><span><i className="low"/>Low</span><span><i className="very-low"/>Very low (&lt;50)</span></>;
+  if (color === "secondary-structure") return <span className="legend-entries">{SECONDARY_STRUCTURE_LEGEND.map((entry) => <span key={entry.key}><i className="legend-swatch" style={{ background: entry.color }}/>{entry.label}</span>)}</span>;
+  if (color === "hydrophobicity") return <span title={HYDROPHOBICITY_SCALE.source}>{HYDROPHOBICITY_SCALE.from}<i className="hydrophobicity-scale" style={{ background: `linear-gradient(90deg, ${HYDROPHOBICITY_SCALE.colors.join(", ")})` }}/>{HYDROPHOBICITY_SCALE.to}</span>;
+  return <span className="comic-label">{COLORS.find((item) => item.id === color)?.label}</span>;
 }
 
 /** One cell per modelled polymer residue, grouped by chain, in sync with the 3D view. */

@@ -173,6 +173,15 @@ export class MolstarStage {
     this.plugin.managers.camera.setSnapshot({ position: Vec3.add(Vec3(), target, offset) }, 160);
   }
 
+  /** PNG of the current view on white at twice the on-screen size, cropped to the molecule. */
+  async imageDataUri() {
+    const helper = this.plugin.helpers.viewportScreenshot;
+    if (!helper) throw new Error("The 3D view is not ready yet.");
+    const { width, height } = this.host.getBoundingClientRect();
+    helper.behaviors.values.next({ ...helper.behaviors.values.value, transparent: false, axes: { name: "off", params: {} }, resolution: { name: "custom", params: { width: Math.max(1, Math.round(width * 2)), height: Math.max(1, Math.round(height * 2)) } } });
+    return helper.getImageDataUri();
+  }
+
   dispose() {
     for (const subscription of this.subscriptions) subscription.unsubscribe();
     this.resizeObserver.disconnect();
