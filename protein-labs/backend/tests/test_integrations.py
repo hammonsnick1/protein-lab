@@ -16,8 +16,13 @@ from protein_labs.protein_planner.integrations import (
     parse_structure_geometry,
     representative_peptides,
 )
+import json
+from pathlib import Path
 from typing import get_type_hints
 from urllib.parse import parse_qs
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 BLAST_XML = """<?xml version="1.0"?>
@@ -132,12 +137,21 @@ def test_parse_blast_xml_metrics_and_accession():
 
 
 def test_parse_current_blast_xml2_metrics_and_accession():
-    result = parse_blast_xml2(BLAST_XML2)[0]
+    result = parse_blast_xml2((FIXTURES / "blast_xml2_multi_hsp.xml").read_text())[0]
     assert result["uniprotAccession"] == "P02067"
     assert result["scientificName"] == "Sus scrofa"
-    assert result["identity"] == 145 / 146
-    assert result["queryCoverage"] == 1.0
-    assert result["evalue"] == 1e-100
+    assert result["taxonId"] == 9823
+    assert result["identity"] == 0.8
+    assert result["queryCoverage"] == 0.5
+    assert len(result["hsps"]) == 2
+    assert result["hsps"][0] == {
+        "queryFrom": 2, "queryTo": 11, "hitFrom": 7, "hitTo": 16,
+        "qseq": "ACD-EFGHIK", "hseq": "ACDTEFGHIK", "midline": "ACD EFGHIK",
+        "identity": 0.8, "positives": 9, "gaps": 1, "alignLength": 10,
+        "evalue": 1e-12, "bitScore": 42.5, "queryCoverage": 0.5,
+    }
+    assert result["hsps"][1]["queryFrom"] == 14
+    assert result["hsps"][1]["qseq"] == "LMNPQ"
 
 
 def test_blast_poll_uses_plain_xml_and_returns_completed_hits():
@@ -152,7 +166,22 @@ def test_blast_poll_uses_plain_xml_and_returns_completed_hits():
     assert "FORMAT_TYPE=XML" in requested["url"]
     assert "FORMAT_OBJECT" not in requested["url"]
     assert result["status"] == "complete"
+    assert result["stageId"] == "done"
     assert result["results"][0]["uniprotAccession"] == "P12345"
+
+
+def test_blast_poll_dispatches_xml2_and_returns_all_hsps():
+    xml2 = (FIXTURES / "blast_xml2_multi_hsp.xml").read_text()
+
+    def transport(method, url, *, data, headers):
+        return HttpResponse(200, xml2, {"Content-Type": "application/xml"})
+
+    result = NCBIBlastClient(HttpClient(transport=transport)).poll("TEST-XML2")
+
+    assert result["status"] == "complete"
+    assert result["stageId"] == "done"
+    assert len(result["results"][0]["hsps"]) == 2
+    assert result["results"][0]["hsps"][1]["hitTo"] == 34
 
 
 def test_ebi_ncbiblast_completes_and_normalizes_hits():
@@ -182,10 +211,20 @@ def test_ebi_ncbiblast_completes_and_normalizes_hits():
 
 
 def test_parse_ebi_blast_json_reports_query_coverage():
-    result = parse_ebi_blast_json(EBI_BLAST_JSON)[0]
+    raw = json.loads((FIXTURES / "ebi_blast_multi_hsp.json").read_text())
+    result = parse_ebi_blast_json(raw)[0]
     assert result["scientificName"] == "Sus scrofa"
-    assert result["queryCoverage"] == 1.0
-    assert result["evalue"] == 9e-104
+    assert result["taxonId"] == 9823
+    assert result["queryCoverage"] == 0.5
+    assert len(result["hsps"]) == 2
+    assert result["hsps"][0] == {
+        "queryFrom": 2, "queryTo": 11, "hitFrom": 7, "hitTo": 16,
+        "qseq": "ACD-EFGHIK", "hseq": "ACDTEFGHIK", "midline": "ACD EFGHIK",
+        "identity": 0.8, "positives": 9, "gaps": 1, "alignLength": 10,
+        "evalue": 1e-12, "bitScore": 42.5, "queryCoverage": 0.5,
+    }
+    assert result["hsps"][1]["queryFrom"] == 14
+    assert result["hsps"][1]["qseq"] == "LMNPQ"
 
 
 def test_sequence_matching_handles_removed_initiator_and_substitution():
