@@ -44,7 +44,8 @@ export type MappedResidue = {
   mismatch?: boolean;
 };
 
-export type StructureDetail = StructureEntry & { structureText: string; mapping?: { residues: MappedResidue[] } };
+/** `GET …/structures/{source}/{id}`: the entry's metadata sits under `structure`, next to the coordinates. */
+export type StructureDetail = { referenceAccession?: string | null; structure?: StructureEntry; structureText: string; format?: string; mapping?: { residues: MappedResidue[] }; errors?: StructureApiError[] };
 
 export type RegionType =
   | "cysteines" | "disulfide"

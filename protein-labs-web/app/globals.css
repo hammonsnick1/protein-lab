@@ -8898,6 +8898,48 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .structure-facts dt { color: var(--muted-foreground); }
 .structure-facts dd { margin: 0; overflow-wrap: anywhere; }
 .structure-side .inline-message { margin-top: 10px; }
+.structure-facts a { display: inline-flex; align-items: center; gap: 4px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+.structure-facts a svg { width: 12px; height: 12px; }
+.structure-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 340px;
+  margin: 0 0 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.structure-choice-group { display: flex; flex-direction: column; gap: 4px; }
+.structure-choice-heading { color: var(--muted-foreground); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.structure-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.structure-choice:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.structure-choice:focus-visible { border-color: var(--ring); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent); }
+.structure-choice.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--background)); }
+.structure-choice-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.structure-choice-line small { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
+.structure-choice-metrics { color: var(--foreground); font-size: 12px; }
+.structure-choice-title { overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.structure-research-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0 0 12px; }
+.structure-id-form { margin: 0 0 12px; }
+.structure-id-form .lab-field { margin-bottom: 0; }
+.structure-id-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.structure-id-row input { text-transform: uppercase; font-family: var(--font-mono, ui-monospace, monospace); }
+.structure-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .region-picker { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
 .region-picker select {
   min-width: 0;
