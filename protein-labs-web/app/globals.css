@@ -5994,6 +5994,90 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .composition-total span { margin-right: auto; color: var(--muted-foreground); font-weight: 700; }
 .composition-empty { color: var(--muted-foreground); font-size: 12px; }
+/* Sequence direction: the chain drawn N-terminus → C-terminus with its end residues. */
+.terminus-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.terminus-strip > span { display: flex; flex-direction: column; gap: 2px; }
+.terminus-strip > span:last-child { text-align: right; }
+.terminus-strip b { font-size: 13px; font-weight: 750; }
+.terminus-strip small { font: 12px/1.3 var(--font-mono); color: var(--muted-foreground); }
+.terminus-strip i {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  border-top: 2px solid var(--foreground);
+  font-style: normal;
+}
+.terminus-strip i::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -6px;
+  border: 5px solid transparent;
+  border-left: 8px solid var(--foreground);
+  border-right: 0;
+}
+.terminus-strip em { margin-top: 5px; font-size: 12px; font-style: normal; color: var(--muted-foreground); }
+/* Oligomeric state: the scientist's choice beside monomer vs assembly values. */
+.oligomer-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr);
+  gap: 24px;
+}
+.oligomer-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+.oligomer-options legend { margin-bottom: 7px; font-size: 12px; font-weight: 650; color: var(--muted-foreground); }
+.oligomer-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  cursor: pointer;
+}
+.oligomer-options label:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.oligomer-options label.selected {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.oligomer-options input { margin-top: 2px; accent-color: var(--primary); }
+.oligomer-options span { display: flex; flex-direction: column; gap: 2px; }
+.oligomer-options strong { font-size: 13px; }
+.oligomer-options small { font-size: 12px; color: var(--muted-foreground); }
+.oligomer-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.oligomer-values table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.oligomer-values th,
+.oligomer-values td {
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  text-align: left;
+}
+.oligomer-values thead th { border-bottom-color: var(--border); color: var(--muted-foreground); font-size: 12px; font-weight: 700; }
+.oligomer-values tbody th { font-weight: 600; white-space: nowrap; }
+.oligomer-values tbody th small { font-weight: 400; color: var(--muted-foreground); }
+.oligomer-values .num { text-align: right; white-space: nowrap; }
+.oligomer-values > small { display: block; margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
+@media (max-width: 1100px) {
+  .oligomer-layout { grid-template-columns: 1fr; }
+}
 .assumption-list {
   font-size: 12px;
   line-height: 1.6;
