@@ -8444,6 +8444,94 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .stage-review > footer > span { display: flex; align-items: center; gap: 7px; margin-right: auto; color: var(--muted-foreground); }
 .stage-review > footer svg { width: 16px; }
 .stage-review > footer small { font-size: 12px; }
+
+/* Cell lysis: host-fit badges on method cards, the buffer suggestion and the composer. */
+.stage-choice-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.stage-choice-meta > em { color: var(--stage-color); font-size: 12px; font-style: normal; font-weight: 750; text-transform: uppercase; }
+.stage-choice-meta > i { border-radius: 999px; padding: 1px 7px; font-size: 12px; font-style: normal; font-weight: 650; }
+.stage-choice-meta > i.fits { background: color-mix(in srgb, #20a67c 13%, var(--background)); color: #178a66; }
+.stage-choice-meta > i.off { background: var(--muted); color: var(--muted-foreground); }
+.stage-choice-grid > button:has(.stage-choice-meta > i.off):not(.selected):not(:hover) { opacity: .72; }
+.lysis-buffer-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.lysis-suggestion {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 12px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 7%, var(--card)), var(--card) 140px);
+  padding: 14px;
+}
+.lysis-suggestion.applied { border-color: color-mix(in srgb, #20a67c 45%, var(--border)); }
+.lysis-suggestion > header { display: flex; align-items: flex-start; gap: 10px; }
+.lysis-suggestion > header > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.lysis-suggestion > header small { color: var(--primary); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+.lysis-suggestion > header strong { margin-top: 2px; font-size: 15px; line-height: 1.3; }
+.lysis-suggestion > header em { margin-top: 2px; color: var(--muted-foreground); font-size: 12px; font-style: normal; }
+.lysis-suggestion-icon {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 14%, var(--muted));
+  color: var(--primary);
+}
+.lysis-suggestion-icon svg { width: 17px; }
+.lysis-context {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0;
+}
+.lysis-context > div { min-width: 0; border-radius: 8px; background: var(--muted); padding: 6px 8px; }
+.lysis-context > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.lysis-context dt { color: var(--muted-foreground); font-size: 12px; }
+.lysis-context dd { margin: 1px 0 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.lysis-context > div.unknown dd { color: var(--muted-foreground); font-weight: 500; font-style: italic; }
+.lysis-reasons { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.lysis-reasons li { display: grid; grid-template-columns: 16px 1fr; gap: 8px; border-radius: 7px; padding: 6px 4px; font-size: 12px; line-height: 1.45; }
+.lysis-reasons li + li { border-top: 1px dashed var(--border); border-radius: 0; }
+.lysis-reasons li > svg { width: 15px; margin-top: 1px; }
+.lysis-reasons li.added > svg { color: #20a67c; }
+.lysis-reasons li.left-out > svg { color: #d39227; }
+.lysis-reasons li > span { color: var(--muted-foreground); }
+.lysis-reasons li b { display: block; color: var(--foreground); font-weight: 700; }
+.lysis-suggestion > footer { display: flex; flex-direction: column; align-items: stretch; gap: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+.lysis-suggestion > footer small { color: var(--muted-foreground); font-size: 12px; line-height: 1.4; }
+.lysis-applied { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; border-radius: 8px; background: color-mix(in srgb, #20a67c 12%, var(--background)); padding: 8px; color: #178a66; font-size: 12px; font-weight: 700; }
+.lysis-applied svg { width: 15px; }
+.lysis-buffer-editor { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.lysis-buffer-editor > .buffer-composer { border: 1px solid var(--border); border-radius: 12px; background: var(--background); }
+.lysis-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lysis-presets > span { margin-right: 4px; color: var(--muted-foreground); font-size: 12px; font-weight: 700; }
+.lysis-presets > button {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--stage-color);
+  border-radius: 999px;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 4px 11px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.lysis-presets > button:hover,
+.lysis-presets > button:focus-visible,
+.lysis-presets > button.selected { border-color: var(--stage-color); background: color-mix(in srgb, var(--stage-color) 9%, var(--background)); }
+@media (max-width: 1360px) {
+  .lysis-buffer-layout { grid-template-columns: minmax(0, 1fr); }
+  .lysis-suggestion { position: static; }
+  .lysis-context { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .lysis-context > div:last-child:nth-child(odd) { grid-column: auto; }
+}
 .stage-inspector-hero { border-radius: 12px; background: color-mix(in srgb, var(--stage-color) 10%, var(--muted)); padding: 18px; }
 .stage-inspector-hero > svg { width: 32px; height: 32px; color: var(--stage-color); margin-bottom: 12px; }
 .stage-inspector-hero p { color: var(--foreground); font-size: 12px; line-height: 1.5; margin: 0; }
