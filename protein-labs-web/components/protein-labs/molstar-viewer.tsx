@@ -4,6 +4,7 @@ import { CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } fr
 import { Camera, CircleDot, LoaderCircle, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { findStructurePalette, STRUCTURE_PALETTES, structurePaletteForKey, type StructurePaletteId } from "@/lib/structure-palettes";
+import { HYDROPHOBICITY_SCALE, SECONDARY_STRUCTURE_LEGEND } from "@/lib/structure-legends";
 import { residueKey, type LigandAddress, type ResidueAddress } from "@/lib/structure-regions";
 import type { MolstarStage, StageColor, StageRepresentation, StageResidue } from "./molstar-stage";
 
@@ -154,7 +155,6 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
       {status.state !== "ready" && <div className={`structure-overlay ${status.state}`} role={status.state === "error" ? "alert" : "status"}>
         {status.state === "loading" ? <LoaderCircle className="spin"/> : null}<strong>{status.state === "error" ? "The 3D view is unavailable" : status.message}</strong>{status.state === "error" && <small>{status.message}</small>}
       </div>}
-      <span className="structure-badge">{label}{ready ? ` · ${residues.length} residues · ${chainCount || 1} chain${chainCount === 1 ? "" : "s"}` : ""}</span>
       <div className="structure-representation molecular-toolbar" role="toolbar" aria-label="Structure representation">
         {REPRESENTATIONS.map(({ id, label: name, icon: Icon }) => <button key={id} type="button" aria-pressed={representation === id} className={representation === id ? "active" : ""} onClick={() => chooseRepresentation(id)}><Icon/>{name}</button>)}
         <select aria-label="Colour scheme" value={color} onChange={(event) => chooseColor(event.target.value as StageColor)}>
@@ -168,9 +168,12 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
         <button type="button" aria-pressed={spin} className={spin ? "active" : ""} onClick={() => setSpin((value) => !value)}>Spin</button>
       </div>
       <div className="structure-controls"><Button variant="secondary" size="icon" title="Reset view" aria-label="Reset view" onClick={() => stageRef.current?.resetCamera()}><RotateCcw/></Button><Button variant="secondary" size="icon" title="Zoom in" aria-label="Zoom in" onClick={() => stageRef.current?.zoom(0.8)}><Plus/></Button><Button variant="secondary" size="icon" title="Zoom out" aria-label="Zoom out" onClick={() => stageRef.current?.zoom(1.25)}><Minus/></Button><Button variant="secondary" size="icon" title="Save image (PNG)" aria-label="Save image (PNG)" disabled={!ready || saving === "Saving image…"} onClick={() => void saveImage()}><Camera/></Button></div>
-      <div className="confidence-legend molecular-status">
-        <ColourLegend color={color}/>
-        <small role="status">{saving ?? (picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it")}</small>
+      <div className="molstar-footer">
+        <span className="structure-badge">{label}{ready ? ` · ${residues.length} residues · ${chainCount || 1} chain${chainCount === 1 ? "" : "s"}` : ""}</span>
+        <div className="confidence-legend molecular-status">
+          <ColourLegend color={color}/>
+          <small role="status">{saving ?? (picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it")}</small>
+        </div>
       </div>
     </div>
     <SequenceStrip residues={residues} hovered={hovered} picked={picked} regionKeys={regionKeys} onHover={hoverFromStrip} onPick={pickFromStrip}/>
@@ -180,8 +183,8 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
 /** What the current colouring means; the swatches follow Mol*'s own colour themes. */
 function ColourLegend({ color }: { color: StageColor }) {
   if (color === "plddt-confidence") return <><span><i className="very-high"/>Very high (&gt;90)</span><span><i className="confident"/>Confident</span><span><i className="low"/>Low</span><span><i className="very-low"/>Very low (&lt;50)</span></>;
-  if (color === "secondary-structure") return <><span><i className="ss-helix"/>α-helix</span><span><i className="ss-310"/>3₁₀ helix</span><span><i className="ss-strand"/>β-strand</span><span><i className="ss-turn"/>Turn</span><span><i className="ss-coil"/>Coil</span></>;
-  if (color === "hydrophobicity") return <span title="Wimley–White interface scale">Hydrophilic<i className="hydrophobicity-scale"/>Hydrophobic</span>;
+  if (color === "secondary-structure") return <span className="legend-entries">{SECONDARY_STRUCTURE_LEGEND.map((entry) => <span key={entry.key}><i className="legend-swatch" style={{ background: entry.color }}/>{entry.label}</span>)}</span>;
+  if (color === "hydrophobicity") return <span title={HYDROPHOBICITY_SCALE.source}>{HYDROPHOBICITY_SCALE.from}<i className="hydrophobicity-scale" style={{ background: `linear-gradient(90deg, ${HYDROPHOBICITY_SCALE.colors.join(", ")})` }}/>{HYDROPHOBICITY_SCALE.to}</span>;
   return <span className="comic-label">{COLORS.find((item) => item.id === color)?.label}</span>;
 }
 
