@@ -102,7 +102,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
         </div>}
         <PdbIdForm onLoad={loadId}/>
         {facts && <StructureFacts entry={facts} hit={choice?.hit ?? null} loaded={current.state === "ready"}/>}
-        {(list.value?.errors ?? []).filter((error) => error.code !== "reference_missing" || !hits.length).map((error, index) => <Notice key={index} error message={`${error.source} is unavailable: ${error.message}${error.retryable ? " Try again later." : ""}`}/>)}
+        {(list.value?.errors ?? []).map((error, index) => <Notice key={index} error message={error.code === "reference_missing" ? "No UniProt reference match yet. PDB entries need one so residues and regions can be numbered: run “Find UniProt matches” in Sequence research." : `${error.source} is unavailable: ${error.message}${error.retryable ? " Try again later." : ""}`}/>)}
         {current.state === "ready" && (detail.value?.errors ?? []).map((error, index) => <Notice key={`d${index}`} error message={`${error.source} is unavailable: ${error.message}`}/>)}
       </section>
       <RegionsPanel state={legacy ? { state: "error", value: null, message: "the local engine has no structure service yet." } : regions} sections={sections} region={region} selection={selection} showAdditives={showAdditives} disabled={!selected || current.state !== "ready"}
