@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ensureProjectJob, JsonObject, ProteinBundle, proteinLabsApi } from "@/lib/protein-labs-api";
+import { assemblyValue, minimumHigherOrder, OligomericKind, oligomericEvidence, oligomericKinds, oligomericLabel, OligomericState, oligomericStateProblem, oligomericStateSave, readOligomericState, recalculatedProtparamConfig, subunitCount, unknownState } from "@/lib/oligomeric-state";
 import { ExpressionVectorJob } from "@/components/protein-labs/expression-vector-job";
 import { PurificationPlannerJob } from "@/components/protein-labs/purification-planner-job";
 import { PurificationStageJob } from "@/components/protein-labs/purification-stage-job";
@@ -146,7 +147,9 @@ function PropertiesJob({ bundle, onChanged }: JobProps) {
     try {
       const response = await proteinLabsApi.analyze(bundle.protein.id); setResult(response.result);
       const latest = await proteinLabsApi.getProtein(bundle.protein.id);
-      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "protparam", "Protein properties", { reviewStatus: "calculated", analyzedAt: new Date().toISOString() });
+      // Keep what the scientist recorded in this job, such as the oligomeric state.
+      const saved = latest.projectJobs.find((job) => job.appType === "protparam")?.config;
+      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "protparam", "Protein properties", recalculatedProtparamConfig(saved, new Date().toISOString()));
       await onChanged(); setMessage("ProtParam properties recalculated and saved.");
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }
@@ -158,9 +161,61 @@ function PropertiesJob({ bundle, onChanged }: JobProps) {
   const charged = asObject(result.chargedResidues);
   const sequenceSummary = asObject(result.sequence);
   const halfLife=asObject(result.estimatedHalfLife),secondary=asObject(result.secondaryStructureFraction),atomic=asObject(result.atomicComposition);
+  const sequenceLength = Number(sequenceSummary.length ?? bundle.protein.sequence.length);
+  const terminus = (letter: unknown, position: number) => letter ? `${text(asObject(composition[String(letter)]).name, String(letter))}${position}` : "—";
   const secondaryRows:[string,number,string][]=[["Helix",Number(secondary.helix??0),"#52c7b8"],["Turn",Number(secondary.turn??0),"#e5ab55"],["Sheet",Number(secondary.sheet??0),"#8d83e8"]];
-  return <div className="properties-layout"><Panel title="Complete ProtParam profile" hint={`ExPASy-compatible definitions calculated locally for the current ${bundle.protein.sequence.length} aa construct.`} className="span-two"><div className="metric-grid">{metrics.map(([label, value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><div className="panel-actions"><small>{text(asObject(result.algorithm).compatibility,"Biopython ProtParam definitions")}</small><Button onClick={() => void calculate()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <Play />} Recalculate and save</Button></div><Notice message={message} error={message.toLowerCase().includes("error")} /></Panel><Panel title="Extinction coefficient at 280 nm" hint="Reported for reduced cysteines and maximally oxidized cystines."><div className="property-detail-grid"><span>Reduced molar</span><strong>{metric(extinction.reducedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Oxidized molar</span><strong>{metric(extinction.oxidizedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Reduced A(0.1%)</span><strong>{metric(extinction.reducedAbsorbance01Percent,3)}</strong><span>Oxidized A(0.1%)</span><strong>{metric(extinction.oxidizedAbsorbance01Percent,3)}</strong></div></Panel><Panel title="Estimated half-life" hint={text(halfLife.warning,"")}><div className="property-detail-grid"><span>N-terminal residue</span><strong>{text(halfLife.nTerminalResidue)}</strong><span>Mammalian reticulocytes</span><strong>{text(halfLife.mammalianReticulocytesInVitro)}</strong><span>Yeast in vivo</span><strong>{text(halfLife.yeastInVivo)}</strong><span>E. coli in vivo</span><strong>{text(halfLife.ecoliInVivo)}</strong></div></Panel><Panel title="Secondary-structure propensity"><div className="secondary-bars">{secondaryRows.map(([label,value,color])=><div key={label}><span><b>{label}</b><small>{metric(value*100,1)}%</small></span><i><em style={{width:`${value*100}%`,background:color}}/></i></div>)}</div></Panel><Panel title="Sequence and charge summary"><div className="check-list"><span><CircleCheck/> {text(sequenceSummary.length,bundle.protein.sequence.length)} residues; {text(sequenceSummary.nTerminus)}-terminus to {text(sequenceSummary.cTerminus)}-terminus</span><span><CircleCheck/> Net charge at pH 7: {metric(charged.predictedChargeAtPH7,2)}</span><span><CircleCheck/> Acidic D + E: {text(charged.negativeAspGlu)} residues</span><span><CircleCheck/> Basic R + K: {text(charged.positiveArgLys)} residues</span><span><CircleCheck/> Atomic composition: {Object.entries(atomic).map(([element,count])=>`${element}${count}`).join(" ")}</span></div></Panel><Panel title="Amino-acid composition" hint="Share of each residue in the full sequence; the bar is scaled to the most abundant residue." className="span-two"><CompositionTable residues={residues}/></Panel><Panel title="Calculation assumptions" className="span-two"><div className="assumption-list">{(Array.isArray(result.assumptions)?result.assumptions:[]).map((value,index)=><span key={index}><CircleAlert/>{String(value)}</span>)}</div></Panel></div>;
+  return <div className="properties-layout"><Panel title="Complete ProtParam profile" hint={`ExPASy-compatible definitions calculated locally for the current ${bundle.protein.sequence.length} aa construct.`} className="span-two"><div className="metric-grid">{metrics.map(([label, value]) => <div className="metric-card" key={label}><span>{label}</span><strong>{value}</strong></div>)}</div><div className="panel-actions"><small>{text(asObject(result.algorithm).compatibility,"Biopython ProtParam definitions")}</small><Button onClick={() => void calculate()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <Play />} Recalculate and save</Button></div><Notice message={message} error={message.toLowerCase().includes("error")} /></Panel><Panel title="Extinction coefficient at 280 nm" hint="Reported for reduced cysteines and maximally oxidized cystines."><div className="property-detail-grid"><span>Reduced molar</span><strong>{metric(extinction.reducedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Oxidized molar</span><strong>{metric(extinction.oxidizedMolarM1Cm1,0)} M⁻¹ cm⁻¹</strong><span>Reduced A(0.1%)</span><strong>{metric(extinction.reducedAbsorbance01Percent,3)}</strong><span>Oxidized A(0.1%)</span><strong>{metric(extinction.oxidizedAbsorbance01Percent,3)}</strong></div></Panel><Panel title="Estimated half-life" hint={text(halfLife.warning,"")}><div className="property-detail-grid"><span>N-terminal residue</span><strong>{text(halfLife.nTerminalResidue)}</strong><span>Mammalian reticulocytes</span><strong>{text(halfLife.mammalianReticulocytesInVitro)}</strong><span>Yeast in vivo</span><strong>{text(halfLife.yeastInVivo)}</strong><span>E. coli in vivo</span><strong>{text(halfLife.ecoliInVivo)}</strong></div></Panel><Panel title="Secondary-structure propensity"><div className="secondary-bars">{secondaryRows.map(([label,value,color])=><div key={label}><span><b>{label}</b><small>{metric(value*100,1)}%</small></span><i><em style={{width:`${value*100}%`,background:color}}/></i></div>)}</div></Panel><Panel title="Sequence and charge summary" hint="Residues are numbered from the N-terminus to the C-terminus."><div className="terminus-strip" role="img" aria-label={`${sequenceLength} residues, from the N-terminus at ${terminus(sequenceSummary.nTerminus, 1)} to the C-terminus at ${terminus(sequenceSummary.cTerminus, sequenceLength)}`}><span><b>N-terminus</b><small>{terminus(sequenceSummary.nTerminus, 1)}</small></span><i><em>{sequenceLength} residues</em></i><span><b>C-terminus</b><small>{terminus(sequenceSummary.cTerminus, sequenceLength)}</small></span></div><div className="check-list"><span><CircleCheck/> Net charge at pH 7: {metric(charged.predictedChargeAtPH7,2)}</span><span><CircleCheck/> Acidic D + E: {text(charged.negativeAspGlu)} residues</span><span><CircleCheck/> Basic R + K: {text(charged.positiveArgLys)} residues</span><span><CircleCheck/> Atomic composition: {Object.entries(atomic).map(([element,count])=>`${element}${count}`).join(" ")}</span></div></Panel><OligomericStatePanel bundle={bundle} result={result} onChanged={onChanged}/><Panel title="Amino-acid composition" hint="Share of each residue in the full sequence; the bar is scaled to the most abundant residue." className="span-two"><CompositionTable residues={residues}/></Panel><Panel title="Calculation assumptions" className="span-two"><div className="assumption-list">{(Array.isArray(result.assumptions)?result.assumptions:[]).map((value,index)=><span key={index}><CircleAlert/>{String(value)}</span>)}</div></Panel></div>;
 }
+
+/** The assembly the protein forms, recorded by the scientist and saved with the properties job. */
+function OligomericStatePanel({ bundle, result, onChanged }: JobProps & { result: JsonObject }) {
+  const saved = readOligomericState(bundle.projectJobs.find((job) => job.appType === "protparam")?.config);
+  const [draft, setDraft] = useState<OligomericState>(saved ?? unknownState);
+  const [subunitText, setSubunitText] = useState(saved?.subunits ? String(saved.subunits) : "");
+  const [busy, setBusy] = useState(false); const [message, setMessage] = useState(""); const [failed, setFailed] = useState(false);
+  const extinction = asObject(result.extinctionCoefficient280);
+  const count = subunitCount(draft);
+  const update = (patch: Partial<OligomericState>) => { setDraft((value) => ({ ...value, ...patch })); setMessage(""); };
+  function chooseKind(kind: OligomericKind) { update({ kind, subunits: kind === "homo-oligomer" ? parsedSubunits(subunitText) : null }); }
+  async function save() {
+    const problem = oligomericStateProblem(draft);
+    if (problem) { setFailed(true); setMessage(problem); return; }
+    setBusy(true); setMessage("");
+    try {
+      const latest = await proteinLabsApi.getProtein(bundle.protein.id);
+      const { config, status } = oligomericStateSave(latest.projectJobs.find((job) => job.appType === "protparam"), draft);
+      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "protparam", "Protein properties", config, status);
+      await onChanged(); setFailed(false); setMessage(`Oligomeric state saved: ${oligomericLabel(draft)}.`);
+    } catch (reason) { setFailed(true); setMessage(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setBusy(false); }
+  }
+  const rows: [string, unknown, number, string][] = [["Molecular weight", result.molecularWeightDa, 2, "Da"], ["ε₂₈₀ reduced", extinction.reducedMolarM1Cm1, 0, "M⁻¹ cm⁻¹"], ["ε₂₈₀ oxidized", extinction.oxidizedMolarM1Cm1, 0, "M⁻¹ cm⁻¹"]];
+  const scaled = count !== null && count > 1;
+  return <Panel title="Oligomeric state" hint="The assembly this protein forms in solution. ProtParam values above describe one polypeptide chain." className="span-two">
+    <div className="oligomer-layout">
+      <div className="oligomer-form">
+        <fieldset className="oligomer-options"><legend>Assembly</legend>{oligomericKinds.map((option) => <label key={option.id} className={draft.kind === option.id ? "selected" : ""}><input type="radio" name="oligomeric-state" value={option.id} checked={draft.kind === option.id} onChange={() => chooseKind(option.id)}/><span><strong>{option.label}</strong><small>{option.subunits ? `${option.subunits} ${option.subunits === 1 ? "chain" : "identical chains"}` : option.id === "homo-oligomer" ? `${minimumHigherOrder} or more identical chains` : option.id === "hetero-complex" ? "Different partner chains" : "Not yet determined"}</small></span></label>)}</fieldset>
+        {draft.kind === "homo-oligomer" && <Field label={`Number of identical subunits (${minimumHigherOrder} or more)`}><input type="number" min={minimumHigherOrder} step="1" inputMode="numeric" value={subunitText} onChange={(event) => { setSubunitText(event.target.value); update({ subunits: parsedSubunits(event.target.value) }); }} placeholder="e.g. 6"/></Field>}
+        {draft.kind === "hetero-complex" && <Field label="Complex composition"><input value={draft.complexNote} onChange={(event) => update({ complexNote: event.target.value })} placeholder="e.g. α2β2 with hemoglobin α (HBA1)"/></Field>}
+        <div className="oligomer-fields">
+          <Field label="Evidence source (optional)"><input list="oligomer-evidence" value={draft.evidence} onChange={(event) => update({ evidence: event.target.value })} placeholder="e.g. Literature, SEC, crystal structure"/><datalist id="oligomer-evidence">{oligomericEvidence.map((value) => <option key={value} value={value}/>)}</datalist></Field>
+          <Field label="Notes (optional)"><textarea rows={2} value={draft.notes} onChange={(event) => update({ notes: event.target.value })} placeholder="e.g. Dimer at > 1 mg/mL; PDB 2HHB"/></Field>
+        </div>
+      </div>
+      <div className="oligomer-values">
+        <table>
+          <thead><tr><th scope="col">Value</th><th scope="col" className="num">Monomer</th><th scope="col" className="num">{scaled ? `${oligomericLabel(draft)} (${count} × monomer)` : "Assembly"}</th></tr></thead>
+          <tbody>{rows.map(([label, value, decimals, unit]) => { const assembly = assemblyValue(value, draft); return <tr key={label}><th scope="row">{label} <small>{unit}</small></th><td className="num">{groupedMetric(value, decimals)}</td><td className="num">{assembly === null ? "—" : groupedMetric(assembly, decimals)}</td></tr>; })}</tbody>
+        </table>
+        <small>{scaled ? `Assembly values are the monomer value × ${count}; they assume ${count} identical chains and no bound ligands.` : draft.kind === "hetero-complex" ? "The partner chains are not in this sequence, so no assembly value is calculated." : draft.kind === "monomer" ? "A monomer's assembly values equal the monomer values." : "Choose a homo-oligomer to see assembly mass and ε₂₈₀."}</small>
+      </div>
+    </div>
+    <div className="panel-actions"><small>{saved ? `Saved: ${oligomericLabel(saved)}${saved.evidence ? ` · ${saved.evidence}` : ""}` : "Not recorded yet"}</small><Button onClick={() => void save()} disabled={busy}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save oligomeric state</Button></div>
+    <Notice message={message} error={failed}/>
+  </Panel>;
+}
+function parsedSubunits(value: string) { const count = Number(value); return value.trim() && Number.isInteger(count) && count >= minimumHigherOrder ? count : null; }
+function groupedMetric(value: unknown, decimals: number) { return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : "—"; }
 
 // Kept temporarily for backward-compatible saved layouts; the full console is routed above.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

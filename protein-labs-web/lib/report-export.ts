@@ -11,6 +11,7 @@
 // tests run under Node's built-in type stripping.
 import type { JsonObject, ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
 import { gelFigureNote, readGelJobConfig } from "./gel-quantification.ts";
+import { assemblyValue, oligomericLabel, oligomericSummary, readOligomericState, subunitCount } from "./oligomeric-state.ts";
 
 export type Figure = { id: string; jobId: string; caption: string };
 export type ReportPage = {
@@ -109,15 +110,28 @@ export function proteinProperties(bundle: ProteinBundle): ProteinProperties {
   const residues = String(bundle.protein.sequence.length);
   const nativeMass = number(protparam.molecularWeightDa, 2);
   const nativeExt = number(extinction.reducedMolarM1Cm1, 0);
+  const oligomer = readOligomericState(jobConfig(bundle, "protparam"));
+  const assemblyMass = assemblyValue(protparam.molecularWeightDa, oligomer);
+  // Assembly rows sit beside the monomer rows, which then say they are per chain.
+  const assembly = oligomer && assemblyMass !== null ? { name: oligomericLabel(oligomer), scale: `${subunitCount(oligomer)} × monomer` } : null;
+  const monomer = assembly ? "Monomer " : "";
+  const properties: [string, string][] = [
+    [assembly ? "Monomer molecular weight" : "Molecular weight", `${nativeMass} Da`],
+    [`${monomer}ε₂₈₀ (reduced cysteines)`, `${nativeExt} M⁻¹cm⁻¹`],
+    [`${monomer}ε₂₈₀ (cystines formed)`, `${number(extinction.oxidizedMolarM1Cm1, 0)} M⁻¹cm⁻¹`],
+    ["Theoretical pI", number(protparam.theoreticalPI, 2)],
+    ["Residues", residues],
+    ["Expression host", text(host.strainName, text(host.hostSystem, "Not selected"))],
+    ["Oligomeric state", oligomer ? oligomericSummary(oligomer) : "Not recorded"],
+  ];
+  if (assembly) properties.push(
+    [`${assembly.name} molecular weight (${assembly.scale})`, `${number(assemblyMass, 2)} Da`],
+    [`${assembly.name} ε₂₈₀ (reduced cysteines, ${assembly.scale})`, `${number(assemblyValue(extinction.reducedMolarM1Cm1, oligomer), 0)} M⁻¹cm⁻¹`],
+    [`${assembly.name} ε₂₈₀ (cystines formed, ${assembly.scale})`, `${number(assemblyValue(extinction.oxidizedMolarM1Cm1, oligomer), 0)} M⁻¹cm⁻¹`],
+  );
+  if (oligomer?.notes) properties.push(["Oligomeric-state notes", oligomer.notes]);
   return {
-    properties: [
-      ["Molecular weight", `${nativeMass} Da`],
-      ["ε₂₈₀ (reduced cysteines)", `${nativeExt} M⁻¹cm⁻¹`],
-      ["ε₂₈₀ (cystines formed)", `${number(extinction.oxidizedMolarM1Cm1, 0)} M⁻¹cm⁻¹`],
-      ["Theoretical pI", number(protparam.theoreticalPI, 2)],
-      ["Residues", residues],
-      ["Expression host", text(host.strainName, text(host.hostSystem, "Not selected"))],
-    ],
+    properties,
     construct: [
       {
         species: "Uncleaved fusion",
