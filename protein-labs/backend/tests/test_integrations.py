@@ -4,6 +4,8 @@ from protein_labs.protein_planner.integrations import (
     HttpResponse,
     NCBIBlastClient,
     RCSBClient,
+    RemoteServiceError,
+    UniProtClient,
     global_sequence_metrics,
     local_alignment_metrics,
     normalize_uniprot,
@@ -14,6 +16,7 @@ from protein_labs.protein_planner.integrations import (
     parse_structure_geometry,
     representative_peptides,
 )
+from typing import get_type_hints
 from urllib.parse import parse_qs
 
 
@@ -340,12 +343,13 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
             return HttpResponse(200, json.dumps({"result_set": [
                 {"identifier": "1AAA_1", "score": 1.0, "services": [{"nodes": [{"match_context": [{"sequence_identity": 0.42, "evalue": 1e-30}]}]}]},
                 {"identifier": "2BBB_1", "score": 0.9, "services": [{"nodes": [{"match_context": [{"sequence_identity": 1.0, "evalue": 1e-90}]}]}]},
+                {"identifier": "2BBB_1", "score": 0.8, "services": []},
             ]}), {})
         if "/polymer_entity/" in url:
             pdb_id = url.split("/polymer_entity/")[1].split("/")[0]
-            return HttpResponse(200, json.dumps({"entity_poly": {"pdbx_seq_one_letter_code_can": entities[pdb_id]}, "rcsb_polymer_entity": {"pdbx_description": "Hemoglobin"}}), {})
+            return HttpResponse(200, json.dumps({"entity_poly": {"pdbx_seq_one_letter_code_can": entities[pdb_id]}, "rcsb_polymer_entity": {"pdbx_description": "Hemoglobin"}, "rcsb_polymer_entity_container_identifiers": {"auth_asym_ids": ["A", "C"]}}), {})
         if "/entry/" in url:
-            return HttpResponse(200, json.dumps({"struct": {"title": "Hemoglobin"}}), {})
+            return HttpResponse(200, json.dumps({"struct": {"title": "Hemoglobin"}, "exptl": [{"method": "X-RAY DIFFRACTION"}], "rcsb_entry_info": {"resolution_combined": [1.74]}}), {})
         return HttpResponse(200, "data_test\n", {})
 
     records = RCSBClient(HttpClient(transport=transport)).search_sequence(HUMAN_HBA)
@@ -357,4 +361,116 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
     assert round(records[1]["similarity"] * 100) == 59
     assert records[1]["rcsbIdentity"] == 0.42
     assert records[1]["evalue"] == 1e-30
+    assert records[0]["chainId"] == "A" and records[0]["chainIds"] == ["A", "C"]
+    assert records[0]["entityId"] == "1" and records[0]["title"] == "Hemoglobin"
+    assert records[0]["coverage"] == 1.0
+    assert records[0]["method"] == "X-RAY DIFFRACTION" and records[0]["resolution"] == 1.74
+
+
+def test_rcsb_search_rejects_invalid_query_and_malformed_result_list():
+    client = RCSBClient(HttpClient(transport=lambda *args, **kwargs: HttpResponse(200, '{"result_set": {}}', {})))
+
+    for query, message in (("AC", "at least 10"), ("ACDUFGHIKL", "standard amino-acid"), ("A" * 10_001, "at most 10,000")):
+        try:
+            client.search_sequence(query)
+        except ValueError as error:
+            assert message in str(error)
+        else:  # pragma: no cover - assertion guard
+            assert False, "invalid PDB query should fail before making a request"
+
+    try:
+        client.search_sequence("ACDEFGHIKL")
+    except RemoteServiceError as error:
+        assert error.service == "RCSB PDB search"
+        assert "invalid result list" in str(error)
+    else:  # pragma: no cover - assertion guard
+        assert False, "malformed RCSB result list should be reported"
+
+
+def test_http_client_retries_rcsb_rate_limit_with_bounded_backoff(monkeypatch):
+    attempts = []
+    pauses = []
+
+    def transport(method, url, *, data, headers):
+        attempts.append(url)
+        if len(attempts) < 3:
+            return HttpResponse(429, "", {"Retry-After": "0"})
+        return HttpResponse(200, '{"result_set": []}', {})
+
+    monkeypatch.setattr("protein_labs.protein_planner.integrations.time.sleep", pauses.append)
+    assert RCSBClient(HttpClient(transport=transport)).search_sequence("ACDEFGHIKL") == []
+    assert len(attempts) == 3 and pauses == [0.0, 0.0]
+
+
+def test_http_client_retries_timeout_only_when_explicitly_enabled(monkeypatch):
+    attempts = []
+    pauses = []
+
+    def transport(method, url, *, data, headers):
+        attempts.append(url)
+        if len(attempts) < 3:
+            raise TimeoutError("simulated timeout")
+        return HttpResponse(200, "{}", {})
+
+    monkeypatch.setattr("protein_labs.protein_planner.integrations.time.sleep", pauses.append)
+    response = HttpClient(transport=transport).request(
+        "GET", "https://example.test", service="RCSB PDB search", retry_attempts=2
+    )
+
+    assert response.status == 200
+    assert len(attempts) == 3 and pauses == [0.25, 0.5]
+
+
+def test_http_client_does_not_retry_job_submission_post_by_default():
+    attempts = []
+
+    def transport(method, url, *, data, headers):
+        attempts.append((method, url))
+        raise TimeoutError("simulated timeout")
+
+    try:
+        HttpClient(transport=transport).request("POST", "https://example.test/jobs", form={"query": "ACD"})
+    except RemoteServiceError as error:
+        assert "simulated timeout" in str(error)
+    else:  # pragma: no cover - assertion guard
+        assert False, "submission timeout should be returned without a retry"
+    assert attempts == [("POST", "https://example.test/jobs")]
+
+
+def test_rcsb_accession_search_post_does_not_retry_on_timeout():
+    attempts = []
+
+    def transport(method, url, *, data, headers):
+        attempts.append((method, url))
+        raise TimeoutError("simulated timeout")
+
+    try:
+        RCSBClient(HttpClient(transport=transport)).entry_ids_for_accession("P69905")
+    except RemoteServiceError as error:
+        assert error.service == "RCSB PDB accession search"
+    else:  # pragma: no cover - assertion guard
+        assert False, "accession-search timeout should be returned without a retry"
+    assert len(attempts) == 1 and attempts[0][0] == "POST"
+
+
+def test_uniprot_peptide_polling_accepts_303_before_completion(monkeypatch):
+    calls = []
+
+    def transport(method, url, *, data, headers):
+        calls.append((method, url))
+        if method == "POST":
+            return HttpResponse(202, "", {"Location": "https://example.test/poll"})
+        if len(calls) == 2:
+            return HttpResponse(303, "", {})
+        return HttpResponse(200, '"P69905"', {})
+
+    monkeypatch.setattr("protein_labs.protein_planner.integrations.time.sleep", lambda _: None)
+    client = UniProtClient(HttpClient(transport=transport))
+
+    assert client._peptide_candidates("ACDEFGHIKLMNP") == ["P69905"]
+    assert [method for method, _ in calls] == ["POST", "GET", "GET"]
+
+
+def test_http_client_request_type_hints_resolve():
+    assert "allowed_statuses" in get_type_hints(HttpClient.request)
 
