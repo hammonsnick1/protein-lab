@@ -1,5 +1,5 @@
 // Tests for the vector library browser's search, facet, size and map helpers.
-// Run with `npm run test` in protein-labs-web (Node's built-in runner).
+// Run with `npm run test` in protein-labs-web (Vitest).
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
