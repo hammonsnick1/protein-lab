@@ -1,5 +1,5 @@
 // Focused tests for the honesty rules of the gel studio. Run with
-// `npm run test` in protein-labs-web (Node's built-in runner, no extra deps).
+// `npm run test` in protein-labs-web (Vitest).
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
