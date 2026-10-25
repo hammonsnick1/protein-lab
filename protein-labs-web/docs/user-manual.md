@@ -46,7 +46,7 @@ The menu bar is always available after you start the workspace. Click a menu nam
 | **Edit** | Refresh the workspace and open the current project’s report |
 | **Settings** | The app's appearance |
 | **Tools** | Project gallery, project trees, the vector and protein library, and the current project's workflow, roadmap and report |
-| **Help** | This manual, keyboard and mouse controls, and the app version |
+| **Help** | This manual, keyboard and mouse controls, and **About Protein Lab**, which shows the app version |
 
 To use it:
 
@@ -54,7 +54,7 @@ To use it:
 2. Use **File** → **Open…** or **Tools** → **Project gallery** to choose a project.
 3. Use **Help** → **User manual** at any time to return to this guide, or **Help** → **Keyboard & mouse controls** to jump directly to [Keyboard and mouse](#keyboard-and-mouse).
 
-> **Note:** A grey menu item is unavailable in the current context; it has not failed. Open a project for project-specific actions.
+> **Note:** A grey menu item is unavailable in the current context; it has not failed. Open a project for project-specific actions. **Set project directory…** and **Show project directory** can also be grey; see [Troubleshooting](#troubleshooting).
 
 ## Choosing where projects are saved
 
@@ -108,6 +108,262 @@ To plan a project:
 4. When the banner says **WORKFLOW READY**, select **Open roadmap**. For a non-planning optional job, use **Skip** only when it is not needed for this project.
 
 > **Tip:** A workflow card can be opened again to check or revise its saved choices before you start the corresponding bench step.
+
+The workflow has four sections. The table lists the jobs in their recommended order.
+
+| Section | Jobs |
+| --- | --- |
+| **Understanding your protein** | Protein sequence, Protein properties, Sequence research, Choose reference match, Structure Viewer, Protein readiness check |
+| **Plan your purification** | Affinity capture, Subtractive cleanup, SEC polishing, Choose expression system, Expression vector design, Cell lysis, Compile workflow |
+| **Purify your protein** | Transformation and Expression |
+| **Analyze your purification** | Chromatogram Studio, Gel densitometry |
+
+You plan the purification from the protein outwards. First choose the capture, cleanup and polishing steps. Then choose the host, the vector and the lysis that feed them.
+
+### Work in a job
+
+Each job has the same header. The header shows the engine status (**Local engine connected**, **Local engine unavailable** or **Checking engine**) and the **Roadmap** and **Report** buttons. Use the tab on the left to go back to project planning or to the roadmap.
+
+After you save a job, a **Saved** tab appears. It shows the **RECOMMENDED NEXT PLANNING JOB**. If you opened the job from the roadmap, it shows **CONTINUE THE PURIFICATION**. Select the tab to continue.
+
+To skip a job, select **Skip** on the **RECOMMENDED NEXT** banner. The job is marked as skipped and counts as done. **Compile workflow** records that you continued without it.
+
+## Protein sequence and properties
+
+### Protein sequence
+
+1. Open **Protein sequence** in the workflow.
+2. Edit the **Construct name** and the **Amino acid sequence**. Spaces and line breaks are ignored.
+3. Optionally, fill in **Organism**, **Gene**, **Description** and **Notes** under **Construct metadata**. Later jobs use these values.
+4. Click **Save sequence**. Protein Lab saves the sequence and calculates the protein properties again.
+
+### Protein properties
+
+The **Protein properties** job uses the local engine to calculate the ProtParam profile of the sequence.
+
+1. Open **Protein properties** in the workflow.
+2. Click **Recalculate and save**. The values are calculated and saved in the project.
+3. Read the panels. Each value has a one-line explanation.
+
+The job has these panels:
+
+- **Complete ProtParam profile**: molecular weight, monoisotopic mass, theoretical pI, instability index, aliphatic index, GRAVY, aromaticity, chemical formula and total atoms.
+- **Extinction coefficient at 280 nm**: molar values and A(0.1%) for reduced cysteines and for oxidized cystines.
+- **Estimated half-life**: the N-terminal residue and the half-life estimates in mammalian, yeast and *E. coli* cells.
+- **Secondary-structure propensity**: the share of residues in the helix, turn and sheet sets. This is not a structure prediction.
+- **Sequence and charge summary**: the N-terminal and C-terminal residues with their positions, the net charge at pH 7, and the counts of acidic and basic residues.
+- **Oligomeric state**: the assembly that the protein forms in solution. See below.
+- **Amino-acid composition**: the count and percentage of each residue. The bars are coloured by side-chain class.
+- **Calculation assumptions**: the assumptions that the engine used.
+
+### Residue details
+
+1. In the **Amino-acid composition** table, click a residue row.
+2. Read the residue window. It shows a drawing of the residue, its side-chain class, its count in this protein, its mass, its pKa values, its typical location in a folded protein, its hydropathy and its secondary-structure preference.
+3. Press <kbd>←</kbd> or <kbd>→</kbd>, or click the buttons at the bottom, to go to the previous or next residue.
+4. Press <kbd>Esc</kbd> to close the window.
+
+### Oligomeric state
+
+The ProtParam values describe one polypeptide chain. Use the **Oligomeric state** panel to record the assembly that the protein forms in solution.
+
+1. Under **Assembly**, choose **Monomer**, **Homodimer**, **Homotrimer**, **Homotetramer**, **Higher-order homo-oligomer**, **Hetero-complex** or **Unknown**.
+2. For a higher-order homo-oligomer, enter the **Number of identical subunits (5 or more)**. For a hetero-complex, describe it in **Complex composition**.
+3. Optionally, enter an **Evidence source (optional)**, for example SEC-MALS or a crystal structure, and **Notes (optional)**.
+4. Read the table. For a homo-oligomer, the assembly molecular weight and ε₂₈₀ are the monomer values multiplied by the number of chains. For a hetero-complex, Protein Lab does not calculate assembly values.
+5. Click **Save oligomeric state**.
+
+> **Note:** **Recalculate and save** keeps the saved oligomeric state. The purification report includes the oligomeric state.
+
+## Sequence research
+
+**Sequence research** searches public databases with the project sequence and saves the results in the project. Only these searches need an internet connection.
+
+### Run a search
+
+1. Open **Sequence research** in the workflow. Make sure that the project has a sequence.
+2. Select a search button. **Find UniProt matches** matches the sequence against UniProt and saves PTMs, maturation features, topology, cellular location and cofactors. **Run protein BLAST** searches Swiss-Prot with NCBI protein BLAST and saves each alignment. **Find PDB structures** finds experimental structures and their crystallization and purification conditions.
+3. To look up a record that you know, type in **Optional UniProt text query** and click **Search**, or type in **Optional accession** and click **Fetch**.
+4. Wait until the progress panel shows **Done**. Protein Lab saves the results automatically. There is no save button.
+
+### Follow a BLAST job
+
+A BLAST search runs on a remote server and can wait in a queue. The progress panel shows the stages **Submitting**, **Queued**, **Running**, **Parsing hits** and **Done**, and the elapsed time. The bar moves by stage, because the server does not report its queue position.
+
+- Protein Lab checks the job every 5 seconds. Click **Check now** to check immediately.
+- Click **Stop** to stop following the job. The remote search can still finish, but Protein Lab does not collect the result.
+- If a run fails or stops, click **Run again**.
+- **Run history** lists the earlier runs. Click **Show hits** to show the hits of an earlier run.
+
+### Read the BLAST hits
+
+The **BLAST hits** table shows the accession, protein and organism, identity, coverage, E-value, bit score and length of each hit. Click a column heading to sort the table. Click it again to reverse the order. The colours of the identity, coverage and E-value cells show strong, medium and weak matches. If there is more than one run, choose it in **Run**.
+
+To examine the alignments:
+
+1. Click **View BLAST results**, or click **Alignment** on a hit row.
+2. On the **Pairwise alignments** tab, type in **Filter hits** to find a hit, and click it. Each alignment shows the query, the match line and the hit in blocks of 60 residues. Identical residues, similar residues, mismatches and gaps have different colours.
+3. On the **Multiple sequence alignment** tab, tick the hits to align with the query. Click **Top 10**, **All** or **Clear** to change the selection. The columns follow the query positions.
+4. Choose a colouring: **ClustalX**, **Identity to query** or **None**. Hold the pointer on a column to see its conservation.
+5. Click **Export FASTA** to save the multiple alignment as a FASTA file.
+
+> **Note:** Some runs do not have saved alignments. Run protein BLAST again to see them.
+
+### Read the saved evidence
+
+- **UniProt matches and PTMs** lists each UniProt match with its review status, identity, coverage, and the number of PTM, transmembrane, disorder and cofactor features. The first match is marked **Best match**.
+- **PDB structures and conditions** lists each PDB entry with its method, resolution, identity, similarity and coverage. It also shows the crystallization and purification conditions when the deposition reports them.
+
+## Choosing a reference match
+
+The **Choose reference match** job selects one UniProt record. This record is the source of the cofactor, PTM, location, topology and disorder evidence for the project.
+
+1. In **Sequence research**, run **Find UniProt matches** first. The saved matches are ranked by identity, coverage and review status.
+2. Open **Choose reference match** and select a match in the list.
+3. Read its evidence: **Cofactors**, **PTM and maturation features**, **Cellular location**, **Membrane regions** and **Disordered regions**. Click **Open UniProt** to read the full record.
+4. Click **Save selected reference**. The **Protein readiness check** uses this record.
+
+> **Warning:** A close homolog is supporting evidence. It does not prove that each annotation applies to your construct. Confirm active-site residues, modified positions and construct boundaries before you use the annotations.
+
+## Structure Viewer
+
+The **Structure Viewer** shows the AlphaFold model or an experimental PDB entry in 3D and highlights regions of interest.
+
+### Choose a structure
+
+1. Open **Structure Viewer** in the workflow.
+2. In the **Structure** panel, select a structure. **Predicted (AlphaFold)** holds the AlphaFold model. **Found by Sequence research** holds the PDB entries from the PDB search, with identity and coverage. **Linked to UniProt** holds the PDB entries of the reference record. **Added by PDB ID** holds the entries that you loaded by ID.
+3. To load another entry, type its four-character ID in **Load any PDB entry by ID** and click **Load**.
+4. Read the facts list: source, method, resolution, match, chains, mapped chains and ligands.
+
+If no PDB entries are listed, click **Open Sequence research** and run **Find PDB structures**.
+
+> **Note:** A PDB entry needs a UniProt reference match to number its residues and regions. Run **Find UniProt matches** in **Sequence research** first.
+
+### Use the 3D view
+
+- Drag to rotate. Scroll to zoom. Click a residue to identify it.
+- Choose **Cartoon**, **Surface** or **Ball & stick**.
+- Under **Colour scheme**, choose **Colour by chain**, **Secondary structure**, **pLDDT confidence** or **Hydrophobicity**. **pLDDT confidence** is available for AlphaFold models only. A legend explains the colours.
+- With **Colour by chain**, choose a **Chain palette**.
+- Turn **Ligands**, **Waters** and **Spin** on or off.
+- Use **Reset view**, **Zoom in** and **Zoom out**. Click **Save image (PNG)** to save the view as a PNG file.
+- The sequence strip below the view shows the chain. "···" shows residues that are not in the model.
+
+### Highlight regions of interest
+
+1. In **Regions of interest**, choose a region. The groups include cysteines and disulfides, ligand binding sites, hydrophobic regions, disordered regions and reference match features.
+2. Use the arrows to go to the previous or next region. Click **Clear** to remove the highlight.
+3. Tick **List waters and crystallisation additives** to add them to the list.
+
+Protein Lab highlights only the residues that the engine maps onto the structure. The panel tells you when positions are outside the model or in an alignment gap.
+
+### Get an AlphaFold model
+
+In the **AlphaFold model** panel, enter a **UniProt accession**, or leave it blank to use the inferred accession. Click **Retrieve AlphaFold DB model**. If there is no model in AlphaFold DB, click **Prepare AlphaFold Server job**. When the server returns the result, click **Import returned result**.
+
+## Protein readiness check
+
+The **Protein readiness check** combines the sequence calculations with the selected UniProt reference. It shows the risks that you must solve before you design expression and purification.
+
+1. Complete **Protein properties** and **Choose reference match** first. The job tells you if one of them is missing.
+2. Open **Protein readiness check** in the workflow.
+3. Read the verdict under **OVERALL READINESS**. **Ready to plan** means that each check is settled. **Ready with flagged risks** means that some checks need a plan in expression or purification. **Review needed** means that some checks are not answered. **Nothing to review** means that there are no checks.
+4. Read the **Checkpoint findings**. They are in the groups **Sequence**, **Expression**, **Purification** and **Quantitation**. Each check is marked **Pass**, **Attention** or **Review**. Click **Why** to read the details.
+5. Click **Use detected evidence** to fill the review answers from the saved evidence.
+6. In **Researcher review**, confirm or change each answer: **Not reviewed**, **Yes**, **No** or **Needs follow-up**. Fill in the location, cofactor, PTM and notes fields as necessary.
+7. Optionally, change the **Low-extinction warning threshold (M⁻¹ cm⁻¹)**. The default is 10,000. Below this value, A₂₈₀ measurement is weak, so plan a dye-based assay or a longer path length.
+8. Click **Save readiness check**. If an answer is **Not reviewed** or **Needs follow-up**, the check is saved with follow-up items.
+
+The **Evidence ledger** shows the evidence for each answer. Click **Send this section to journal** to add the readiness section to the project report.
+
+## Planning the purification
+
+The **Plan your purification** jobs choose the columns, buffers, host, vector and lysis. Most jobs show option cards. Click a card to read its details, then click **Use this option** or **Use this choice**. Each job checks compatibility while you change your choices, and shows the result in a **Compatibility check**.
+
+> **Note:** If a finding is blocking, the job saves a draft. The job stays in progress until you solve the blocking finding.
+
+### Affinity capture
+
+1. Open **Affinity capture**. Search the resins or filter them by category.
+2. Select a resin and click **Use this option**. The binding, wash and elution buffers change to the presets of that resin.
+3. Set the tag position and the linker. The construct preview shows the expressed fusion and the protein after tag cleavage.
+4. Under **Binding, wash and elution buffers**, choose a **Starting preset**. Then edit each buffer in the buffer composer.
+5. Click **Save tag, resin and buffers**.
+
+### Subtractive cleanup
+
+1. Open **Subtractive cleanup**.
+2. Under **1 · TAG CLEAVAGE**, choose the protease that removes the tag. Record where the site is annotated in **Cleavage-site evidence**.
+3. Under **2 · Reverse-affinity cleanup medium**, choose the resin that captures the released tag, the uncleaved fusion and the tagged protease.
+4. Under **Buffer starting point**, click a preset and click **Load into composer**. Edit the **Cleavage buffer** in the composer.
+5. Read the **Compatibility check**, then click **Save job**.
+
+### SEC polishing
+
+1. Open **SEC polishing**.
+2. Enter the **Expected native mass / complex size (kDa)** and the **Injection volume (mL)**. The mass starts at the mass of the cleaved construct.
+3. Choose an SEC column. Each card shows the fractionation range and the total volume. Chromatogram Studio uses the same columns.
+4. Load a buffer preset into the composer and edit the **Storage buffer**.
+5. Read the **Compatibility check**. It compares the mass, the injection volume and the buffer pH with the column, and the buffer pH with the predicted pI.
+6. Click **Save job**.
+
+### Buffer composer
+
+Affinity capture, Subtractive cleanup, SEC polishing and Cell lysis use the same buffer composer.
+
+1. Set the **pH** and the **Purpose** of the buffer.
+2. Click **Add component**. Type in the component box to search the component library by name, alias or purpose.
+3. Select a component. The library fills in a typical concentration and unit. If the name is not in the library, Protein Lab keeps it as a **Custom** component.
+4. Enter the **Concentration**, then choose the **Unit** and the **Purpose**. Choose **Custom…** to describe your own purpose.
+5. Read the panel for the selected component: other names, typical range, uses, cautions and references.
+6. To remove a component, click the bin button on its row.
+
+The composer marks a concentration that is outside the typical range. It also shows cautions for known problems. For example, EDTA removes Ni²⁺ and Co²⁺ from IMAC resins.
+
+### Choose expression system
+
+1. Open **Choose expression system**.
+2. In **Host systems**, compare the five families: *E. coli*, yeast, insect, mammalian and cell-free.
+3. Use **Side-by-side comparison** to compare yield, time, cost, PTMs, disulfide bonds, scale, uses and limits. Click **Browse strains** to open a family.
+4. In the strain list, search by strain, genotype, marker or application. Tick **Compare** on two to four strains to put them in the table.
+5. Click **Choose** on a strain. Read **Evidence for this strain** and the compatible vector families.
+6. Click **Save cell line**.
+
+### Expression vector design
+
+Click **Load backbone** to load a vector from the library, or **Import GenBank / FASTA / .dna** to import a file. Annotate the vector with **Auto annotate**, **Annotate selection** or **Detect and annotate ORFs**. Click **Save** or press <kbd>Ctrl+S</kbd>. Export the vector as **GenBank**, **SnapGene .dna** or **FASTA**. Press <kbd>?</kbd> in the job to see its keyboard shortcuts.
+
+### Cell lysis
+
+1. Open **Cell lysis**. Each method card shows if it suits the saved host.
+2. Select a lysis method and click **Use this choice**.
+3. In **Lysis buffer**, read the **SUGGESTED FROM YOUR CHOICES** card. The suggestion starts from the binding buffer of your capture column. Each line tells you why a component is added or left out, for example imidazole for IMAC, a detergent for a membrane protein, or lysozyme for *E. coli*.
+4. Click **Apply suggestion** to put the suggestion into the composer. Or, under **Or start from a preset**, select a preset and click **Load into the lysis buffer**.
+5. Edit the buffer in the composer. If you click **Re-apply suggestion** after you edit, Protein Lab replaces your edits.
+6. Read the **Compatibility check**, then click **Save job**.
+
+> **Note:** A cell-free host has no cells to lyse, so Protein Lab does not suggest a lysis enzyme. Clarify the reaction mix by centrifugation before you load it.
+
+### Compile workflow
+
+1. Open **Compile workflow**.
+2. Read the **Compatibility review**. It counts the **Blocking**, **Warning** and **Pass** findings for the complete design.
+3. Read the **Generated bench workflow**. It lists the steps from material preparation to quality control and storage.
+4. Click **Copy report** to copy the workflow to the clipboard.
+5. Click **Save workflow**. If there are blocking findings, the button is **Save draft**. Solve the blocking findings, then save again.
+
+## Transformation and Expression
+
+This job records the bench work that makes the protein.
+
+1. Open **Transformation and Expression** in the **Purify your protein** section.
+2. Under **1 · Starting material**, choose **Fresh transformation**, **Glycerol / cryo stock** or **Existing culture**.
+3. Under **2 · Host system and medium**, choose the host tab and a medium, then click **Use this medium**.
+4. Under **3 · Expression record**, enter the **Culture volume**, the **Temperature (°C)**, the **Induction / harvest plan**, the media composition and your notes.
+5. Click **Save transformation and expression**.
+
+> **Note:** If the saved expression system is cell-free, there is no transformation or culture step. Record the reaction setup instead.
 
 ## Purification roadmap
 
@@ -174,16 +430,18 @@ The gel studio measures lanes and bands from SDS-PAGE or Native PAGE images with
 
 1. Open **Quantify a gel** from a roadmap step, or open the gel job in the workflow.
 2. In **Setup**, select **Import PNG, JPEG, or TIFF**, then choose the gel image. For TIFF files, the engine supplies a PNG preview after analysis.
-3. Choose **SDS-PAGE** or **Native PAGE**. Set the band sensitivity and rolling-ball radius if needed; the origin and dye-front guides help orient the image but do not change a measurement.
-4. Click **Detect lanes & bands**. Review the detected lanes and bands on the image. Add or edit a lane when needed, then use **Re-detect in lanes** to measure those lanes again.
+3. Under **Gel type**, choose **SDS-PAGE** or **Native PAGE**. Set the band sensitivity and rolling-ball radius if needed; the origin and dye-front guides help orient the image but do not change a measurement.
+4. Click **Detect lanes & bands**. Review the detected lanes and bands on the image. Detection keeps lightly loaded lanes separate, also next to a strongly stained ladder. Add or edit a lane when needed, then use **Re-detect in lanes** to measure those lanes again.
 5. Select the target band in a sample lane. This labels the selected target; it does not change the underlying band measurement.
 
 ### Calibrate and document the method
 
-1. Select **Ladder** and choose the ladder preset, or select **Custom** and enter marker masses from top to bottom in kDa.
+1. Select **Ladder** and choose the ladder preset. For another ladder, choose **Custom** in the preset list and enter the **Marker masses, top to bottom (kDa)**.
 2. Mark the lane containing the ladder. Check the calibration card and residual table before using molecular-weight results.
 3. Select **Method** to review the background method, lane geometry, band-integration method, and any quantification warnings.
-4. Export the band table as CSV when you need a tabular record, then click **Save gel job** to retain the image annotations, densities, uncertainties, refusals, calibration, and method metadata with the project.
+4. Click the **Export CSV** button to export the band table when you need a tabular record, then click **Save gel job** to retain the image annotations, densities, uncertainties, refusals, calibration, and method metadata with the project.
+
+> **Note:** The integrated density of a band is the background-corrected 8-bit image intensity summed over the band area, in pixels. It has no absolute unit. Compare densities only between bands of the same image.
 
 > **Warning:** Saturated bands and invalid ladder assignments are reported as limitations rather than estimated silently. Reacquire or correct the image and re-run detection if the reported method warning makes the result unsuitable for your conclusion.
 
@@ -196,11 +454,18 @@ The report collects project pages—from protein properties through quality cont
 To prepare a report:
 
 1. Open **Report** on the project dashboard or **Tools** → **Purification report**.
-2. Edit the title, summary, page headings, and **Record** text directly on the pages. Select **Show the recorded plan** to include saved planning details where available.
+2. Edit the title, summary, page headings, and **Record** text directly on the pages. Tick **Show the recorded plan** to include saved planning details where available.
 3. Use the page list to include or omit a page, move it up or down, or delete it. Select **Add a page** for a custom page; **Restore standard pages** rebuilds the default set and removes typed notes on removed pages after confirmation.
 4. Select **Add chromatogram or gel** on a page to attach a saved analysis, then edit its figure caption.
 5. Click **Save report**. Edits also autosave shortly after you stop typing; wait for **All changes saved** before closing the app.
 6. Use **Print / PDF** to use your system print dialog, or export a **Standalone HTML** or **Markdown** copy.
+
+The exported **Protein properties** page includes two tables:
+
+- A property table with the molecular weight, ε₂₈₀ for reduced cysteines and for formed cystines, the theoretical pI, the number of residues, the expression host and the oligomeric state. For a recorded oligomer, the table also gives the assembly molecular weight and ε₂₈₀ values.
+- An **Expressed construct** table with the residues, molecular weight and ε₂₈₀ of the uncleaved fusion and of the protein after tag cleavage. The affinity tag, the cleavage, the expression vector and the vector length follow the table.
+
+In a Standalone HTML export, a gel figure also includes the gel image and the note for each lane.
 
 ## Vector and protein library
 
@@ -266,7 +531,7 @@ To make a lineage:
 1. Open **Tools** → **Project trees**.
 2. Select **New project tree**, give it a name, choose its starting project, and click **Create tree**.
 3. Select **Add the first branch** or the plus control on a project node. Choose the existing project to branch from, the project to add, and an optional explanation, then select **Save branch**.
-4. Select a branch to review the comparison. Add a branch note when the automated comparison needs experimental context.
+4. Select a branch to review the comparison. When the comparison needs experimental context, type a note under **Your note** and click **Save note**.
 5. Drag a non-root project node onto a valid parent to re-parent it. Select a project node to open that project.
 
 > **Tip:** Protein Lab prevents a project from being linked in a loop. If a bad imported relationship is detected, the workspace identifies it so you can remove the link.
@@ -295,6 +560,11 @@ To change appearance:
 | Project-tree graph: <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Pan the focused graph |
 | Project-tree graph: <kbd>+</kbd> / <kbd>=</kbd>, <kbd>-</kbd> / <kbd>_</kbd> | Zoom in or out |
 | Project-tree graph: <kbd>0</kbd> | Fit the graph to the view |
+| Residue window: <kbd>←</kbd> <kbd>→</kbd> | Show the previous or next residue |
+| Expression vector design: <kbd>Ctrl+S</kbd> | Save the vector |
+| Expression vector design: <kbd>?</kbd> | Show the shortcuts of the vector editor |
+
+On macOS, use <kbd>Cmd</kbd> in place of <kbd>Ctrl</kbd> for the library shortcuts.
 
 ## Troubleshooting
 

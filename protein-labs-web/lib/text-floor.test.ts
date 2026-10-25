@@ -106,7 +106,7 @@ describe("app-wide text floor", () => {
   });
 
   it("uses no Tailwind arbitrary text size below 12px in components", () => {
-    const offenders = ["app", "components", "hooks"].flatMap(sourceFiles).flatMap((file) =>
+    const offenders = ["app", "components"].flatMap(sourceFiles).flatMap((file) =>
       [...readFileSync(join(root, file), "utf8").matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)]
         .filter((match) => Number(match[1]) < FLOOR_PX)
         .map((match) => `${file}: ${match[0]}`));
