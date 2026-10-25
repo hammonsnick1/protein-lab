@@ -1,6 +1,6 @@
 // Subtractive cleanup and SEC polishing buffers: checks read the edited recipe, and saves load. Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import type { BufferStep } from "./purification-catalog.ts";
 import { cleanupBuffers, secBuffers } from "./purification-stage-catalog.ts";

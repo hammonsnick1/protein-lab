@@ -1,6 +1,6 @@
 // Tests for the cloning preview. Run with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { dedupeSites, junctionSegments, previewInsert } from "./vector-cloning.ts";
 

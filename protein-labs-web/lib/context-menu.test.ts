@@ -1,6 +1,6 @@
 // Roadmap step-menu placement (HOM-79). Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { dismissesMenu, MENU_MARGIN, menuAnchor, placeMenu } from "./context-menu.ts";
 

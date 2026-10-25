@@ -1,6 +1,6 @@
 // The Cell lysis buffer suggestion and how it follows the capture column. Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { findLibraryComponent } from "./buffer-component-library.ts";
 import { bufferPresets } from "./purification-catalog.ts";

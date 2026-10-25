@@ -2,7 +2,7 @@
 // referenced evidence and other jobs read the saved config keys, so both are
 // pinned here.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 import {
   allHosts, compatibleVectorFamilies, expressionHosts, expressionReferences, expressionVectors, familyMetrics, findHost,
   hostCategories, hostFamilies, hostMetrics, hostReferences, hostSavedConfig, hostSystems, isMeter, matchesHostSearch,
