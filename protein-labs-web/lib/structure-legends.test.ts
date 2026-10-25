@@ -1,6 +1,6 @@
 // The viewer's colour legends against Mol*'s own themes. Run with `npm run test`.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { Color } from "molstar/lib/mol-util/color/color.js";
 import { SecondaryStructureColors } from "molstar/lib/mol-theme/color/secondary-structure.js";
