@@ -69,6 +69,9 @@ def test_detects_bands_and_quantifies_lane_fraction():
     assert result["quantification"]["backgroundMethod"] == "rolling_ball"
     assert result["quantification"]["normalizationBasis"] == "fraction_of_detected_band_integrals"
     assert result["ladderCalibration"]["status"] == "ladder_masses_required"
+    assert {band["densityUnit"] for band in result["bands"]} == {
+        "8_bit_polarity_corrected_intensity_px"
+    }
 
 
 def test_can_propose_lanes_automatically():
@@ -131,6 +134,7 @@ def test_refuses_quantification_for_saturated_band():
     refused = [band for band in sample_bands if band["quantificationRefused"]]
     assert len(refused) == 1
     assert refused[0]["density"] is None
+    assert refused[0]["densityUnit"] == "8_bit_polarity_corrected_intensity_px"
     assert "saturated" in refused[0]["saturationReason"]
     assert all(band["density"] > 0 for band in sample_bands if band not in refused)
     for band in sample_bands:
@@ -170,6 +174,7 @@ def test_fixture_mass_ratios_within_tolerance():
     expected = [value / total_signal for value in signals]
     for band, target, mass in zip(sample_bands, expected, signals):
         assert band["density"] == pytest.approx(mass, rel=0.02)
+        assert band["densityUnit"] == "8_bit_polarity_corrected_intensity_px"
         assert band["laneFraction"] == pytest.approx(target, abs=0.002)
         assert band["laneFractionUncertainty"] is not None
         assert band["laneFractionUncertainty"] >= 0.0
