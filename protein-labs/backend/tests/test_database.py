@@ -242,6 +242,7 @@ def test_completed_blast_batch_imports_uniprot_hits(tmp_path):
             return {
                 "rid": rid,
                 "status": "complete",
+                "stageId": "done",
                 "results": [{
                     "uniprotAccession": "P02067",
                     "identity": 0.993,
@@ -261,6 +262,7 @@ def test_completed_blast_batch_imports_uniprot_hits(tmp_path):
     saved = service.database.get_bundle(protein_id)["uniprotMatches"]
 
     assert completed["status"] == "complete"
+    assert completed["stageId"] == "done"
     assert completed["results"][0]["uniprotAccession"] == "P02067"
     assert saved[0]["accession"] == "P02067"
     assert saved[0]["identity"] == 0.993

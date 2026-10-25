@@ -198,7 +198,10 @@ class NCBIBlastClient:
         return {
             "rid": rid,
             "status": "complete",
-            "stageId": "parsing",
+            # Parsing is synchronous in this client.  Once this response is
+            # returned, the results have already been normalized and are ready
+            # for the viewer, so expose the documented terminal state.
+            "stageId": "done",
             "results": (
                 parse_blast_xml2(result_response.text)
                 if "BlastXML2" in result_response.text
@@ -271,7 +274,8 @@ class NCBIBlastClient:
         return {
             "rid": rid,
             "status": "complete",
-            "stageId": "parsing",
+            # The EBI JSON is parsed before the poll response is returned.
+            "stageId": "done",
             "results": parse_ebi_blast_json(raw),
         }
 
