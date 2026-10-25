@@ -1,7 +1,7 @@
 // Tests for the purified-protein library helpers (HOM-159).
 // Run with `npm run test` in protein-labs-web (Node's built-in runner).
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import {
   activeFilterCount,

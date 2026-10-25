@@ -1,7 +1,7 @@
 // The oligomeric state recorded in Protein properties (HOM-193). Run with
 // `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import type { ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
 import { assemblyValue, oligomericLabel, oligomericStateConfig, oligomericStateProblem, oligomericStateSave, oligomericSummary, readOligomericState, recalculatedProtparamConfig, subunitCount, unknownState, type OligomericState } from "./oligomeric-state.ts";
