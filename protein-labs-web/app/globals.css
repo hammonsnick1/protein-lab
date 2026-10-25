@@ -6207,9 +6207,206 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   font-size: 12px;
   line-height: 1.55;
 }
+/* Overall verdict: one dial, one sentence, three counts. */
+.readiness-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent 55%),
+    var(--card);
+  padding: 16px 18px;
+  margin-bottom: 13px;
+}
+.readiness-score {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+.readiness-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 78px;
+  flex: none;
+}
+.readiness-ring svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.readiness-ring circle {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+.readiness-ring-track {
+  stroke: color-mix(in srgb, var(--foreground) 11%, transparent);
+}
+.readiness-ring-value {
+  stroke: #8b79d4;
+  transition: stroke-dasharray 420ms cubic-bezier(0.22, 1, 0.36, 1), stroke 220ms ease;
+}
+.readiness-ring-value.pass {
+  stroke: #36ad89;
+}
+.readiness-ring-value.attention {
+  stroke: #df9a36;
+}
+.readiness-ring-value.review {
+  stroke: #8b79d4;
+}
+.readiness-ring > b {
+  position: relative;
+  font-size: 21px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.readiness-ring > b i {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  margin-left: 1px;
+}
+.readiness-score-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.readiness-score-copy strong {
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  margin: 3px 0 2px;
+}
+.readiness-score-copy small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 560px;
+}
+.readiness-counts {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.readiness-counts li {
+  --count-tone: #8b79d4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 128px;
+  border: 1px solid color-mix(in srgb, var(--count-tone) 28%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--count-tone) 7%, var(--card));
+  padding: 9px 11px;
+}
+.readiness-counts li.pass {
+  --count-tone: #36ad89;
+}
+.readiness-counts li.attention {
+  --count-tone: #df9a36;
+}
+.readiness-counts li b {
+  font-size: 21px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin-top: 3px;
+}
+.readiness-counts li small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+/* Protein properties has not produced an extinction coefficient yet. */
+.readiness-properties-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 5%, var(--card));
+  padding: 13px 15px;
+  margin-bottom: 13px;
+}
+.readiness-properties-empty > svg {
+  width: 26px;
+  height: 26px;
+  color: var(--primary);
+  flex: none;
+}
+.readiness-properties-empty > span {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.readiness-properties-empty strong {
+  font-size: 13px;
+}
+.readiness-properties-empty small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.readiness-group {
+  margin-bottom: 12px;
+}
+.readiness-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px 7px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.readiness-group-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.readiness-group-title > svg {
+  width: 17px;
+  height: 17px;
+  color: var(--primary);
+  flex: none;
+}
+.readiness-group-title > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.readiness-group-title strong {
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.readiness-group-title small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.35;
+}
+/* auto-fill, not auto-fit: a section holding one card keeps the column width
+   of every other section instead of stretching across the findings area. The
+   min() keeps a single column from overflowing a narrow window. */
 .readiness-overview {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr));
+  align-items: start;
   gap: 8px;
 }
 .readiness-section-head {
@@ -6237,44 +6434,96 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   flex-wrap: wrap;
   gap: 6px;
 }
-.readiness-overview article {
+.readiness-card {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 4px;
   border: 1px solid var(--border);
   border-left: 4px solid currentColor;
   border-radius: 10px;
   background: var(--card);
   padding: 11px 13px;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
 }
-.readiness-overview article.pass {
+.readiness-card:hover {
+  border-color: color-mix(in srgb, currentColor 40%, var(--border));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--foreground) 7%, transparent);
+  transform: translateY(-1px);
+}
+.readiness-card:focus-within {
+  border-color: color-mix(in srgb, currentColor 55%, var(--border));
+}
+.readiness-card.pass {
   color: #36ad89;
 }
-.readiness-overview article.attention {
+.readiness-card.attention {
   color: #df9a36;
 }
-.readiness-overview article.review {
+.readiness-card.review {
   color: #8b79d4;
 }
-.readiness-overview article > header {
+.readiness-card > header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  width: 100%;
 }
-.readiness-overview article strong {
+.readiness-card strong {
   color: var(--foreground);
   font-size: 12px;
 }
-.readiness-overview article > b {
+.readiness-card > b {
   color: var(--foreground);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-.readiness-overview article small {
+.readiness-card-detail {
   font-size: 12px;
   line-height: 1.45;
   color: var(--muted-foreground);
+  margin: 0;
+}
+.readiness-card-detail.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.readiness-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: color-mix(in srgb, currentColor 72%, var(--foreground));
+  padding: 2px 4px;
+  margin-left: -4px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+.readiness-disclosure:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.readiness-disclosure:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.readiness-disclosure svg {
+  width: 13px;
+  height: 13px;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.readiness-disclosure[aria-expanded="true"] svg {
+  transform: rotate(180deg);
 }
 .readiness-editor {
   display: grid;
@@ -6386,6 +6635,16 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   color: var(--muted-foreground);
   font-size: 12px;
 }
+@media (max-width: 1080px) {
+  .readiness-summary {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .readiness-counts li {
+    flex: 1;
+    min-width: 0;
+  }
+}
 @media (max-width: 900px) {
   .readiness-overview,
   .readiness-editor {
@@ -6393,6 +6652,19 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   }
   .readiness-answer-grid {
     grid-template-columns: 1fr;
+  }
+  .readiness-properties-empty {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .readiness-ring-value,
+  .readiness-card,
+  .readiness-disclosure svg {
+    transition: none;
+  }
+  .readiness-card:hover {
+    transform: none;
   }
 }
 
