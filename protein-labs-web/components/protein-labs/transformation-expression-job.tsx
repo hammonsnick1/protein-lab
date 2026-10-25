@@ -44,6 +44,7 @@ export function TransformationExpressionJob({ bundle, onChanged }: { bundle: Pro
   const saved = bundle.projectJobs.find((job) => job.appType === "transformation-expression");
   const expression = bundle.projectJobs.find((job) => job.appType === "expression-system")?.config ?? {};
   const detectedSystem = normalizeSystem(expression.hostSystemId ?? expression.hostSystem);
+  const cellFreePlan = /cell-?\s?free|in vitro/i.test(String(expression.hostSystemId ?? expression.hostSystem ?? ""));
   const [system, setSystem] = useState<HostSystem>(() => normalizeSystem(saved?.config.hostSystemId ?? detectedSystem));
   const available = useMemo(() => mediaChoices.filter((value) => value.system === system), [system]);
   const [source, setSource] = useState(String(saved?.config.startingMaterial ?? "fresh"));
@@ -101,6 +102,10 @@ export function TransformationExpressionJob({ bundle, onChanged }: { bundle: Pro
       <h2>Transformation and Expression</h2>
       <p>Record how the production culture begins, select a host-appropriate medium, and preserve the experimental conditions that will matter later.</p>
       <div className="execution-host-context"><Sprout/><span><strong>{String(expression.strainName ?? systemLabels[detectedSystem])}</strong><small>{expression.strainName ? `${String(expression.hostSystem ?? systemLabels[detectedSystem])} · loaded from the expression plan` : "No saved host was found; choose the system used at the bench."}</small></span></div>
+      {/* The media catalogue only covers cultured hosts. A cell-free plan has
+          no transformation or culture step, so say that instead of silently
+          offering E. coli media. */}
+      {cellFreePlan && <div className="inline-message"><CircleAlert/> The saved expression system is cell-free, so there is no transformation or culture step. Record the reaction setup — extract, template, energy mix and incubation — in the notes below; the media list does not apply.</div>}
     </section>
 
     <section className="execution-panel">
