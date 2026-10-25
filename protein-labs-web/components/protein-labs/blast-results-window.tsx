@@ -27,7 +27,7 @@ export function BlastResultsWindow({ open, onOpenChange, tab, onTabChange, focus
     <DialogContent className="blast-window">
       <DialogHeader className="blast-window-header">
         <DialogTitle>BLAST results · {proteinName}</DialogTitle>
-        <DialogDescription>{hits.length} hit{hits.length === 1 ? "" : "s"} · {runLabel} · query {query.length} aa</DialogDescription>
+        <DialogDescription>{[`${hits.length} hit${hits.length === 1 ? "" : "s"}`, `query ${query.length} aa`, runLabel].filter(Boolean).join(" · ")}</DialogDescription>
       </DialogHeader>
       <Tabs value={tab} onValueChange={(value) => onTabChange(value as BlastWindowTab)} className="blast-window-tabs">
         <TabsList>

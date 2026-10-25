@@ -158,7 +158,7 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
       <ResultSection icon={Atom} title="PDB structures and conditions" count={pdb.length}>{pdb.length > 0 && <p className="pdb-metrics-legend"><strong>Identity</strong> — identical residues. <strong>Similarity</strong> — identical or chemically similar (BLOSUM62). Both are measured over the aligned region; <strong>coverage</strong> is how much of your sequence that region spans.</p>}{pdb.length ? pdb.map((record, index) => <PdbCard key={`${String(record.pdbId)}-${index}`} record={record}/>) : <Empty text="No matching PDB structures have been saved yet."/>}</ResultSection>
     </section>
 
-    <BlastResultsWindow open={windowState.open} onOpenChange={(open) => setWindowState((state) => ({ ...state, open }))} tab={windowState.tab} onTabChange={(tab) => setWindowState((state) => ({ ...state, tab }))} focusHitId={windowState.focus} hits={hits} query={blastQuery} proteinName={bundle.protein.name || "Protein"} runLabel={shownJob ? runLabel(shownJob) : ""}/>
+    <BlastResultsWindow open={windowState.open} onOpenChange={(open) => setWindowState((state) => ({ ...state, open }))} tab={windowState.tab} onTabChange={(tab) => setWindowState((state) => ({ ...state, tab }))} focusHitId={windowState.focus} hits={hits} query={blastQuery} proteinName={bundle.protein.name || "Protein"} runLabel={shownJob ? `RID ${String(shownJob.rid ?? "")} · ${when(shownJob.submittedAt)}` : ""}/>
   </div>;
 }
 
