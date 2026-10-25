@@ -447,7 +447,6 @@ class RCSBClient:
             },
             service="RCSB PDB accession search",
             timeout=10,
-            retry_attempts=2,
         )
         identifiers = [
             str(result.get("identifier") or "").upper()

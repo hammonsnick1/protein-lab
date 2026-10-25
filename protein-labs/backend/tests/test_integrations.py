@@ -433,3 +433,19 @@ def test_http_client_does_not_retry_job_submission_post_by_default():
         assert False, "submission timeout should be returned without a retry"
     assert attempts == [("POST", "https://example.test/jobs")]
 
+
+def test_rcsb_accession_search_post_does_not_retry_on_timeout():
+    attempts = []
+
+    def transport(method, url, *, data, headers):
+        attempts.append((method, url))
+        raise TimeoutError("simulated timeout")
+
+    try:
+        RCSBClient(HttpClient(transport=transport)).entry_ids_for_accession("P69905")
+    except RemoteServiceError as error:
+        assert error.service == "RCSB PDB accession search"
+    else:  # pragma: no cover - assertion guard
+        assert False, "accession-search timeout should be returned without a retry"
+    assert len(attempts) == 1 and attempts[0][0] == "POST"
+
