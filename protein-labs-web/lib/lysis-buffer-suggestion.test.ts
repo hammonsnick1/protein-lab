@@ -39,6 +39,13 @@ describe("lysisHost", () => {
     assert.equal(lysisHost("mammalian"), "mammalian");
     assert.equal(lysisHost(undefined), "");
   });
+  it("keeps a cell-free plan out of the E. coli family", () => {
+    assert.equal(lysisHost("cellfree"), "cellfree");
+    assert.equal(lysisHost("Cell-free"), "cellfree");
+    const suggestion = suggestLysisBuffer({ ...his, host: "cellfree" });
+    assert.ok(!names({ ...his, host: "cellfree" }).includes("Lysozyme"));
+    assert.match(suggestion.reasons.find(reason => reason.component === "Lysozyme")?.text ?? "", /no cells/);
+  });
 });
 
 describe("suggestLysisBuffer", () => {
