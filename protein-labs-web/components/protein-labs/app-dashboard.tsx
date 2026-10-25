@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowRight, CalendarDays, ChevronLeft, ChevronRight,
   Clock3, ExternalLink, FlaskConical, FolderKanban, GitBranch, Pencil, Plus,
-  Database, FileText, Search, Send, Sparkles, Trash2, UserPlus, Users, X,
+  Disc3, FileText, FolderCog, FolderSearch, HardDrive, Library, Send, Sparkles, TestTubes, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,6 +14,8 @@ import type { ProteinBundle, ProteinRecord } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import type { ProjectTree } from "@/lib/project-tree-types";
 import { projectTreeStats } from "@/lib/project-trees";
+import { LIBRARY_TILE, libraryCount, summarizePlaces, type LibraryStorage, type LibraryTab } from "@/lib/library-hub";
+import { librarySearchParams, type FacetCounts } from "@/lib/protein-library";
 
 const mascots = [
   { id: "bacteria", emoji: "🦠", label: "Bacterium", caption: "Fast growth, focused science" },
@@ -47,13 +49,15 @@ const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleCon
 const MASCOT_VISIBLE_KEY = "protein-labs-mascot-visible";
 const reportPages = ["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"];
 
-export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, onVectors, onCreate }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; onVectors: () => void; onCreate: () => void }) {
+export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, storage, onLibrary, onRevealStorage, onChangeStorage, onCreate }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; storage: LibraryStorage; onLibrary: (tab: LibraryTab) => void; onRevealStorage: () => void; onChangeStorage: () => void; onCreate: () => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
   // Which project list the bundles were loaded for, so a newer list reads as loading.
   const [bundlesLoad, setBundlesLoad] = useState<{ source: ProteinRecord[]; state: BundlesState } | null>(null);
   const [vectors, setVectors] = useState<LibraryVector[]>([]);
   const [vectorsState, setVectorsState] = useState<BundlesState>("loading");
+  const [stock, setStock] = useState<{ total: number; facets: FacetCounts } | null>(null);
+  const [stockState, setStockState] = useState<BundlesState>("loading");
   const [mascotId, setMascotId] = useState("bacteria");
   const [mascotVisible, setMascotVisible] = useState(false);
   const [picker, setPicker] = useState(false);
@@ -102,6 +106,10 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
     proteinLabsApi.vectorLibrary()
       .then((value) => { if (active) { setVectors(value.vectors as unknown as LibraryVector[]); setVectorsState("ready"); } })
       .catch(() => { if (active) setVectorsState("error"); });
+    // One row is enough: the total and the facets cover the whole protein library.
+    proteinLabsApi.searchProteinLibrary(librarySearchParams({ query: "", filters: {}, limit: 1 }))
+      .then((value) => { if (active) { setStock({ total: value.total, facets: value.facets as FacetCounts }); setStockState("ready"); } })
+      .catch(() => { if (active) setStockState("error"); });
     return () => { active = false; };
   }, []);
 
@@ -135,6 +143,11 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   const latestProjects = useMemo(() => [...proteins].sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? "")), [proteins]);
   const activeProject = roots.find((protein) => protein.id === activeProjectId);
   const vectorProjects = new Set(vectors.flatMap((vector) => vector.projects.map((use) => use.proteinId))).size;
+  const vectorCount = vectorsState === "ready" ? vectors.length : null;
+  const proteinCount = stockState === "ready" ? stock?.total ?? 0 : null;
+  const lowStock = stock?.facets.status?.find((option) => option.value === "low")?.count ?? 0;
+  const proteinPlaces = summarizePlaces(stock?.facets.location);
+  const librariesFailed = vectorsState === "error" && stockState === "error";
   const cells = useMemo(() => calendarCells(calendarMonth), [calendarMonth]);
   const selectedEvents = events.filter((event) => event.date === selectedDate).sort((a, b) => a.title.localeCompare(b.title));
 
@@ -310,13 +323,21 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </>}
         />
 
-        <FlipTile className="dashboard-vector-card" icon={Database} art="vectors" title="Vector library" subtitle="Standard and saved vectors"
-          backSubtitle={vectors.length ? `${vectors.length} vector${vectors.length === 1 ? "" : "s"} · used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : "Saved vectors appear here"}
-          actions={<Button variant="outline" size="sm" onClick={onVectors}>Open library <ArrowRight/></Button>}
-          front={vectorsState === "error"
-            ? <TileHeadline value="—" label="Vector library unavailable" detail="Start the local engine to read the catalogue"/>
-            : <TileHeadline value={vectorsState === "loading" ? "…" : vectors.length} label={`vector${vectors.length === 1 ? "" : "s"} in the library`} detail={vectors.length ? `Used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : vectorsState === "ready" ? "Name and save one in Expression vector design" : undefined}/>}
-          back={<VectorList vectors={vectors} failed={vectorsState === "error"} onOpenProject={onOpenProject} onOpenLibrary={onVectors}/>}
+        <FlipTile className="dashboard-vector-card" icon={Library} art="library" title={LIBRARY_TILE.title} subtitle={LIBRARY_TILE.subtitle}
+          backSubtitle={storage.folder ? "Both are saved in the project database" : "Saved in the project database"}
+          actions={<Button variant="outline" size="sm" onClick={() => onLibrary("vectors")}>Open library <ArrowRight/></Button>}
+          front={librariesFailed
+            ? <TileHeadline value="—" label="Libraries unavailable" detail="Start the local engine to read your vectors and proteins"/>
+            : <span className="library-tile-counts">
+              <TileHeadline value={vectorCount ?? "…"} label={vectorCount === 1 ? "vector" : "vectors"} detail={vectorsState === "error" ? "Unavailable" : vectorCount ? `Used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : vectorsState === "ready" ? "None saved yet" : undefined}/>
+              <TileHeadline value={proteinCount ?? "…"} label={proteinCount === 1 ? "protein" : "proteins"} detail={stockState === "error" ? "Unavailable" : lowStock ? `${lowStock} running low` : proteinCount ? "Purified batches" : stockState === "ready" ? "None saved yet" : undefined}/>
+            </span>}
+          back={<LibrarySummary
+            shelves={[
+              { tab: "vectors", icon: Disc3, count: vectorCount, failed: vectorsState === "error", detail: vectorCount ? `Used in ${vectorProjects} project${vectorProjects === 1 ? "" : "s"}` : "Name and save a vector in Expression vector design" },
+              { tab: "proteins", icon: TestTubes, count: proteinCount, failed: stockState === "error", detail: proteinCount ? [proteinPlaces && `Stored in ${proteinPlaces}`, lowStock && `${lowStock} running low`].filter(Boolean).join(" · ") || "Purified batches" : "Add a purified batch and where it is kept" },
+            ]}
+            storage={storage} onOpen={onLibrary} onReveal={onRevealStorage} onChange={onChangeStorage}/>}
         />
 
         <FlipTile className="dashboard-account-card" icon={Sparkles} art="alphafold" title="AlphaFold access" subtitle="Through your system browser"
@@ -457,34 +478,36 @@ type LibraryVector = {
 };
 
 /**
- * The standard vectors plus every vector saved anywhere in the workspace, with
- * the construct it carries and the projects using it. The full faceted search
- * lives on the vector library page this tile opens.
+ * The back of the library tile: a row per library with its count and an Open
+ * button for that tab, then the folder both libraries are saved in.
  */
-function VectorList({ vectors, failed, onOpenProject, onOpenLibrary }: { vectors: LibraryVector[]; failed: boolean; onOpenProject: (id: string) => void; onOpenLibrary: () => void }) {
-  const [search, setSearch] = useState("");
-  const needle = search.trim().toLowerCase();
-  const shown = needle
-    ? vectors.filter((vector) => [vector.name, vector.insertName, ...vector.projects.map((use) => use.proteinName)].join(" ").toLowerCase().includes(needle))
-    : vectors;
-  return <div className="vector-card-body">
-    {vectors.length > 3 && <label className="vector-card-search"><Search/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search vectors, inserts, or projects" aria-label="Search vectors"/></label>}
-    <div className="vector-card-list">
-      {shown.map((vector) => <article key={vector.id}>
-        <span>
-          <strong>{vector.name}</strong>
-          <small>{vector.lengthBp.toLocaleString()} bp · {vector.featureCount} annotations{vector.insertName ? ` · ${vector.insertName}` : ""}</small>
-          <small className="vector-card-uses">{vector.projectCount} project{vector.projectCount === 1 ? "" : "s"}{vector.projects.length ? `: ${vector.projects.map((use) => use.proteinName).join(", ")}` : ""}</small>
-        </span>
-        {vector.projects[0] ? <Button size="sm" variant="outline" onClick={() => onOpenProject(vector.projects[0].proteinId)}>Open <ArrowRight/></Button> : <Button size="sm" variant="ghost" onClick={onOpenLibrary}>Preview <ArrowRight/></Button>}
-      </article>)}
-      {!shown.length && <div className="vector-card-empty">
-        <Database/>
-        <span>
-          <strong>{failed ? "The vector library is unavailable" : vectors.length ? "No vector matched that search" : "No vectors saved yet"}</strong>
-          <small>{failed ? "Start the local engine to read the catalogue." : "Name and save a vector in Expression vector design and it is catalogued here, with the construct inserted into it."}</small>
-        </span>
-      </div>}
+function LibrarySummary({ shelves, storage, onOpen, onReveal, onChange }: {
+  shelves: { tab: LibraryTab; icon: typeof Disc3; count: number | null; failed: boolean; detail: string }[];
+  storage: LibraryStorage;
+  onOpen: (tab: LibraryTab) => void;
+  onReveal: () => void;
+  onChange: () => void;
+}) {
+  return <div className="library-card-body">
+    {shelves.map(({ tab, icon: Icon, count, failed, detail }) => <article key={tab} className="library-card-shelf">
+      <Icon/>
+      <span>
+        <strong>{failed ? `${tab === "vectors" ? "Vector" : "Protein"} library unavailable` : libraryCount(tab, count)}</strong>
+        <small>{failed ? "Start the local engine to read it." : detail}</small>
+      </span>
+      <Button size="sm" variant="outline" onClick={() => onOpen(tab)} aria-label={`Open the ${tab} tab`}>Open <ArrowRight/></Button>
+    </article>)}
+    <div className={`library-card-storage ${storage.missing ? "warning" : ""}`}>
+      <HardDrive/>
+      <span>
+        <small>{storage.missing ? `${storage.missing} was not found; saving in the default folder` : storage.folder ? "Library folder" : "Saved in the project database once the engine connects"}</small>
+        {/* Long paths wrap at their separators rather than mid-name. */}
+        {storage.folder && <strong title={storage.database}>{storage.folder.split(/(?<=[/\\])/).map((part, index) => <Fragment key={index}>{part}<wbr/></Fragment>)}</strong>}
+      </span>
+      {(storage.canReveal || storage.canChange) && <span className="library-card-storage-actions">
+        {storage.canReveal && <Button size="sm" variant="outline" onClick={onReveal}><FolderSearch/> Open folder</Button>}
+        {storage.canChange && <Button size="sm" variant="ghost" onClick={onChange}><FolderCog/> Change location…</Button>}
+      </span>}
     </div>
   </div>;
 }

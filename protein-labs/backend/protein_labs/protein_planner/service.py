@@ -136,6 +136,8 @@ class ProteinPlanner:
             {
                 "database": submission["database"],
                 "hitlistSize": submission["hitlistSize"],
+                "querySequence": protein["sequence"],
+                "stageId": "submitted",
                 "purpose": "uniprot" if purpose == "uniprot" else "blast",
                 "provider": submission.get("provider", "ncbi-url-api"),
             },
@@ -163,6 +165,7 @@ class ProteinPlanner:
             polled["status"],
             polled.get("results"),
             polled.get("error"),
+            stage_id=polled.get("stageId"),
         )
         enrichment_errors: list[dict[str, str]] = []
         if polled["status"] == "complete" and fetch_uniprot:

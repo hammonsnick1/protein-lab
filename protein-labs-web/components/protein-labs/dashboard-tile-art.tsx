@@ -8,7 +8,7 @@
  * tile size, and they are decorative, so screen readers skip them.
  */
 
-export type TileArtKind = "projects" | "trees" | "job" | "reports" | "team" | "timeline" | "vectors" | "alphafold";
+export type TileArtKind = "projects" | "trees" | "job" | "reports" | "team" | "timeline" | "library" | "alphafold";
 
 export function TileArt({ kind }: { kind: TileArtKind }) {
   return <span className={`tile-art tile-art-${kind}`} aria-hidden="true">
@@ -121,19 +121,18 @@ function figure(kind: TileArtKind) {
         <circle cx="96" cy="92" r="15" className="art-sun"/>
         <path d="M96 83v9l6 4" className="art-ink-line"/>
       </>;
-    case "vectors":
-      // A shelf of books and a plasmid ring with its genes and direction.
+    case "library":
+      // A plasmid ring with its genes and direction beside a folded protein:
+      // the two libraries the tile opens.
       return <>
-        {shadow(48)}
-        <rect x="14" y="40" width="14" height="62" rx="2" className="art-sky"/>
-        <rect x="30" y="28" width="15" height="74" rx="2" className="art-coral"/>
-        <rect x="47" y="44" width="12" height="58" rx="2" className="art-sun"/>
-        <path d="M14 50h14M14 92h14M30 38h15M30 92h15M47 52h12M47 94h12" className="art-thin"/>
-        <circle cx="84" cy="76" r="20" className="art-ring-outline"/>
-        <circle cx="84" cy="76" r="20" className="art-ring"/>
-        <path d="M84 56a20 20 0 0 1 17.3 10" className="art-gene-coral"/>
-        <path d="M94.8 69.8l13-7.5-2 11.5Z" className="art-coral art-thin"/>
-        <path d="M95.5 92.4A20 20 0 0 1 66.7 86" className="art-gene-leaf"/>
+        {shadow(50)}
+        <circle cx="38" cy="70" r="22" className="art-ring-outline"/>
+        <circle cx="38" cy="70" r="22" className="art-ring"/>
+        <path d="M38 48a22 22 0 0 1 19 11" className="art-gene-sky"/>
+        <path d="M50.5 52.5l14-6.5-3.5 12Z" className="art-sky art-thin"/>
+        <path d="M38 92a22 22 0 0 1-19-11" className="art-gene-leaf"/>
+        <path d="M66 82c5-24 12-24 10 0s9 24 10 0 10-24 10 0c-1 10 5 16 12 12" className="art-ribbon-outline"/>
+        <path d="M66 82c5-24 12-24 10 0s9 24 10 0 10-24 10 0c-1 10 5 16 12 12" className="art-ribbon"/>
         <path d="M8 104h104" className="art-outline"/>
       </>;
     case "alphafold":
