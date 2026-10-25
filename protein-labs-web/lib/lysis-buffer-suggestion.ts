@@ -36,6 +36,7 @@ export function captureChemistry(columnId?:string,tag?:string):CaptureChemistry{
   return"other";
 }
 
+export const lysisHostLabels:Record<Exclude<LysisHost,"">,string>={bacteria:"E. coli",yeast:"yeast",insect:"insect cells",mammalian:"mammalian cells"};
 /** Normalizes the saved expression-system host into the four families. */
 export function lysisHost(value:unknown):LysisHost{const raw=String(value??"").toLowerCase();if(!raw)return"";if(raw.includes("yeast")||raw.includes("pichia")||raw.includes("cerevisiae"))return"yeast";if(raw.includes("insect")||raw.includes("sf9")||raw.includes("baculo"))return"insect";if(raw.includes("mamm")||raw.includes("hek")||raw.includes("cho"))return"mammalian";return"bacteria"}
 
