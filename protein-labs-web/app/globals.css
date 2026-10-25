@@ -6925,6 +6925,11 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .confidence-legend .very-low {
   background: #ff7d45;
 }
+/* Swatch colours come from lib/structure-legends.ts, which is checked against Mol*'s themes. */
+.confidence-legend .legend-entries { display: flex; flex-wrap: wrap; gap: 2px 10px; min-width: 0; }
+.confidence-legend .legend-entries > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.confidence-legend .legend-swatch { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--comic-ink) 35%, transparent); }
+.confidence-legend .hydrophobicity-scale { width: 56px; height: 8px; margin: 0 4px; border-radius: 4px; }
 .confidence-legend small {
   margin-left: auto;
   color: #a4b9bd;
@@ -9102,6 +9107,50 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .structure-facts dt { color: var(--muted-foreground); }
 .structure-facts dd { margin: 0; overflow-wrap: anywhere; }
 .structure-side .inline-message { margin-top: 10px; }
+.structure-facts a { display: inline-flex; align-items: center; gap: 4px; color: var(--foreground); text-decoration: underline; text-underline-offset: 2px; }
+.structure-facts a svg { width: 12px; height: 12px; }
+.structure-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 340px;
+  margin: 0 0 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.structure-choice-group { display: flex; flex-direction: column; gap: 4px; }
+.structure-choice-heading { color: var(--muted-foreground); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.structure-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.structure-choice:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.structure-choice:focus-visible { border-color: var(--ring); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent); }
+.structure-choice.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--background)); }
+.structure-choice-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.structure-choice-line small { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
+.structure-choice-metrics { color: var(--foreground); font-size: 12px; }
+.structure-choice-title { overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.structure-research-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0 0 12px; }
+.structure-id-form { margin: 0 0 12px; }
+.structure-id-form .lab-field { margin-bottom: 0; }
+.structure-id-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.structure-id-row input { height: 36px; padding: 0 10px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 13px; letter-spacing: .04em; }
+.structure-id-row input::placeholder { font-family: var(--font-sans, inherit); letter-spacing: 0; }
+.structure-id-row .btn, .structure-id-row button { height: 36px; }
+.structure-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .region-picker { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: center; }
 .region-picker select {
   min-width: 0;
@@ -13634,7 +13683,12 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .molstar-viewer .structure-representation select { border-color: var(--input); background: var(--background); color: var(--foreground); }
 .molstar-viewer .molecular-options { top: 66px; }
 .molstar-viewer .molecular-options button.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, var(--card)); }
-.molstar-viewer .structure-badge { top: auto; bottom: 54px; }
+/* Badge sits on top of the legend bar however many lines the legend wraps to. */
+.molstar-footer { position: absolute; left: 14px; right: 14px; bottom: 11px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
+.molstar-footer > * { pointer-events: auto; }
+.molstar-footer .structure-badge,
+.molstar-footer .confidence-legend { position: static; }
+.molstar-footer .confidence-legend { align-self: stretch; }
 
 /* Top-bar menu notes and the Help > User manual view (HOM-147). */
 .desktop-menu-note .menu-path { display: block; color: var(--foreground); font: 12px/1.45 var(--font-mono); overflow-wrap: break-word; }
