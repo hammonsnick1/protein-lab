@@ -8,7 +8,7 @@ from io import StringIO
 import json
 import re
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
