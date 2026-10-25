@@ -1,7 +1,7 @@
 // Residue reference data for the composition detail window (HOM-213). Run
 // with `npm run test` in protein-labs-web.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it } from "vitest";
 
 import { aminoAcid, aminoAcids, preferredStructure, residueFamily, sideChainClassOrder, waterMassDa } from "./amino-acids.ts";
 
