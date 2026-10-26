@@ -27,10 +27,10 @@ provenance it came from:
 
 | Source | What it provides |
 | --- | --- |
-| SnapGene plasmid files | Curated commercial backbones with complete feature annotation. One file is fetched per explicit selection, as the plasmid page's download button does. |
+| Curated commercial backbones with complete feature annotation. One file is fetched per explicit selection, as the plasmid page's download button does. |
 | NCBI Nucleotide | Open GenBank records, searched by vector name or accession. |
 | Addgene vector database | Backbone sequences without features, annotated locally after download. |
-| Your own files | `.gb`, `.gbk`, `.genbank`, `.fasta` and SnapGene `.dna` files. |
+| Your own files | `.gb`, `.gbk`, `.genbank`, `.fasta`|
 
 The **Clone** tab lists the places the loaded backbone can take an insert —
 annotated cloning sites, fusion junctions after a tag or cleavage site, and
