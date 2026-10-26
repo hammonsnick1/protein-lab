@@ -27,7 +27,6 @@ provenance it came from:
 
 | Source | What it provides |
 | --- | --- |
-| Curated commercial backbones with complete feature annotation. One file is fetched per explicit selection, as the plasmid page's download button does. |
 | NCBI Nucleotide | Open GenBank records, searched by vector name or accession. |
 | Addgene vector database | Backbone sequences without features, annotated locally after download. |
 | Your own files | `.gb`, `.gbk`, `.genbank`, `.fasta`|
