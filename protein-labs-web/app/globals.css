@@ -13271,7 +13271,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 @media print {
   @page { size: A4; margin: 0; }
   body { background: #fff; }
-  .topbar, .reports-sidebar, .report-sheet-tools, .reports-page-tools, .global-working, .global-error { display: none !important; }
+  .topbar, .reports-sidebar, .report-sheet-tools, .reports-page-tools, .report-figure-remove, .global-working, .global-error { display: none !important; }
   .reports-workspace { display: block; padding: 0; }
   .reports-pages { gap: 0; }
   .report-sheet {
