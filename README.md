@@ -1,6 +1,6 @@
 # Protein Lab
 
-Warning, project is in beta testing. There may be incorrect information or inaccessable features.
+Warning, project is in beta testing. There may be incorrect information or features that are not accessible. Disclaimer: Claude and Codex AI wrote most of the code.
 
 Protein Lab is a desktop workspace for protein expression and
 purification. Use it to plan a protein construct to purify, design an expression vector, plan a
