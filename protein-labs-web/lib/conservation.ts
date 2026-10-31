@@ -219,6 +219,40 @@ export function stripRows<T>(residues: T[], perRow: number): T[][] {
   return rows;
 }
 
+/** Half the width a three-or-four digit position label needs, in pixels. */
+export const TICK_HALF = 13;
+
+/** How many residues apart ruler labels must be so they never touch. */
+export function tickStride(columnWidth: number, minimumGap = TICK_HALF * 2 + 8) {
+  if (!Number.isFinite(columnWidth) || columnWidth <= 0) return 10;
+  let stride = 10;
+  while (stride * columnWidth < minimumGap && stride < 1000) stride += 10;
+  return stride;
+}
+
+/** Which positions get a ruler label: every `stride`, plus each row's first
+ *  residue when there is room for it before the row's first stride tick. */
+export function rulerPositions(
+  rows: { position: number }[][],
+  stride: number,
+  columnWidth: number,
+  minimumGap = TICK_HALF * 2 + 8,
+) {
+  const labelled = new Set<number>();
+  for (const row of rows) {
+    if (!row.length) continue;
+    const first = row[0].position;
+    const next = row.find((residue) => residue.position % stride === 0 && residue.position > first);
+    if (!next || (next.position - first) * columnWidth >= minimumGap) labelled.add(first);
+    for (const residue of row) if (residue.position % stride === 0) labelled.add(residue.position);
+  }
+  return labelled;
+}
+
+export function clamp(value: number, low: number, high: number) {
+  return Math.min(Math.max(value, low), Math.max(low, high));
+}
+
 /** The newest run that actually has grades, else the newest run of any kind. */
 export function preferredJob<T extends { status: string; residueCount: number }>(jobs: T[]): T | undefined {
   return jobs.find((job) => job.status === "complete" && job.residueCount > 0) ?? jobs[0];

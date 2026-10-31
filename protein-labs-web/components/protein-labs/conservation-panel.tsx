@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import type { ConservationJob, ConservationJobSummary, ConservationResidue } from "@/lib/conservation";
 import {
+  TICK_HALF,
+  clamp,
   conservedStretches,
   describeSource,
   formatCoverage,
@@ -13,9 +15,11 @@ import {
   gradeInk,
   gradeLabel,
   gradeLegend,
+  rulerPositions,
   stripColumnWidth,
   stripRows,
   summarizeConservation,
+  tickStride,
 } from "@/lib/conservation";
 
 const ROW_HEIGHT = 38;
@@ -166,6 +170,10 @@ function GradeStrip({ residues, selectedPosition, onSelectPosition }: {
   const rows = useMemo(() => stripRows(residues, perRow), [residues, perRow]);
   const showLetters = columnWidth >= LETTER_MIN_WIDTH;
   const height = rows.length * (ROW_HEIGHT + LABEL_HEIGHT + ROW_GAP);
+  const tickPositions = useMemo(
+    () => rulerPositions(rows, tickStride(columnWidth), columnWidth),
+    [rows, columnWidth],
+  );
 
   const move = useCallback((delta: number) => {
     const current = residues.findIndex((residue) => residue.position === selectedPosition);
@@ -219,7 +227,14 @@ function GradeStrip({ residues, selectedPosition, onSelectPosition }: {
               <rect
                 x={x} y={top + ROW_HEIGHT - barHeight} width={Math.max(0.8, columnWidth - 0.6)} height={barHeight}
                 fill={residue.insufficientData ? "#8a7400" : gradeInk(residue.grade)}
-                opacity={residue.insufficientData ? 0.55 : 0.26}
+                opacity={residue.insufficientData ? 0.5 : 0.24}
+              />
+              {/* The skyline contour. Without it the grade would only be in
+                  the fill, which grades 3-7 cannot carry in greyscale. */}
+              <rect
+                x={x} y={top + ROW_HEIGHT - barHeight} width={Math.max(0.8, columnWidth - 0.6)} height={1.6}
+                fill={residue.insufficientData ? "#6b5a00" : gradeInk(residue.grade)}
+                opacity={0.85}
               />
               {isSelected && <rect
                 className="conservation-selection"
@@ -232,12 +247,15 @@ function GradeStrip({ residues, selectedPosition, onSelectPosition }: {
               >{residue.residue}</text>}
             </g>;
           })}
-          {row.map((residue, columnIndex) => (residue.position % 10 === 0 || columnIndex === 0) && <text
+          {/* The ruler. The stride widens as columns get thinner so labels
+              never collide, and each label is clamped inside the drawing so a
+              long position number is not cut off at either edge. */}
+          {row.map((residue, columnIndex) => tickPositions.has(residue.position) && <text
             key={`tick-${residue.position}`}
             className="conservation-tick"
-            x={columnIndex * columnWidth + columnWidth / 2}
+            x={clamp(columnIndex * columnWidth + columnWidth / 2, TICK_HALF, width - TICK_HALF)}
             y={top + ROW_HEIGHT + LABEL_HEIGHT - 3}
-            textAnchor={columnIndex === 0 ? "start" : "middle"}
+            textAnchor="middle"
           >{residue.position}</text>)}
         </g>;
       })}

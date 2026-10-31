@@ -7523,7 +7523,8 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .conservation-detail {
   display: grid;
-  grid-template-columns: 62px 1fr auto;
+  /* 80px is what "confidence" needs at the 12px floor without hyphenating. */
+  grid-template-columns: 80px minmax(0, 1fr) auto;
   gap: 11px;
   align-items: start;
   margin: 12px 14px 14px;
@@ -7542,7 +7543,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   text-align: center;
 }
 .conservation-detail-grade b { font: 700 21px/1 var(--font-mono); }
-.conservation-detail-grade small { font-size: 12px; line-height: 1.2; }
+/* The label wraps between words rather than pushing the tile wider: "low
+   confidence" would otherwise overflow the column at narrow window widths. */
+.conservation-detail-grade small { font-size: 12px; line-height: 1.2; overflow-wrap: break-word; }
 .conservation-detail > div { min-width: 0; }
 .conservation-detail strong { display: block; font: 700 14px var(--font-mono); }
 .conservation-detail dl {
@@ -7571,8 +7574,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .conservation-prepared { padding: 12px 14px 14px; display: grid; gap: 11px; }
 .conservation-lead { margin: 0; font-size: 13px; line-height: 1.5; }
-.conservation-files, .conservation-steps { margin: 0; display: grid; gap: 7px; }
-.conservation-files { padding: 0; list-style: none; }
+.conservation-files { margin: 0; display: grid; gap: 7px; padding: 0; list-style: none; }
 .conservation-files li {
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -7584,7 +7586,17 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .conservation-files b { font-size: 12px; }
 .conservation-files code { font: 12px var(--font-mono); overflow-wrap: anywhere; }
 .conservation-files small { font-size: 12px; color: var(--muted-foreground); }
-.conservation-steps { padding-left: 20px; font-size: 12px; line-height: 1.55; }
+/* Block, not grid: a grid list drops its markers, and the step numbers are
+   the point of this list. */
+.conservation-steps {
+  margin: 0;
+  padding-left: 22px;
+  list-style: decimal;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.conservation-steps li { margin-bottom: 6px; padding-left: 2px; }
+.conservation-steps li::marker { color: var(--muted-foreground); font-weight: 700; }
 .conservation-server-link {
   display: inline-flex;
   align-items: center;
@@ -7651,7 +7663,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 @media (max-width: 1100px) {
   .conservation-import { grid-template-columns: minmax(0, 1fr); }
-  .conservation-detail { grid-template-columns: 54px 1fr auto; }
+  .conservation-detail { grid-template-columns: 80px minmax(0, 1fr) auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .conservation-cell:hover rect:first-of-type { filter: none; }

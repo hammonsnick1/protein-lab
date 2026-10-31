@@ -12,9 +12,13 @@ import {
   gradeLabel,
   gradeLegend,
   preferredJob,
+  rulerPositions,
   stripColumnWidth,
   stripRows,
   summarizeConservation,
+  tickStride,
+  TICK_HALF,
+  clamp,
 } from "./conservation.ts";
 
 function residue(position: number, grade: number, overrides: Partial<ConservationResidue> = {}): ConservationResidue {
@@ -235,5 +239,45 @@ describe("run selection and labels", () => {
     assert.equal(formatCoverage(0.8421), "84.2%");
     assert.equal(formatCoverage(null), "—");
     assert.equal(formatCoverage(undefined), "—");
+  });
+});
+
+describe("ruler spacing", () => {
+  it("widens the stride as columns get thinner so labels cannot collide", () => {
+    // Wide columns: every tenth residue is far enough apart.
+    assert.equal(tickStride(16), 10);
+    // A 420-residue protein at ~3px per column needs a wider stride.
+    assert.equal(tickStride(3.1), 20);
+    assert.equal(tickStride(1), 40);
+  });
+
+  it("never divides by a zero or missing column width", () => {
+    assert.equal(tickStride(0), 10);
+    assert.equal(tickStride(Number.NaN), 10);
+  });
+
+  it("labels every stride and the first residue of each row", () => {
+    const rows = [
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((position) => ({ position })),
+      [13, 14, 15, 16, 17, 18, 19, 20, 21, 22].map((position) => ({ position })),
+    ];
+    assert.deepEqual([...rulerPositions(rows, 10, 16)].sort((a, b) => a - b), [1, 10, 13, 20]);
+  });
+
+  it("drops a row's first label when the next tick is too close in pixels", () => {
+    // 271 sits nine thin columns before the tick at 280, which is less than a
+    // label's width, so only the tick survives.
+    const rows = [[271, 272, 273, 274, 275, 276, 277, 278, 279, 280].map((position) => ({ position }))];
+    assert.deepEqual([...rulerPositions(rows, 20, 3.1)], [280]);
+    // The same row with wide columns has room for both.
+    assert.deepEqual([...rulerPositions(rows, 20, 16)].sort((a, b) => a - b), [271, 280]);
+  });
+
+  it("clamps a label inside the drawing at either edge", () => {
+    assert.equal(clamp(-5, TICK_HALF, 800), TICK_HALF);
+    assert.equal(clamp(900, TICK_HALF, 800), 800);
+    assert.equal(clamp(400, TICK_HALF, 800), 400);
+    // A drawing narrower than two labels still returns a usable number.
+    assert.equal(clamp(5, TICK_HALF, 4), TICK_HALF);
   });
 });
