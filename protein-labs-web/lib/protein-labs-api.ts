@@ -5,6 +5,7 @@ import type { ProjectDiff, ProjectTree } from "@/lib/project-tree-types";
 declare const __PROTEIN_LABS_API__: string | undefined;
 
 import type { RegionsResponse, StructureDetail, StructureListResponse, StructureSource } from "./structure-regions.ts";
+import type { ConservationJob, ConservationJobSummary } from "./conservation.ts";
 
 // An empty bundled value is meaningful: it means same-origin requests, so the
 // chain tests for a defined string rather than a truthy one.
@@ -47,6 +48,9 @@ export type ProteinBundle = {
   uniprotMatches: JsonObject[];
   pdbMatches: JsonObject[];
   alphaFoldModels: JsonObject[];
+  // Summaries only — the per-residue grade profile is fetched per run. Older
+  // engine builds predate the field, so treat it as possibly absent.
+  conservationJobs?: ConservationJobSummary[];
   projectJobs: ProjectJob[];
   projectNotebook: { title: string; summary: string; sections: JsonObject[]; updatedAt: string } | null;
 };
@@ -139,6 +143,17 @@ export const proteinLabsApi = {
   listStructures: (proteinId: string, limit = 10) => request<StructureListResponse>(`/v1/protein-planner/proteins/${proteinId}/structures?limit=${limit}`),
   getStructure: (proteinId: string, source: StructureSource, structureId: string) => request<StructureDetail>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}`),
   getStructureRegions: (proteinId: string, source: StructureSource, structureId: string) => request<RegionsResponse>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}/regions`),
+  // ConSurf conservation. ConSurf has no job-submission API, so a new run is
+  // prepared here, finished by the user in their browser and imported back;
+  // ConSurf-DB lookups are answered straight away. See
+  // protein-labs/backend/CONSERVATION_API.md.
+  prepareConsurfJob: (proteinId: string) => post<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/consurf-job`),
+  lookupConsurfDb: (proteinId: string, pdbId = "", chain = "") => post<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/consurf-db`, { pdbId, chain }),
+  importConsurf: (proteinId: string, gradesPath: string, msaPath = "", jobId = "") => post<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/import`, { gradesPath, msaPath, jobId }),
+  listConservation: (proteinId: string) => request<{ proteinId: string; jobs: ConservationJobSummary[]; colors: Record<string, string> }>(`/v1/protein-planner/proteins/${proteinId}/conservation`),
+  getConservation: (proteinId: string, jobId: string) => request<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/${encodeURIComponent(jobId)}`),
+  getConservationMsa: (proteinId: string, jobId: string) => request<{ fasta: string; available: boolean; sequenceCount: number; alignmentLength: number; queryId: string; ids: string[] }>(`/v1/protein-planner/proteins/${proteinId}/conservation/${encodeURIComponent(jobId)}/msa`),
+  deleteConservation: (proteinId: string, jobId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/conservation/${encodeURIComponent(jobId)}`, { method: "DELETE" }),
   createJob: (proteinId: string, name: string, appType: string, config: JsonObject = {}) => post<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs`, { name, appType, config }),
   updateJob: (proteinId: string, jobId: string, name: string, status: ProjectJob["status"], config: JsonObject) => patch<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { name, status, config }),
   deleteJob: (proteinId: string, jobId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { method: "DELETE" }),

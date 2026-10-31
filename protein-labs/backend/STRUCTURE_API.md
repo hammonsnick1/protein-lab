@@ -148,3 +148,13 @@ omitted. Region `type` values are:
 
 The surface group uses a documented fast Cα-neighbour exposure proxy, not a
 solvent-accessible surface-area calculation.
+
+## Conservation
+
+Per-residue ConSurf conservation grades live under
+`/v1/protein-planner/proteins/{proteinId}/conservation` and are documented in
+[CONSERVATION_API.md](CONSERVATION_API.md). Residue identity there is the
+author residue number plus chain (`pdbResidueNumber`, `pdbChain`), the same
+pair this contract uses, so a viewer can colour a structure by conservation
+without going back through sequence positions. Residues with
+`modelled: false` have a grade but no coordinates and must be skipped.
