@@ -805,10 +805,14 @@ class ProteinPlanner:
                 "Sequence job before preparing a ConSurf submission."
             )
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", protein["name"]).strip("._-")
-        safe_name = safe_name[:80] or f"protein_{protein_id[:8]}"
+        safe_name = safe_name[:80] or "protein"
+        # The project id is part of the file name: two projects may share a
+        # name, and without it the second submission would silently overwrite
+        # the first, sending the wrong sequence to ConSurf.
+        file_stem = f"{safe_name}_{protein_id[:8]}"
         directory = self.database.path.parent / "consurf_submissions"
         directory.mkdir(parents=True, exist_ok=True)
-        fasta_path = directory / f"{safe_name}_consurf.fasta"
+        fasta_path = directory / f"{file_stem}_consurf.fasta"
         wrapped = "\n".join(sequence[index:index + 60] for index in range(0, len(sequence), 60))
         fasta_path.write_text(f">{safe_name}\n{wrapped}\n", encoding="utf-8")
 
@@ -818,7 +822,7 @@ class ProteinPlanner:
             "label": "Query sequence (FASTA)",
             "bytes": fasta_path.stat().st_size,
         }]
-        structure = self._consurf_structure_file(protein_id, directory, safe_name)
+        structure = self._consurf_structure_file(protein_id, directory, file_stem)
         if structure is not None:
             files.append(structure)
 
@@ -840,7 +844,7 @@ class ProteinPlanner:
         return self.database.get_conservation_job(protein_id, job_id)
 
     def _consurf_structure_file(
-        self, protein_id: str, directory: Path, safe_name: str
+        self, protein_id: str, directory: Path, file_stem: str
     ) -> dict[str, Any] | None:
         """Write the best local model out for ConSurf, when the project has one."""
         models = self.database.get_bundle(protein_id)["alphaFoldModels"]
@@ -855,7 +859,7 @@ class ProteinPlanner:
         if not text.strip():
             return None
         suffix = "pdb" if str(stored.get("format") or "cif") == "pdb" else "cif"
-        path = directory / f"{safe_name}_consurf_model.{suffix}"
+        path = directory / f"{file_stem}_consurf_model.{suffix}"
         path.write_text(text, encoding="utf-8")
         geometry = parse_structure_geometry(text, suffix)
         chains = [str(chain) for chain in (geometry.get("chains") or []) if str(chain)]

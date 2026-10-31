@@ -483,3 +483,93 @@ def test_consurf_db_lookup_without_a_client_is_a_configuration_error(planner, pr
     with pytest.raises(RuntimeError) as error:
         planner.lookup_consurf_db(protein, "1UBQ", "A")
     assert "not configured" in str(error.value)
+
+
+# ----------------------------------------------------------------------
+# Column reading: flags vs a variety that looks like one
+# ----------------------------------------------------------------------
+HEADER = "POS\tSEQ\t    ATOM\t SCORE\tCOLOR\tCONFIDENCE INTERVAL\tB/E\tF/S\tMSA DATA\tRESIDUE VARIETY\n"
+
+
+def row(burial: str = "", function: str = "", msa: str = "", variety: str = "M") -> str:
+    return (
+        HEADER
+        + f"  1\t  M\t MET:1:A\t-0.500\t   6 \t-0.700, -0.300  7,6"
+        + f"\t{burial or '   '}\t{function or '   '}\t{msa or '    '}\t{variety}\n"
+    )
+
+
+def first(text: str):
+    return parse_consurf_grades(text)["residues"][0]
+
+
+def test_a_variety_beginning_with_a_flag_letter_is_not_read_as_the_flag():
+    # Every optional column before the variety is blank, so a scan of the
+    # flattened text would charge this variety's leading E to burialState and
+    # hand back a truncated ",D".
+    parsed = first(row(variety="E,D"))
+    assert parsed["burialState"] == ""
+    assert parsed["functionalState"] == ""
+    assert parsed["residueVariety"] == "E,D"
+    assert [item["residue"] for item in parsed["varietyResidues"]] == ["E", "D"]
+
+
+def test_a_lone_single_letter_variety_is_the_variety_not_a_flag():
+    parsed = first(row(variety="B"))
+    assert parsed["burialState"] == ""
+    assert parsed["residueVariety"] == "B"
+
+
+@pytest.mark.parametrize("variety", ["E,D", "B,A", "F,Y", "S,T"])
+def test_no_variety_residue_is_ever_swallowed_by_a_blank_flag_column(variety):
+    parsed = first(row(variety=variety))
+    assert parsed["residueVariety"] == variety
+
+
+def test_real_flag_columns_are_still_read_when_they_are_filled():
+    parsed = first(row(burial="  b", function="  f", msa=" 159/300", variety="M 88%"))
+    assert (parsed["burialState"], parsed["functionalState"]) == ("b", "f")
+    assert parsed["msaData"] == "159/300"
+    assert parsed["residueVariety"] == "M 88%"
+
+
+def test_a_flag_is_still_read_when_the_msa_column_is_blank():
+    parsed = first(row(burial="  b", variety="F,Y"))
+    assert parsed["burialState"] == "b"
+    assert parsed["residueVariety"] == "F,Y"
+
+
+def test_the_msa_column_anchors_the_variety_even_when_the_flags_are_blank():
+    parsed = first(row(msa=" 200/300", variety="E,D"))
+    assert parsed["msaData"] == "200/300"
+    assert parsed["burialState"] == ""
+    assert parsed["residueVariety"] == "E,D"
+
+
+# ----------------------------------------------------------------------
+# Prepared submission file names
+# ----------------------------------------------------------------------
+def fasta_sequence(path: Path) -> str:
+    """The residues of a FASTA file, with its header and line wrapping removed."""
+    body = path.read_text().split("\n", 1)[1]
+    return "".join(body.split())
+
+
+def test_two_projects_with_the_same_name_get_separate_submission_files(planner):
+    first_id = planner.create_protein({"name": "Ubiquitin", "sequence": UBIQUITIN})["protein"]["id"]
+    second_id = planner.create_protein({"name": "Ubiquitin", "sequence": UBIQUITIN[:40]})["protein"]["id"]
+    first_path = Path(planner.prepare_consurf_job(first_id)["metadata"]["files"][0]["path"])
+    second_path = Path(planner.prepare_consurf_job(second_id)["metadata"]["files"][0]["path"])
+
+    assert first_path != second_path
+    # Neither submission may be overwritten by the other: a silently swapped
+    # FASTA would send the wrong sequence to ConSurf.
+    assert fasta_sequence(first_path) == UBIQUITIN
+    assert fasta_sequence(second_path) == UBIQUITIN[:40]
+
+
+def test_a_project_with_no_usable_name_still_gets_a_distinct_file(planner):
+    blank = planner.database.create_protein({"name": "!!!"}, UBIQUITIN)["id"]
+    path = Path(planner.prepare_consurf_job(blank)["metadata"]["files"][0]["path"])
+    assert path.is_file()
+    assert blank[:8] in path.name

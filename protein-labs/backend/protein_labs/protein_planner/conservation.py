@@ -67,11 +67,7 @@ _INTERVAL = re.compile(
     r"^\s*(?P<low>[-+]?\d+(?:\.\d+)?)\s*,\s*(?P<high>[-+]?\d+(?:\.\d+)?)"
     r"(?:\s*,?\s*(?P<low_grade>\d+)\s*,\s*(?P<high_grade>\d+))?"
 )
-# Burial, function, MSA fraction, then whatever variety text remains.
-_TAIL = re.compile(
-    r"^\s*(?:(?P<burial>[beBE])\b\s*)?(?:(?P<function>[fsFS])\b\s*)?"
-    r"(?:(?P<aligned>\d+)\s*/\s*(?P<total>\d+))?\s*(?P<variety>.*)$"
-)
+_MSA_FRACTION = re.compile(r"^(?P<aligned>\d+)\s*/\s*(?P<total>\d+)$")
 _LAYER = re.compile(
     r"from\s+([-+]?\d+(?:\.\d+)?)\s+to\s+([-+]?\d+(?:\.\d+)?)\s+the\s+grade\s+is\s+(\d+)",
     re.IGNORECASE,
@@ -198,16 +194,7 @@ def _parse_row(line: str) -> dict[str, Any] | None:
             low_grade = int(interval.group("low_grade"))
             high_grade = int(interval.group("high_grade"))
         rest = rest[interval.end():]
-    tail = _TAIL.match(rest)
-    burial = function = ""
-    aligned = total = None
-    variety_text = ""
-    if tail is not None:
-        burial = (tail.group("burial") or "").lower()
-        function = (tail.group("function") or "").lower()
-        if tail.group("aligned"):
-            aligned, total = int(tail.group("aligned")), int(tail.group("total"))
-        variety_text = tail.group("variety").strip().rstrip("*").strip()
+    burial, function, aligned, total, variety_text = _parse_tail(rest)
 
     atom = match.group("atom").strip()
     pdb_residue_number, pdb_chain, atom_residue = _atom_label(atom)
@@ -235,6 +222,49 @@ def _parse_row(line: str) -> dict[str, Any] | None:
         "pdbChain": pdb_chain,
         "modelled": bool(pdb_residue_number),
     }
+
+
+def _parse_tail(rest: str) -> tuple[str, str, int | None, int | None, str]:
+    """Read the burial, function, MSA and variety columns that follow the interval.
+
+    These are tab-delimited columns, so they are read as columns rather than
+    scanned out of the flattened text. Scanning cannot tell the burial flag of
+    a row whose `B/E` column is blank from a residue variety that happens to
+    begin with `E` or `B`: both look like a leading `e`. Reading the columns
+    keeps a variety such as `E,D` whole instead of charging its first residue
+    to `burialState`.
+    """
+    fields = [field.strip() for field in rest.split("\t")]
+    fields = [field for field in fields if field]
+    if not fields:
+        return "", "", None, None, ""
+
+    msa_index = next(
+        (index for index, field in enumerate(fields) if _MSA_FRACTION.match(field)),
+        None,
+    )
+    if msa_index is None:
+        # No MSA column. The variety is always the last column, so only the
+        # fields before it can be flags; a single remaining field is the
+        # variety, never a flag.
+        head, variety_fields = fields[:-1], fields[-1:]
+        aligned = total = None
+    else:
+        head = fields[:msa_index]
+        variety_fields = fields[msa_index + 1:]
+        fraction = _MSA_FRACTION.match(fields[msa_index])
+        assert fraction is not None
+        aligned, total = int(fraction.group("aligned")), int(fraction.group("total"))
+
+    burial = function = ""
+    for field in head:
+        letter = field.lower()
+        if not burial and letter in {"b", "e"}:
+            burial = letter
+        elif not function and letter in {"f", "s"}:
+            function = letter
+    variety_text = ", ".join(variety_fields).strip().rstrip("*").strip()
+    return burial, function, aligned, total, variety_text
 
 
 def _atom_label(atom: str) -> tuple[str, str, str]:
