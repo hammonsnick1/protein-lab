@@ -573,3 +573,69 @@ def test_a_project_with_no_usable_name_still_gets_a_distinct_file(planner):
     path = Path(planner.prepare_consurf_job(blank)["metadata"]["files"][0]["path"])
     assert path.is_file()
     assert blank[:8] in path.name
+
+
+# ----------------------------------------------------------------------
+# Column reading when tabs have become spaces
+# ----------------------------------------------------------------------
+# ConSurf writes tabs, but a tab survives an editor that expands it, or a
+# table copied out of the web page, only as whitespace. Reading these rows as
+# tab-delimited columns alone dropped the flags and the MSA fraction into the
+# variety, which is the silent-data failure this parser exists to prevent.
+SPACED_FILLED = (
+    "  1   E   GLU:1:A  -0.500   6   -0.700, -0.300  7,6   e   f   33/40  E,D"
+)
+SPACED_NO_FLAGS = (
+    "  1   E   GLU:1:A  -0.500   6   -0.700, -0.300  7,6   33/40  E,D"
+)
+
+
+def test_space_delimited_row_keeps_its_flags_msa_and_variety():
+    parsed = first(HEADER + SPACED_FILLED + "\n")
+    assert parsed["burialState"] == "e"
+    assert parsed["functionalState"] == "f"
+    assert parsed["msaData"] == "33/40"
+    assert parsed["residueVariety"] == "E,D"
+
+
+def test_space_delimited_row_without_flags_still_finds_the_msa_fraction():
+    parsed = first(HEADER + SPACED_NO_FLAGS + "\n")
+    assert parsed["msaData"] == "33/40"
+    assert parsed["residueVariety"] == "E,D"
+    assert parsed["burialState"] == ""
+
+
+def test_space_delimited_blank_flags_do_not_swallow_the_variety():
+    # No tabs and no MSA fraction, so the columns cannot be located by
+    # position. The leading `E` is still the variety, not a burial flag.
+    parsed = first(
+        HEADER + "  1   E   GLU:1:A  -0.500   6   -0.700, -0.300  7,6   E,D\n"
+    )
+    assert parsed["burialState"] == ""
+    assert parsed["residueVariety"] == "E,D"
+
+
+def test_space_delimited_flag_is_still_read_without_an_msa_fraction():
+    parsed = first(
+        HEADER + "  1   F   PHE:1:A  -0.500   6   -0.700, -0.300  7,6   b   F,Y\n"
+    )
+    assert parsed["burialState"] == "b"
+    assert parsed["residueVariety"] == "F,Y"
+
+
+def test_a_multi_word_variety_survives_without_tabs_or_an_msa_fraction():
+    parsed = first(
+        HEADER + "  1   M   MET:1:A  -0.500   6   -0.700, -0.300  7,6   M 88%, L 5%\n"
+    )
+    assert parsed["residueVariety"] == "M 88%, L 5%"
+    assert parsed["burialState"] == ""
+
+
+def test_the_variety_after_an_msa_fraction_keeps_its_own_spacing():
+    parsed = first(
+        HEADER
+        + "  1\t  M\t MET:1:A\t-1.527\t   9 \t-1.736, -1.428  9,9"
+        + "\t  e\t  f\t 159/300\tM 88%, L  5%, V  3%\n"
+    )
+    assert parsed["residueVariety"] == "M 88%, L  5%, V  3%"
+    assert [item["residue"] for item in parsed["varietyResidues"]] == ["M", "L", "V"]
