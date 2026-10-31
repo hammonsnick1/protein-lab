@@ -9,13 +9,17 @@ import { EmptyLoci, type Loci } from "molstar/lib/mol-model/loci";
 import { Structure, StructureElement, StructureProperties, StructureSelection, Unit } from "molstar/lib/mol-model/structure";
 import type { StateObjectSelector } from "molstar/lib/mol-state";
 import type { PluginStateObject } from "molstar/lib/mol-plugin-state/objects";
+import { StateTransforms } from "molstar/lib/mol-plugin-state/transforms";
 import { PluginCommands } from "molstar/lib/mol-plugin/commands";
 import { PluginContext } from "molstar/lib/mol-plugin/context";
 import { DefaultPluginSpec, PluginSpec } from "molstar/lib/mol-plugin/spec";
 import type { Expression } from "molstar/lib/mol-script/language/expression";
 import { MolScriptBuilder as MS } from "molstar/lib/mol-script/language/builder";
 import { Script } from "molstar/lib/mol-script/script";
+import { Overpaint } from "molstar/lib/mol-theme/overpaint";
 import { Color } from "molstar/lib/mol-util/color";
+import type { ResidueColoring } from "@/lib/structure-coloring";
+import type { InterfaceAtom } from "@/lib/structure-interface";
 import type { LigandAddress, ResidueAddress } from "@/lib/structure-regions";
 
 export type StageRepresentation = "cartoon" | "surface" | "ball-and-stick";
@@ -28,6 +32,8 @@ export type StageLoad = { residues: StageResidue[]; hasConfidence: boolean };
 type StructureCell = StateObjectSelector<PluginStateObject.Molecule.Structure>;
 type ReprCell = StateObjectSelector<PluginStateObject.Molecule.Structure.Representation3D>;
 
+/** Camera animation length, or none when the user asks for reduced motion. */
+const motion = (ms: number) => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : ms;
 const hex = (value: string) => Color(parseInt(value.replace("#", ""), 16));
 const ONE_LETTER: Record<string, string> = { ALA: "A", ARG: "R", ASN: "N", ASP: "D", CYS: "C", GLN: "Q", GLU: "E", GLY: "G", HIS: "H", ILE: "I", LEU: "L", LYS: "K", MET: "M", PHE: "F", PRO: "P", SER: "S", THR: "T", TRP: "W", TYR: "Y", VAL: "V", MSE: "M", SEC: "U", PYL: "O" };
 
@@ -35,6 +41,12 @@ export class MolstarStage {
   private structure: StructureCell | null = null;
   private components: Partial<Record<"polymer" | "ligand" | "ion" | "water", StructureCell>> = {};
   private representations: ReprCell[] = [];
+  /** Representations of the polymer, which carry the colour layers. */
+  private polymerRepresentations: ReprCell[] = [];
+  private surface: ReprCell | null = null;
+  private surfaceAlpha = 1;
+  private coloring: ResidueColoring | null = null;
+  private coloringCells: string[] = [];
   private regionComponents: StructureCell[] = [];
   private subscriptions: { unsubscribe(): void }[] = [];
   // Style and region changes both edit the Mol* state tree; run them one at a time.
@@ -77,7 +89,7 @@ export class MolstarStage {
 
   private async applyLoad(text: string, label: string): Promise<StageLoad> {
     await this.plugin.clear();
-    this.components = {}; this.representations = []; this.regionComponents = [];
+    this.components = {}; this.representations = []; this.polymerRepresentations = []; this.surface = null; this.regionComponents = []; this.coloring = null; this.coloringCells = [];
     const builders = this.plugin.builders;
     const data = await builders.data.rawData({ data: text, label });
     const trajectory = await builders.structure.parseTrajectory(data, "mmcif");
@@ -97,11 +109,19 @@ export class MolstarStage {
     const update = this.plugin.build();
     for (const repr of this.representations) update.delete(repr.ref);
     await update.commit();
-    this.representations = [];
-    const add = (component: StructureCell | undefined, props: Record<string, unknown>) => component ? this.plugin.builders.structure.representation.addRepresentation(component, props as never).then((repr) => { this.representations.push(repr); }) : Promise.resolve();
+    this.representations = []; this.polymerRepresentations = []; this.surface = null; this.coloringCells = [];
+    const add = (component: StructureCell | undefined, props: Record<string, unknown>) => component ? this.plugin.builders.structure.representation.addRepresentation(component, props as never).then((repr) => { this.representations.push(repr); return repr; }) : Promise.resolve(null);
     const colorParams = style.color === "chain-id" ? { palette: { name: "colors", params: { list: { kind: "set", colors: chainColors.map(hex) } } } } : {};
-    const polymerType = style.representation === "surface" ? "molecular-surface" : style.representation;
-    await add(this.components.polymer, { type: polymerType, color: style.color, colorParams });
+    const polymer = { color: style.color, colorParams };
+    if (style.representation === "surface") {
+      // The cartoon shows through as the surface is made transparent.
+      const cartoon = await add(this.components.polymer, { type: "cartoon", ...polymer });
+      this.surface = await add(this.components.polymer, { type: "molecular-surface", ...polymer, typeParams: { alpha: this.surfaceAlpha } });
+      this.polymerRepresentations.push(...[cartoon, this.surface].filter((repr): repr is ReprCell => Boolean(repr)));
+    } else {
+      const repr = await add(this.components.polymer, { type: style.representation, ...polymer });
+      if (repr) this.polymerRepresentations.push(repr);
+    }
     if (style.showLigands) {
       await add(this.components.ligand, { type: "ball-and-stick", color: "element-symbol" });
       await add(this.components.ion, { type: "ball-and-stick", color: "element-symbol" });
@@ -109,6 +129,65 @@ export class MolstarStage {
     if (style.showWaters) await add(this.components.water, { type: "ball-and-stick", color: "element-symbol", typeParams: { alpha: 0.6 } });
     const trackball = this.plugin.canvas3d?.props.trackball;
     if (trackball) PluginCommands.Canvas3D.SetSettings(this.plugin, { settings: { trackball: { ...trackball, animate: style.spin ? { name: "spin", params: { speed: 0.25, axis: Vec3.create(0, -1, 0) } } : { name: "off", params: {} } } } });
+    await this.paintColoring();
+  }
+
+  /** Surface opacity, 0 (invisible) to 1 (opaque); changes the drawn surface in place, without rebuilding it. */
+  setSurfaceOpacity(alpha: number) { return this.serial(() => this.applySurfaceOpacity(alpha)); }
+
+  private async applySurfaceOpacity(alpha: number) {
+    this.surfaceAlpha = Math.min(1, Math.max(0, alpha));
+    if (!this.surface) return;
+    const update = this.plugin.build();
+    update.to(this.surface).update((old) => { (old.type.params as { alpha: number }).alpha = this.surfaceAlpha; });
+    await update.commit();
+  }
+
+  /** Paints per-residue colour layers over the polymer (null restores the colour theme underneath). */
+  setColoring(coloring: ResidueColoring | null) { return this.serial(() => { this.coloring = coloring; return this.paintColoring(); }); }
+
+  private async paintColoring() {
+    const update = this.plugin.build();
+    for (const ref of this.coloringCells) update.delete(ref);
+    this.coloringCells = [];
+    const root = this.structure?.data;
+    const polymer = this.components.polymer?.data;
+    if (this.coloring && root && polymer) {
+      const layers: Overpaint.Layer<StructureElement.Loci>[] = [];
+      if (this.coloring.base) layers.push({ loci: Structure.toStructureElementLoci(polymer), color: hex(this.coloring.base.color), clear: false });
+      for (const group of this.coloring.groups) {
+        const loci = group.residues.length ? this.loci(selectionExpression(group.residues, null)) : EmptyLoci;
+        if (StructureElement.Loci.is(loci) && !StructureElement.Loci.isEmpty(loci)) layers.push({ loci, color: hex(group.color), clear: false });
+      }
+      // Later layers win, so a group's colour sits on top of the base.
+      const bundle = Overpaint.toBundle(Overpaint.filter(Overpaint.merge(Overpaint("element-loci", layers)), polymer) as Overpaint<StructureElement.Loci>);
+      for (const repr of this.polymerRepresentations) {
+        const cell = update.to(repr).apply(StateTransforms.Representation.OverpaintStructureRepresentation3DFromBundle, bundle);
+        this.coloringCells.push(cell.ref);
+      }
+    }
+    await update.commit();
+  }
+
+  /** Heavy atoms of every protein chain, for interface detection. */
+  proteinHeavyAtoms(): InterfaceAtom[] {
+    const structure = this.structure?.data;
+    if (!structure) return [];
+    const atoms: InterfaceAtom[] = [];
+    const location = StructureElement.Location.create(structure);
+    for (const unit of structure.units) {
+      if (!Unit.isAtomic(unit)) continue;
+      location.unit = unit;
+      location.element = unit.elements[0];
+      if (StructureProperties.entity.type(location) !== "polymer" || !/peptide/i.test(StructureProperties.entity.subtype(location))) continue;
+      for (let index = 0; index < unit.elements.length; index++) {
+        location.element = unit.elements[index];
+        const element = StructureProperties.atom.type_symbol(location);
+        if (element === "H" || element === "D") continue;
+        atoms.push({ chain: StructureProperties.chain.label_asym_id(location), seq: StructureProperties.residue.label_seq_id(location), x: StructureProperties.atom.x(location), y: StructureProperties.atom.y(location), z: StructureProperties.atom.z(location) });
+      }
+    }
+    return atoms;
   }
 
   /** Highlights exactly the given residues (and ligand), shows their side chains, and focuses the camera. */
@@ -138,7 +217,7 @@ export class MolstarStage {
         await builders.representation.addRepresentation(component, { type: "ball-and-stick", color: "element-symbol", typeParams: { sizeFactor: 0.36 } } as never);
       }
     }
-    this.plugin.managers.camera.focusLoci(loci, { minRadius: 8, extraRadius: 4, durationMs: 450 });
+    this.plugin.managers.camera.focusLoci(loci, { minRadius: 8, extraRadius: 4, durationMs: motion(450) });
   }
 
   /** Transient hover highlight, e.g. from the sequence strip. */
@@ -147,11 +226,14 @@ export class MolstarStage {
     this.plugin.managers.interactivity.lociHighlights.highlightOnly({ loci });
   }
 
-  focusResidue(residue: ResidueAddress) {
-    if (!this.structure) return;
-    const loci = this.loci(selectionExpression([residue], null));
+  focusResidue(residue: ResidueAddress) { this.focusResidues([residue]); }
+
+  /** Selects the residues and turns the camera to them, without adding side chains. */
+  focusResidues(residues: ResidueAddress[]) {
+    if (!this.structure || !residues.length) return;
+    const loci = this.loci(selectionExpression(residues, null));
     this.plugin.managers.interactivity.lociSelects.selectOnly({ loci });
-    this.plugin.managers.camera.focusLoci(loci, { minRadius: 8, extraRadius: 4, durationMs: 350 });
+    this.plugin.managers.camera.focusLoci(loci, { minRadius: 8, extraRadius: 4, durationMs: motion(350) });
   }
 
   /** Residue under the pointer in 3D (null when off the protein). */
@@ -163,14 +245,14 @@ export class MolstarStage {
     this.subscriptions.push(this.plugin.behaviors.interaction.click.subscribe(({ current }) => listener(residueFromLoci(current.loci))));
   }
 
-  resetCamera() { PluginCommands.Camera.Reset(this.plugin, { durationMs: 350 }); }
+  resetCamera() { PluginCommands.Camera.Reset(this.plugin, { durationMs: motion(350) }); }
 
   zoom(factor: number) {
     const camera = this.plugin.canvas3d?.camera;
     if (!camera) return;
     const { position, target } = camera.getSnapshot();
     const offset = Vec3.scale(Vec3(), Vec3.sub(Vec3(), position, target), factor);
-    this.plugin.managers.camera.setSnapshot({ position: Vec3.add(Vec3(), target, offset) }, 160);
+    this.plugin.managers.camera.setSnapshot({ position: Vec3.add(Vec3(), target, offset) }, motion(160));
   }
 
   /** PNG of the current view on white at twice the on-screen size, cropped to the molecule. */

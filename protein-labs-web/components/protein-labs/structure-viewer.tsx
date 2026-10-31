@@ -11,12 +11,12 @@ type AtomPoint = { x: number; y: number; z: number; chain: string; plddt: number
 type Projected = AtomPoint & { px: number; py: number; depth: number; scale: number };
 type Representation = "ribbon" | "surface" | "atoms";
 type ColorMode = "theme" | "confidence";
-type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId; /** Fixes the colouring, ignoring the user's saved choice. */ colorMode?: ColorMode; /** Wraps the ribbon in a translucent molecular surface. */ envelope?: boolean; /** Residues to highlight and focus in the full (Mol*) viewer. */ region?: ViewerRegion | null; /** The model carries per-residue pLDDT. */ confidence?: boolean };
+type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId; /** Fixes the colouring, ignoring the user's saved choice. */ colorMode?: ColorMode; /** Wraps the ribbon in a translucent molecular surface. */ envelope?: boolean; /** Residues to highlight and focus in the full (Mol*) viewer. */ region?: ViewerRegion | null; /** Side panel to hold the full viewer's controls. */ controlsHost?: HTMLElement | null; /** The model carries per-residue pLDDT. */ confidence?: boolean };
 
 export function StructureViewer(props: StructureViewerProps) {
   const structureText = typeof props.geometry?.structureText === "string" ? props.geometry.structureText : "";
   // Full views of real coordinates use Mol*; compact cards and Cα-only traces keep the lightweight SVG trace.
-  if (!props.compact && structureText) return <MolstarViewer structureText={structureText} label={props.label ?? "Structure"} paletteKey={props.paletteKey} palette={props.palette} autoRotate={props.autoRotate} confidence={props.confidence ?? props.geometry?.source !== "pdb"} region={props.region}/>;
+  if (!props.compact && structureText) return <MolstarViewer structureText={structureText} label={props.label ?? "Structure"} paletteKey={props.paletteKey} palette={props.palette} autoRotate={props.autoRotate} confidence={props.confidence ?? props.geometry?.source !== "pdb"} region={props.region} controlsHost={props.controlsHost}/>;
   return <TraceStructureViewer {...props} />;
 }
 

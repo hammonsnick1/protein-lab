@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Atom, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Download, ExternalLink, LoaderCircle, RefreshCw, Search, Upload, X } from "lucide-react";
+import { CSSProperties, FormEvent, RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Atom, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Crosshair, Database, Download, ExternalLink, LoaderCircle, PanelRightClose, PanelRightOpen, RefreshCw, Search, SlidersHorizontal, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ensureProjectJob, proteinLabsApi, type JsonObject, type ProteinBundle } from "@/lib/protein-labs-api";
 import { readableMethod, regionSections, regionSelection, residueLabel, stepRegion, structureOptionLabel, type RegionsResponse, type StructureApiError, type StructureDetail, type StructureEntry, type StructureRegion } from "@/lib/structure-regions";
@@ -81,17 +81,49 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   const openResearch = onOpenJob ? () => onOpenJob("research") : undefined;
 
   const legacy = list.state === "error" && !choice;
-  return <div className="structure-layout">
+  const [panelOpen, setPanelOpen] = usePanelOpen();
+  const [controlsHost, setControlsHost] = useState<HTMLDivElement | null>(null);
+  const [workbench, fillHeight] = useFillHeight();
+  const viewerShown = !legacy && current.state === "ready" && Boolean(geometry && selected);
+  const sectionsInRail = [
+    { id: "structure-picker", label: "Structure", icon: Database },
+    ...(viewerShown ? [{ id: "structure-display", label: "Display", icon: SlidersHorizontal }] : []),
+    { id: "structure-regions", label: "Regions of interest", icon: Crosshair },
+    { id: "structure-alphafold", label: "AlphaFold model", icon: Atom },
+  ];
+  function openSection(id: string) {
+    setPanelOpen(true);
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start" }));
+  }
+  const panel = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    // Over the canvas (narrow windows) the panel closes like a drawer. A DOM listener, because the
+    // display controls are portalled in from the viewer and React would bubble their keys elsewhere.
+    const element = panel.current;
+    if (!element || !panelOpen) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || !matchMedia("(max-width: 1279px)").matches) return;
+      event.stopPropagation(); setPanelOpen(false); document.getElementById("structure-panel-toggle")?.focus();
+    };
+    element.addEventListener("keydown", onKey);
+    return () => element.removeEventListener("keydown", onKey);
+  }, [panelOpen, setPanelOpen]);
+  return <div ref={workbench} className={`structure-layout structure-workbench ${panelOpen ? "panel-open" : "panel-closed"}`} style={fillHeight ? { "--structure-fill-height": `${fillHeight}px` } as CSSProperties : undefined}>
     <section className="lab-panel structure-view">
       <div className="panel-heading"><div><h2>{facts ? structureOptionLabel(facts) : "Structure Viewer"}</h2><p>{legacy ? "Saved AlphaFold model. Experimental entries need the structure service of the local engine." : facts?.title || choice?.hit?.description || (selected?.source === "alphafold_db" ? "AlphaFold DB model of the reference UniProt entry" : "Choose an AlphaFold model or an experimental PDB entry")}</p></div></div>
       {legacy ? <LegacyPreview bundle={bundle}/> : <div className="molecule-stage">
         {current.state === "ready" && geometry && selected
-          ? <StructureViewer geometry={geometry} paletteKey={proteinId} label={selected.id} confidence={selected.source === "alphafold_db"} region={viewerRegion}/>
+          ? <StructureViewer geometry={geometry} paletteKey={proteinId} label={selected.id} confidence={selected.source === "alphafold_db"} region={viewerRegion} controlsHost={controlsHost}/>
           : <StageMessage list={list} detail={current} selected={selected} hasChoices={choices.length > 0} onRetry={() => setReload((value) => value + 1)} onOpenResearch={openResearch}/>}
       </div>}
     </section>
-    <div className="structure-side">
-      <section className="lab-panel structure-picker">
+    <aside ref={panel} className="structure-panel" aria-label="Structure tools">
+      <div className="structure-panel-rail" role="toolbar" aria-orientation="vertical" aria-label="Structure tool sections">
+        <button type="button" id="structure-panel-toggle" className="structure-rail-button toggle" aria-expanded={panelOpen} aria-controls="structure-panel-body" title={panelOpen ? "Hide the side panel" : "Show the side panel"} aria-label={panelOpen ? "Hide the side panel" : "Show the side panel"} onClick={() => setPanelOpen(!panelOpen)}>{panelOpen ? <PanelRightClose/> : <PanelRightOpen/>}</button>
+        {sectionsInRail.map(({ id, label, icon: Icon }) => <button key={id} type="button" className="structure-rail-button" title={label} aria-label={label} onClick={() => openSection(id)}><Icon/></button>)}
+      </div>
+    <div className="structure-side" id="structure-panel-body" hidden={!panelOpen}>
+      <section className="lab-panel structure-picker" id="structure-picker">
         <div className="panel-heading"><div><h2>Structure</h2><p>{choices.length ? `${choices.length} structure${choices.length === 1 ? "" : "s"} to compare${list.value?.accession ? ` · UniProt ${list.value.accession}` : ""}` : "AlphaFold model, Sequence research hits and PDB entries"}</p></div></div>
         {list.state === "loading" && <p className="structure-note"><LoaderCircle className="spin"/> Looking up AlphaFold and PDB entries…</p>}
         {list.state === "error" && <Notice error message={`Entries linked to the UniProt reference could not be listed: ${sentence(list.message)}${hits.length ? " Sequence research hits can still be loaded." : " The saved AlphaFold model is shown instead."}`}/>}
@@ -105,11 +137,43 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
         {(list.value?.errors ?? []).map((error, index) => <Notice key={index} error message={error.code === "reference_missing" ? "No UniProt reference match yet. PDB entries need one so residues and regions can be numbered: run “Find UniProt matches” in Sequence research." : `${error.source} is unavailable: ${error.message}${error.retryable ? " Try again later." : ""}`}/>)}
         {current.state === "ready" && (detail.value?.errors ?? []).map((error, index) => <Notice key={`d${index}`} error message={`${error.source} is unavailable: ${error.message}`}/>)}
       </section>
+      {viewerShown && <div ref={setControlsHost} className="structure-controls-slot"/>}
       <RegionsPanel state={legacy ? { state: "error", value: null, message: "the local engine has no structure service yet." } : regions} sections={sections} region={region} selection={selection} showAdditives={showAdditives} disabled={!selected || current.state !== "ready"}
         onChoose={setRegionId} onStep={step} onToggleAdditives={setShowAdditives}/>
       <AlphaFoldActions bundle={bundle} onChanged={onChanged}/>
     </div>
+    </aside>
   </div>;
+}
+
+/** Height that takes the workbench from where it starts to the bottom of the window (the job header wraps differently at each width). */
+function useFillHeight(): [RefObject<HTMLDivElement | null>, number | null] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setHeight(Math.floor(window.innerHeight - (element.getBoundingClientRect().top + window.scrollY) - 16));
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (element.parentElement?.previousElementSibling) observer.observe(element.parentElement.previousElementSibling);
+    window.addEventListener("resize", measure);
+    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
+  }, []);
+  return [ref, height];
+}
+
+/** Whether the side panel is open: remembered across visits; on first use, closed in narrow windows so the canvas stays clear. */
+function usePanelOpen(): [boolean, (open: boolean) => void] {
+  const storageKey = "protein-labs-structure-panel";
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    const saved = localStorage.getItem(storageKey);
+    const value = saved === "open" ? true : saved === "closed" ? false : !matchMedia("(max-width: 1279px)").matches;
+    queueMicrotask(() => setOpen(value));
+  }, []);
+  const choose = useCallback((next: boolean) => { setOpen(next); localStorage.setItem(storageKey, next ? "open" : "closed"); }, []);
+  return [open, choose];
 }
 
 /** PDB IDs the user typed in, remembered per protein so they survive leaving the job. */
@@ -203,7 +267,7 @@ function RegionsPanel({ state, sections, region, selection, showAdditives, disab
   const total = sections.reduce((sum, section) => sum + section.regions.length, 0);
   const position = region ? sections.flatMap((section) => section.regions).findIndex((item) => item.id === region.id) + 1 : 0;
   const hasAdditives = (state.value?.groups ?? []).some((item) => item.type === "ligand_binding_site" && ["water", "common_additive"].includes(String(item.metadata?.classification)));
-  return <section className="lab-panel structure-regions">
+  return <section className="lab-panel structure-regions" id="structure-regions">
     <div className="panel-heading"><div><h2>Regions of interest</h2><p>Highlights exactly the residues the engine maps onto this structure.</p></div></div>
     {state.state === "loading" && <p className="structure-note"><LoaderCircle className="spin"/> Mapping regions onto the structure…</p>}
     {state.state === "error" && <Notice error message={`Regions could not be computed: ${state.message}`}/>}
@@ -245,7 +309,7 @@ function AlphaFoldActions({ bundle, onChanged }: JobProps) {
   async function fetchModel() { setBusy(true); setMessage("Matching UniProt and retrieving AlphaFold DB coordinates…"); try { const value = await proteinLabsApi.alphaFoldDb(bundle.protein.id, accession); const latest = await proteinLabsApi.getProtein(bundle.protein.id); await ensureProjectJob(bundle.protein.id, latest.projectJobs, "alphafold", "AlphaFold structure", { modelId: value.modelId, source: "AlphaFold DB" }); await onChanged(); setMessage("AlphaFold model downloaded and saved locally."); } catch (reason) { setMessage(errorText(reason)); } finally { setBusy(false); } }
   async function prepare() { setBusy(true); try { const value = await proteinLabsApi.alphaFoldServer(bundle.protein.id); const latest = await proteinLabsApi.getProtein(bundle.protein.id); await ensureProjectJob(bundle.protein.id, latest.projectJobs, "alphafold", "AlphaFold Server submission", { source: "AlphaFold Server", ...value }, "in_progress"); await onChanged(); setMessage(`AlphaFold Server input prepared: ${text(value.submissionPath)}`); } catch (reason) { setMessage(errorText(reason)); } finally { setBusy(false); } }
   async function importResult() { if (!importPath.trim()) { setMessage("Enter the local path to an AlphaFold result (.cif, .pdb, or supported archive)."); return; } setBusy(true); try { const value = await proteinLabsApi.importAlphaFold(bundle.protein.id, importPath.trim()); const latest = await proteinLabsApi.getProtein(bundle.protein.id); await ensureProjectJob(bundle.protein.id, latest.projectJobs, "alphafold", "Imported AlphaFold structure", { modelId: value.modelId, source: "AlphaFold Server import", path: importPath, savedByUser: true }); await onChanged(); setMessage("AlphaFold result imported and saved locally."); } catch (reason) { setMessage(errorText(reason)); } finally { setBusy(false); } }
-  return <details className="lab-panel structure-alphafold" open={bundle.alphaFoldModels.length === 0}>
+  return <details className="lab-panel structure-alphafold" id="structure-alphafold" open={bundle.alphaFoldModels.length === 0}>
     <summary className="panel-heading"><div><h2>AlphaFold model</h2><p>{bundle.alphaFoldModels.length} model{bundle.alphaFoldModels.length === 1 ? "" : "s"} saved locally</p></div></summary>
     <label className="lab-field"><span>UniProt accession</span><input value={accession} onChange={(event) => setAccession(event.target.value.toUpperCase())} placeholder="Automatically inferred when blank"/></label>
     <Button className="wide" disabled={busy} onClick={() => void fetchModel()}>{busy ? <LoaderCircle className="spin"/> : <Download/>} Retrieve AlphaFold DB model</Button>
