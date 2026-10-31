@@ -325,6 +325,7 @@ export function fitRange(range: SeqRange, length: number): Viewport {
 
 const CHAR = 8.6;
 const GUTTER = 66;
+const SCROLLBAR = 16;
 
 type RowLayout = { start: number; end: number; top: number; height: number; cuts: CutSite[]; labels: StackedLabel[]; labelRows: number; bars: { feature: MapFeature; piece: SeqRange; track: number }[]; tracks: number };
 
@@ -340,7 +341,8 @@ export function SequenceView({ vector, selection, onSelect, showOrfs }: ViewProp
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(600);
   const [anchor, setAnchor] = useState<number | null>(null);
-  const perRow = Math.max(30, Math.floor((width - GUTTER - 24) / CHAR / 10) * 10);
+  // Leave room for the vertical scrollbar so a row never needs a horizontal one.
+  const perRow = Math.max(30, Math.floor((width - GUTTER - 24 - SCROLLBAR) / CHAR / 10) * 10);
   const features = useMemo(() => visibleFeatures(vector, showOrfs), [vector, showOrfs]);
   const complementStrand = useMemo(() => complement(vector.sequence), [vector.sequence]);
 
