@@ -15693,3 +15693,111 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 }
 .structure-workbench .structure-side,
 .structure-workbench .sequence-strip { scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent; }
+
+/* Organism of interest combobox (Protein sequence job). */
+.organism-input { position: relative; display: flex; flex-direction: column; }
+.organism-input > svg {
+  position: absolute;
+  left: 11px;
+  top: 12px;
+  width: 15px;
+  height: 15px;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.lab-field .organism-input input { padding-left: 33px; font-weight: 500; }
+.organism-popup {
+  position: absolute;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--popover, var(--card));
+  color: var(--popover-foreground, var(--foreground));
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.18);
+  font-weight: 400;
+}
+.organism-popup.above { top: auto; bottom: calc(100% + 4px); }
+.organism-popup ul {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent;
+}
+.organism-popup ul:empty { display: none; }
+.organism-popup [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.organism-popup [role="option"].highlighted {
+  background: color-mix(in srgb, var(--primary) 12%, var(--popover, var(--card)));
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.organism-popup [role="option"] > span { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.organism-popup [role="option"] strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organism-popup [role="option"] small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.organism-popup [role="option"] em {
+  flex: none;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.organism-status {
+  flex: none;
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+.organism-popup ul:empty + .organism-status { border-top: 0; }
+.organism-status svg { flex: none; width: 14px; height: 14px; margin-top: 1px; }
+.organism-status.offline { background: color-mix(in srgb, var(--muted) 60%, var(--popover, var(--card)));
+  color: var(--foreground); }
+.organism-status.error { color: var(--destructive); }
+.organism-link {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.organism-link svg { flex: none; width: 14px; height: 14px; }
+.organism-link.linked { color: var(--foreground); }
+.organism-link.linked svg { color: var(--primary); }
+@media (prefers-reduced-motion: reduce) {
+  .organism-status .spin { animation: none; }
+}

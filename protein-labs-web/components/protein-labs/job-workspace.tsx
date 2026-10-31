@@ -18,6 +18,7 @@ import { ReferenceMatchJob } from "@/components/protein-labs/reference-match-job
 import { StructureJob } from "@/components/protein-labs/structure-viewer-job";
 import { TransformationExpressionJob } from "@/components/protein-labs/transformation-expression-job";
 import { ExpressionJob } from "@/components/protein-labs/expression-system-job";
+import { OrganismCombobox } from "@/components/protein-labs/organism-combobox";
 import { buildSkipConfig, definitionFor, jobsFor, type WorkflowJobDefinition } from "@/lib/workflow";
 import { canSkipJob, jobNeighbours } from "@/lib/job-navigation";
 import { aminoAcid, residueFamily, sideChainClassLabels } from "@/lib/amino-acids";
@@ -169,6 +170,7 @@ function SequenceJob({ bundle, onChanged }: JobProps) {
   const [name, setName] = useState(protein.name);
   const [sequence, setSequence] = useState(protein.sequence);
   const [organism, setOrganism] = useState(protein.organism ?? "");
+  const [organismTaxonId, setOrganismTaxonId] = useState<number | null>(protein.organismTaxonId ?? null);
   const [geneName, setGeneName] = useState(protein.geneName ?? "");
   const [description, setDescription] = useState(protein.description ?? "");
   const [notes, setNotes] = useState(protein.notes ?? "");
@@ -178,14 +180,14 @@ function SequenceJob({ bundle, onChanged }: JobProps) {
     if (!normalized) { setFailed(true); setMessage("Enter an amino-acid sequence first."); return; }
     setBusy(true); setMessage("");
     try {
-      await proteinLabsApi.updateProtein(protein.id, { name: name.trim() || "Untitled protein", sequence: normalized, organism, geneName, description, notes });
+      await proteinLabsApi.updateProtein(protein.id, { name: name.trim() || "Untitled protein", sequence: normalized, organism, organismTaxonId, geneName, description, notes });
       const refreshed = await proteinLabsApi.getProtein(protein.id);
       await ensureProjectJob(protein.id, refreshed.projectJobs, "protein-planner", "Protein sequence", { sequenceLength: normalized.length, savedByUser: true });
       await onChanged(); setFailed(false); setMessage("Sequence saved and protein properties recalculated locally.");
     } catch (reason) { setFailed(true); setMessage(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }
   }
-  return <div className="two-column"><Panel title="Primary sequence" hint="Spaces and line breaks are ignored."><Field label="Construct name"><input value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Amino acid sequence"><textarea className="sequence-editor" value={sequence} onChange={(event) => setSequence(event.target.value.toUpperCase().replace(/[^A-Z\n\r ]/g, ""))} /></Field><div className="sequence-footer"><span>{sequence.replace(/\s/g, "").length} amino acids</span><Button disabled={busy} onClick={() => void save()}>{busy ? <LoaderCircle className="spin" /> : <Check />} Save sequence</Button></div><Notice message={message} error={failed} /></Panel><Panel title="Construct metadata" hint="Saved with the protein and used by later jobs."><Field label="Organism"><input value={organism} onChange={(event) => setOrganism(event.target.value)} placeholder="e.g. Pseudomonas aeruginosa" /></Field><Field label="Gene"><input value={geneName} onChange={(event) => setGeneName(event.target.value)} placeholder="e.g. PA0012" /></Field><Field label="Description"><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></Field><Field label="Notes"><textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field></Panel></div>;
+  return <div className="two-column"><Panel title="Primary sequence" hint="Spaces and line breaks are ignored."><Field label="Construct name"><input value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Amino acid sequence"><textarea className="sequence-editor" value={sequence} onChange={(event) => setSequence(event.target.value.toUpperCase().replace(/[^A-Z\n\r ]/g, ""))} /></Field><div className="sequence-footer"><span>{sequence.replace(/\s/g, "").length} amino acids</span><Button disabled={busy} onClick={() => void save()}>{busy ? <LoaderCircle className="spin" /> : <Check />} Save sequence</Button></div><Notice message={message} error={failed} /></Panel><Panel title="Construct metadata" hint="Saved with the protein and used by later jobs."><OrganismCombobox value={organism} taxonId={organismTaxonId} onChange={(text, taxon) => { setOrganism(text); setOrganismTaxonId(taxon); }}/><Field label="Gene"><input value={geneName} onChange={(event) => setGeneName(event.target.value)} placeholder="e.g. PA0012" /></Field><Field label="Description"><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></Field><Field label="Notes"><textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field></Panel></div>;
 }
 
 function PropertiesJob({ bundle, onChanged }: JobProps) {
