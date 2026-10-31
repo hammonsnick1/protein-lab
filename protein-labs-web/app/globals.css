@@ -13470,7 +13470,10 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .report-notes textarea:focus { outline: none; border-color: #9aa1a6; background: #fff; }
 .report-properties { display: grid; grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr); gap: 24px; align-items: start; }
 .report-structure { display: flex; flex-direction: column; gap: 7px; }
+/* The structure picture is absolutely positioned; the frame must contain it,
+   or it escapes to the window and covers the report. */
 .report-structure-frame {
+  position: relative;
   aspect-ratio: 1;
   max-height: 260px;
   border: 1px solid #e3e5e7;
