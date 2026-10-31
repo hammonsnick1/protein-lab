@@ -8,6 +8,9 @@ import { readableMethod, regionSections, regionSelection, residueLabel, stepRegi
 import { CHOICE_GROUPS, choiceKey, mappedChainIds, nextChoiceKey, normalizePdbId, percentText, researchHits, structureChoices, type ResearchHit, type StructureChoice } from "@/lib/structure-hits";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import type { ViewerRegion } from "@/components/protein-labs/molstar-viewer";
+import { normalizeHits } from "@/lib/blast-alignment";
+import { jobSubtitle, preferredJob } from "@/lib/conservation";
+import { alignmentProfile, consurfProfile, MIN_ALIGNMENT_HITS, type ConservationSourceState, type ConservationSources } from "@/lib/conservation-coloring";
 
 type JobProps = { bundle: ProteinBundle; onChanged: () => Promise<void> };
 type Load<T> = { state: "idle" | "loading" | "ready" | "error"; value: T | null; message: string; /** The structure this result belongs to. */ key?: string };
@@ -27,6 +30,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   const [reload, setReload] = useState(0);
   const savedModels = bundle.alphaFoldModels.length;
   const hits = useMemo(() => researchHits(bundle.pdbMatches), [bundle.pdbMatches]);
+  const conservation = useConservationSources(bundle);
   const researchRan = bundle.projectJobs.some((job) => job.appType === "database-research" && Array.isArray(job.config.savedSources) && job.config.savedSources.map(String).includes("PDB"));
 
   useEffect(() => {
@@ -113,7 +117,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
       <div className="panel-heading"><div><h2>{facts ? structureOptionLabel(facts) : "Structure Viewer"}</h2><p>{legacy ? "Saved AlphaFold model. Experimental entries need the structure service of the local engine." : facts?.title || choice?.hit?.description || (selected?.source === "alphafold_db" ? "AlphaFold DB model of the reference UniProt entry" : "Choose an AlphaFold model or an experimental PDB entry")}</p></div></div>
       {legacy ? <LegacyPreview bundle={bundle}/> : <div className="molecule-stage">
         {current.state === "ready" && geometry && selected
-          ? <StructureViewer geometry={geometry} paletteKey={proteinId} label={selected.id} confidence={selected.source === "alphafold_db"} region={viewerRegion} controlsHost={controlsHost}/>
+          ? <StructureViewer geometry={geometry} paletteKey={proteinId} label={selected.id} confidence={selected.source === "alphafold_db"} region={viewerRegion} controlsHost={controlsHost} conservation={conservation}/>
           : <StageMessage list={list} detail={current} selected={selected} hasChoices={choices.length > 0} onRetry={() => setReload((value) => value + 1)} onOpenResearch={openResearch}/>}
       </div>}
     </section>
@@ -144,6 +148,40 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
     </div>
     </aside>
   </div>;
+}
+
+/** The two conservation sources: the newest graded ConSurf run (fetched for its residues) and the newest BLAST run with alignments. */
+function useConservationSources(bundle: ProteinBundle): ConservationSources {
+  const proteinId = bundle.protein.id;
+  const jobs = bundle.conservationJobs ?? [];
+  const graded = preferredJob(jobs.filter((job) => job.status === "complete" && job.residueCount > 0));
+  const gradedId = graded?.id ?? "";
+  const [consurf, setConsurf] = useState<{ id: string; value: ConservationSourceState }>({ id: "", value: { state: "unavailable", hint: "" } });
+  useEffect(() => {
+    if (!gradedId) return;
+    let active = true;
+    queueMicrotask(() => { if (active) setConsurf({ id: gradedId, value: { state: "loading", hint: "Loading the ConSurf grades…" } }); });
+    proteinLabsApi.getConservation(proteinId, gradedId)
+      .then((job) => { if (active) setConsurf({ id: gradedId, value: job.residues.length ? { state: "ready", profile: consurfProfile(job, jobSubtitle(job)) } : { state: "unavailable", hint: "The ConSurf run has no graded residues." } }); })
+      .catch((reason: unknown) => { if (active) setConsurf({ id: gradedId, value: { state: "error", hint: `The ConSurf grades could not be loaded: ${errorText(reason)}` } }); });
+    return () => { active = false; };
+  }, [proteinId, gradedId]);
+  const prepared = jobs.some((job) => job.status === "prepared");
+  const consurfState = useMemo<ConservationSourceState>(() => !gradedId
+    ? { state: "unavailable", hint: prepared ? "The ConSurf run is prepared but its grades are not imported yet. Import them in Sequence research." : "No ConSurf result yet. Run or import one in Sequence research." }
+    : consurf.id === gradedId ? consurf.value : { state: "loading", hint: "Loading the ConSurf grades…" }, [gradedId, prepared, consurf]);
+
+  const alignmentState = useMemo<ConservationSourceState>(() => {
+    const runs = [...bundle.blastJobs].sort((a, b) => String(b.submittedAt ?? "").localeCompare(String(a.submittedAt ?? "")));
+    const run = runs.find((job) => normalizeHits(job.results).some((hit) => hit.hsps.length));
+    if (!run) return { state: "unavailable", hint: runs.length ? "The saved BLAST runs have no alignments. Run protein BLAST again in Sequence research." : "No BLAST alignment yet. Run protein BLAST in Sequence research." };
+    const hits = normalizeHits(run.results).filter((hit) => hit.hsps.length);
+    if (hits.length < MIN_ALIGNMENT_HITS) return { state: "unavailable", hint: `Needs at least ${MIN_ALIGNMENT_HITS} BLAST hits with alignments; the latest run has ${hits.length}.` };
+    const query = String(run.querySequence ?? bundle.protein.sequence).replace(/\s+/g, "").toUpperCase();
+    return { state: "ready", profile: alignmentProfile(query, hits, `${hits.length} BLAST hits · Shannon entropy per column, ConSurf-style grades${run.rid ? ` · RID ${String(run.rid)}` : ""}`) };
+  }, [bundle.blastJobs, bundle.protein.sequence]);
+
+  return useMemo(() => ({ consurf: consurfState, alignment: alignmentState }), [consurfState, alignmentState]);
 }
 
 /** Height that takes the workbench from where it starts to the bottom of the window (the job header wraps differently at each width). */
