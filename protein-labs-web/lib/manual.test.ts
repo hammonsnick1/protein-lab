@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 
-import { parseInline, parseManual, searchManual, slugify } from "./manual.ts";
+import { darkFigure, parseInline, parseManual, searchManual, slugify } from "./manual.ts";
 
 describe("parseInline", () => {
   it("splits bold, code, keys, links and emphasis from plain text", () => {
@@ -68,7 +68,7 @@ describe("parseManual", () => {
   it("parses figures with captions, lists, notes and tables", () => {
     const [paragraph, figure, ordered, bullets, note, heading, table] = manual.sections[0].blocks;
     assert.deepEqual(paragraph, { kind: "paragraph", content: [{ kind: "text", text: "Open the app and press Start." }] });
-    assert.deepEqual(figure, { kind: "figure", src: "manual/dashboard.webp", alt: "The dashboard", caption: [{ kind: "text", text: "The dashboard after Start." }] });
+    assert.deepEqual(figure, { kind: "figure", src: "manual/dashboard.webp", darkSrc: "manual/dashboard-dark.webp", alt: "The dashboard", caption: [{ kind: "text", text: "The dashboard after Start." }] });
     assert.equal(ordered.kind === "list" && ordered.ordered, true);
     assert.deepEqual(ordered.kind === "list" && ordered.items[1], [{ kind: "text", text: "Paste a sequence that wraps." }]);
     assert.equal(bullets.kind === "list" && bullets.ordered, false);
@@ -92,8 +92,41 @@ describe("parseManual", () => {
     assert.ok(figures.length > 0);
     for (const figure of figures) {
       assert.ok(figure.kind === "figure" && figure.alt.trim(), "every figure needs alt text");
-      if (figure.kind === "figure") readFileSync(new URL(`../desktop/public/${figure.src}`, import.meta.url));
+      if (figure.kind !== "figure") continue;
+      readFileSync(new URL(`../desktop/public/${figure.src}`, import.meta.url));
+      readFileSync(new URL(`../desktop/public/${figure.darkSrc}`, import.meta.url));
     }
+  });
+
+  it("points every in-manual link at a section or sub-heading that exists", () => {
+    const source = readFileSync(new URL("../docs/user-manual.md", import.meta.url), "utf8");
+    const shipped = parseManual(source);
+    const blocks = [...shipped.intro, ...shipped.sections.flatMap((section) => section.blocks)];
+    const anchors = new Set([...shipped.sections.map((section) => section.id), ...blocks.flatMap((block) => block.kind === "heading" ? [block.id] : [])]);
+    const inlines = blocks.flatMap((block) => {
+      switch (block.kind) {
+        case "paragraph": case "note": return block.content;
+        case "list": return block.items.flat();
+        case "figure": return block.caption;
+        case "table": return [...block.header, ...block.rows.flat()].flat();
+        default: return [];
+      }
+    });
+    const links = inlines.flatMap((part) => part.kind === "link" && part.href.startsWith("#") ? [part.href.slice(1)] : []);
+    assert.ok(links.length > 0);
+    for (const link of links) assert.ok(anchors.has(link), `#${link} has no section`);
+  });
+
+  it("no longer describes the removed recommended-next banner", () => {
+    const source = readFileSync(new URL("../docs/user-manual.md", import.meta.url), "utf8");
+    assert.doesNotMatch(source, /recommended next|workflow ready/i);
+  });
+});
+
+describe("darkFigure", () => {
+  it("names the dark-appearance twin of a figure", () => {
+    assert.equal(darkFigure("manual/compile-workflow.webp"), "manual/compile-workflow-dark.webp");
+    assert.equal(darkFigure("manual/plain"), "manual/plain-dark");
   });
 });
 

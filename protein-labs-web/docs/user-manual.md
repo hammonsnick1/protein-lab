@@ -10,12 +10,31 @@ Authoring notes (not shown in the app):
 - A figure is an image on its own line, optionally followed by an italic caption line:
   ![Alt text](manual/name.webp)
   *Caption.*
-- Images live in desktop/public/manual/. lib/manual.test.ts fails if a figure is missing.
+- Images live in desktop/public/manual/. Every figure has a light screenshot (name.webp,
+  Graphic novel appearance) and a dark one (name-dark.webp, Monochrome dark); the app
+  shows the one that matches the appearance. Take both from the same build and window
+  size (1440 × 900 for full-window figures). lib/manual.test.ts fails if either is missing.
+- "[text](#anchor)" links jump inside the manual. The anchor is the slug of a "##" or "###"
+  title; lib/manual.test.ts fails if it does not exist.
 - Section anchors are slugs of the "##" title. Help > Keyboard & mouse controls opens
   the "Keyboard and mouse" section, so keep that title.
 -->
 
 Protein Lab is an offline workspace for planning protein expression, recording purification work, analysing chromatograms and gels, and preparing a purification report. The local scientific engine runs on your computer; projects remain in the project directory you choose.
+
+## What's new
+
+This release adds the following. Each item links to its place in the manual.
+
+- **Previous job and Next job tabs** at the bottom of every job replace the recommended-next card and banner. See [Move between jobs](#move-between-jobs).
+- **Organism search** in Protein sequence looks up UniProt and NCBI Taxonomy as you type. See [Protein sequence](#protein-sequence).
+- **Most abundant residue** is highlighted in the amino-acid composition table. See [Protein properties](#protein-properties).
+- **ConSurf conservation** in Sequence research grades every residue from 1 (variable) to 9 (conserved). See [Conservation with ConSurf](#conservation-with-consurf).
+- **AlphaFold Server JSON export** in Choose reference match, with a preview and checks before you upload. See [Export an AlphaFold Server job](#export-an-alphafold-server-job).
+- **A larger Structure Viewer** with a collapsible side panel, **surface opacity**, **chain interface highlighting** and **colour by conservation**. See [Structure Viewer](#structure-viewer).
+- **Vector Workbench** on the dashboard: a linked plasmid map and sequence for any vector, outside a project. See [Vector Workbench](#vector-workbench).
+- **Lysis method animations** show how each method breaks cells. See [Cell lysis](#cell-lysis).
+- **Compile workflow** is now a timeline of bench steps with a compatibility check on each hand-off. See [Compile workflow](#compile-workflow).
 
 ## Getting started
 
@@ -29,7 +48,7 @@ Protein Lab is an offline workspace for planning protein expression, recording p
 ![The Protein Lab start screen with the Start button and the engine status underneath](manual/start-screen.webp)
 *The start screen. "Scientific engine ready" means the local engine is running.*
 
-The dashboard is the way back to your local workspace. Use its cards to open a saved project, your project trees, the vector and protein library, or reports. Select the Protein Lab mark at the upper left from another workspace to return here.
+The dashboard is the way back to your local workspace. Use its cards to open a saved project, your project trees, the vector and protein library, the Vector Workbench, or reports. Select the Protein Lab mark at the upper left from another workspace to return here.
 
 ![The dashboard with lab statistics, projects, project trees and reports cards](manual/dashboard.webp)
 *The dashboard after clicking Start.*
@@ -97,36 +116,48 @@ Each project opens on its dashboard. Use **Resume workflow** to move from the pr
 
 ![The project dashboard with Resume workflow, Purification roadmap and Report](manual/project-dashboard.webp)
 
-![The project workflow listing the planning and purification design jobs](manual/workflow.webp)
-*Workflow cards show their status and the next recommended job.*
+![The project workflow with its four sections of numbered job cards](manual/workflow.webp)
+*Job cards are numbered in the recommended order and show their status.*
 
 To plan a project:
 
 1. Click **Resume workflow** on the project dashboard, or choose **Tools** → **Project workflow**.
-2. Read the **RECOMMENDED NEXT** banner, then select **Start** or **Continue**. You can also select any job card when your experiment needs a different path.
-3. Save the choices in each planning job before moving on; the roadmap uses saved planning choices to populate its steps.
-4. When the banner says **WORKFLOW READY**, select **Open roadmap**. For a non-planning optional job, use **Skip** only when it is not needed for this project.
+2. Select the first job card that is not done. Complete the jobs in order, or open any card when your experiment needs a different path.
+3. Save the choices in each planning job before you move on. The roadmap uses the saved planning choices to fill in its steps.
+4. Inside a job, use the **Next job** tab at the bottom of the window to continue. See [Move between jobs](#move-between-jobs).
+5. When planning is done, the **Purify your protein** card shows **READY**. Click **Open purification roadmap**.
 
 > **Tip:** A workflow card can be opened again to check or revise its saved choices before you start the corresponding bench step.
 
-The workflow has four sections. The table lists the jobs in their recommended order.
+The workflow page has two sections of numbered jobs, followed by the **Purify your protein** card. The table lists the jobs in their recommended order. **Previous job** and **Next job** follow the same order.
 
 | Section | Jobs |
 | --- | --- |
 | **Understanding your protein** | Protein sequence, Protein properties, Sequence research, Choose reference match, Structure Viewer, Protein readiness check |
 | **Plan your purification** | Affinity capture, Subtractive cleanup, SEC polishing, Choose expression system, Expression vector design, Cell lysis, Compile workflow |
-| **Purify your protein** | Transformation and Expression |
-| **Analyze your purification** | Chromatogram Studio, Gel densitometry |
+| **Purify your protein** (from the roadmap) | Transformation and Expression, Chromatogram Studio, Gel densitometry |
+
+The bench jobs in **Purify your protein** open from the steps of the [purification roadmap](#purification-roadmap), or with **Next job** after **Compile workflow**.
 
 You plan the purification from the protein outwards. First choose the capture, cleanup and polishing steps. Then choose the host, the vector and the lysis that feed them.
 
 ### Work in a job
 
-Each job has the same header. The header shows the engine status (**Local engine connected**, **Local engine unavailable** or **Checking engine**) and the **Roadmap** and **Report** buttons. Use the tab on the left to go back to project planning or to the roadmap.
+Each job has the same header. The header shows the engine status (**Local engine connected**, **Local engine unavailable** or **Checking engine**) and the **Roadmap** and **Report** buttons. Use the tab at the upper left (**Project planning** or **Purification roadmap**) to go back to where you came from.
 
-After you save a job, a **Saved** tab appears. It shows the **RECOMMENDED NEXT PLANNING JOB**. If you opened the job from the roadmap, it shows **CONTINUE THE PURIFICATION**. Select the tab to continue.
+### Move between jobs
 
-To skip a job, select **Skip** on the **RECOMMENDED NEXT** banner. The job is marked as skipped and counts as done. **Compile workflow** records that you continued without it.
+The bottom of every job has two tabs: **Previous job** at the lower left and **Next job** at the lower right. They follow the order in the table above.
+
+![The bottom of a job with the Skip button, the Next job tab and its tooltip naming the next job](manual/job-nav-tabs.webp)
+*Hold the pointer on a tab, or focus it, to see the name of the job it opens.*
+
+- Click **Next job** or **Previous job** to open the neighbouring job. The first job has no **Previous job** tab and the last job has no **Next job** tab.
+- Hold the pointer on a tab, or move the keyboard focus to it, to see which job it opens.
+- After you save, **Saved** shows next to the tabs for a few seconds.
+- To leave out a job that this project does not need, click **Skip**. Protein Lab saves the job as skipped, counts it as done, and opens the next job. **Compile workflow** records that you continued without it.
+
+> **Note:** **Skip** is only offered for unfinished jobs in **Understanding your protein** and **Plan your purification**. **Protein sequence** cannot be skipped.
 
 ## Protein sequence and properties
 
@@ -136,6 +167,18 @@ To skip a job, select **Skip** on the **RECOMMENDED NEXT** banner. The job is ma
 2. Edit the **Construct name** and the **Amino acid sequence**. Spaces and line breaks are ignored.
 3. Optionally, fill in **Organism**, **Gene**, **Description** and **Notes** under **Construct metadata**. Later jobs use these values.
 4. Click **Save sequence**. Protein Lab saves the sequence and calculates the protein properties again.
+
+To choose the organism:
+
+1. Click **Organism** and type a name, a strain or a taxon ID. After a short pause, Protein Lab searches UniProt and NCBI Taxonomy.
+2. Read the suggestions. Each one shows the scientific name, its rank or common name, and its taxon ID.
+3. Click a suggestion, or press <kbd>↓</kbd> and <kbd>↑</kbd> to move through the list and <kbd>Enter</kbd> to choose. Press <kbd>Esc</kbd> to close the list.
+4. Check the line under the field. **Linked to NCBI taxon** and a number means that the organism is linked to a taxon. **Free text · not linked to a taxon** means that the typed name is kept as text only.
+
+![The Organism field with Escherichia coli typed and a list of matching taxa with their taxon IDs](manual/organism-search.webp)
+*Suggestions come from UniProt and NCBI Taxonomy.*
+
+> **Note:** Without an internet connection, the list shows **Offline list** and offers common expression and model organisms only. You can always keep a name as free text.
 
 ### Protein properties
 
@@ -153,8 +196,13 @@ The job has these panels:
 - **Secondary-structure propensity**: the share of residues in the helix, turn and sheet sets. This is not a structure prediction.
 - **Sequence and charge summary**: the N-terminal and C-terminal residues with their positions, the net charge at pH 7, and the counts of acidic and basic residues.
 - **Oligomeric state**: the assembly that the protein forms in solution. See below.
-- **Amino-acid composition**: the count and percentage of each residue. The bars are coloured by side-chain class.
+- **Amino-acid composition**: the count and percentage of each residue. The bars are coloured by side-chain class. The most abundant residue is highlighted.
 - **Calculation assumptions**: the assumptions that the engine used.
+
+In the **Amino-acid composition** table, the row of the most abundant residue is tinted and marked **Most abundant**. If two or more residues share the highest count, each of them is marked.
+
+![The amino-acid composition table with the leucine row highlighted as the most abundant residue](manual/most-abundant.webp)
+*Leucine is the most abundant residue in this construct.*
 
 ### Residue details
 
@@ -214,6 +262,31 @@ To examine the alignments:
 - **UniProt matches and PTMs** lists each UniProt match with its review status, identity, coverage, and the number of PTM, transmembrane, disorder and cofactor features. The first match is marked **Best match**.
 - **PDB structures and conditions** lists each PDB entry with its method, resolution, identity, similarity and coverage. It also shows the crystallization and purification conditions when the deposition reports them.
 
+### Conservation with ConSurf
+
+ConSurf grades every residue from **1** (highly variable) to **9** (highly conserved) by comparing your protein with its homologues. Conserved residues are often in the active site, a binding site or the folded core. Avoid them when you choose tag positions, truncations and mutations.
+
+To get the grades:
+
+1. In the **ConSurf conservation** card, click **Find ConSurf grades**. Protein Lab looks for a pre-calculated ConSurf-DB analysis of a PDB chain that matches your sequence, and saves it.
+2. If ConSurf-DB has no entry, click **Prepare ConSurf server job**. ConSurf has no submission API, so the run happens on their web server. Protein Lab writes the input files and lists the steps. Click **Open the ConSurf server** and follow the steps.
+3. When the ConSurf run finishes, download its grades file and, optionally, its alignment. Type the path of each file in **ConSurf grades file** and **Alignment file (optional)**, then click **Import grades**.
+
+![The Evolutionary conservation panel with the grade summary, the grade distribution, the residue strip and the colour legend](manual/consurf.webp)
+*Deep magenta residues are highly conserved and turquoise residues are variable.*
+
+To read the **Evolutionary conservation** panel:
+
+- The summary shows **Residues graded**, **Mean grade**, **Grade 9 sites**, **Insufficient data**, the **PDB chain** and the number of sequences in the **Alignment**.
+- The bar shows how many residues have each grade. Under it, Protein Lab lists the conserved stretches (grade 8 and higher).
+- The strip shows each residue coloured by its grade. Hatched residues have **insufficient data**: too few homologues cover that position for a reliable grade.
+- Click a residue in the strip to see its **Score**, **Confidence interval**, **Alignment support**, **Burial**, the **ConSurf call** and the residues seen at that position. Press <kbd>←</kbd> or <kbd>→</kbd> to move one residue, <kbd>↑</kbd> or <kbd>↓</kbd> to move one row, and <kbd>Esc</kbd> to clear the selection.
+- Click **Alignment** to show the homologue alignment, **Open in ConSurf-DB** to read the entry on the ConSurf website, or **Delete run** to remove the run. If there is more than one run, choose it in **Run**.
+
+To replace the grades of a run, open **Import another grades file for this run** and import the new file.
+
+> **Tip:** The [Structure Viewer](#colour-by-conservation) can paint the same grades on the 3D model.
+
 ## Choosing a reference match
 
 The **Choose reference match** job selects one UniProt record. This record is the source of the cofactor, PTM, location, topology and disorder evidence for the project.
@@ -225,9 +298,36 @@ The **Choose reference match** job selects one UniProt record. This record is th
 
 > **Warning:** A close homolog is supporting evidence. It does not prove that each annotation applies to your construct. Confirm active-site residues, modified positions and construct boundaries before you use the annotations.
 
+### Export an AlphaFold Server job
+
+[AlphaFold Server](https://alphafoldserver.com) predicts the structure of a protein together with its partners, ligands and ions. Protein Lab can write the job file for you from the project's sequence, oligomeric state, cofactors and reference modifications.
+
+1. Open **Choose reference match** and click **Export AlphaFold Server JSON**.
+2. Read the token meter. AlphaFold Server accepts up to 5,000 tokens per job: one per residue or base, and one per atom of a ligand, ion or modified residue.
+3. Check **Chains**. A homo-oligomer is exported as copies of the chain. Modified residues and glycans from the reference match are listed on the chain.
+4. Check **Ligands and ions**. Click the bin button to leave a cofactor out of this job. It moves to **Removed from this job**; click its name there to add it back.
+5. Under **Partner chains**, click **Add a partner chain** to model another protein with yours. Enter its **Name**, **Sequence** and **Copies**.
+6. Read **What changed on the way out**. Each note is marked **Left out**, **Changed** or **Blocks upload**.
+7. Click **Download JSON** to save the file, or **Copy JSON** to copy it. Open **Raw JSON** to read the file first.
+8. On AlphaFold Server, use **Load JSON** to load the file, then submit the job.
+
+![The Export an AlphaFold Server job dialog with the token meter, chains, ligands, partner chains and the change notes](manual/af-server-export.webp)
+*The export of a single carbonic anhydrase II chain.*
+
+> **Note:** Removing a ligand or adding a partner chain changes only this export. Nothing is written back to the project.
+
+> **Warning:** If the meter shows **Over the per-job limit**, AlphaFold Server will refuse the job. Remove ligands, copies or partner chains until it fits.
+
+When the prediction is ready, import its result in the Structure Viewer. See [Get an AlphaFold model](#get-an-alphafold-model).
+
 ## Structure Viewer
 
-The **Structure Viewer** shows the AlphaFold model or an experimental PDB entry in 3D and highlights regions of interest.
+The **Structure Viewer** shows the AlphaFold model or an experimental PDB entry in 3D and highlights regions of interest, chain interfaces and conserved residues.
+
+The 3D view fills the window. The tools are in the side panel on the right. The icons on the narrow rail beside it open **Structure**, **Display**, **Regions of interest** and **AlphaFold model**. Click the top rail button to hide or show the side panel and give the 3D view more room. Protein Lab remembers your choice. In windows narrower than 1280 pixels, the panel starts closed and opens over the view; press <kbd>Esc</kbd> to close it.
+
+![The Structure Viewer with haemoglobin 4HHB as a semi-transparent surface, the chain interface highlighted, and the side panel open](manual/structure-viewer.webp)
+*Haemoglobin (4HHB) as a 45% surface with its chain interfaces highlighted.*
 
 ### Choose a structure
 
@@ -243,7 +343,8 @@ If no PDB entries are listed, click **Open Sequence research** and run **Find PD
 ### Use the 3D view
 
 - Drag to rotate. Scroll to zoom. Click a residue to identify it.
-- Choose **Cartoon**, **Surface** or **Ball & stick**.
+- In the **Display** panel, choose **Cartoon**, **Surface** or **Ball & stick**.
+- With **Surface**, drag **Surface opacity** to see the cartoon through the surface. 100% is fully opaque. Protein Lab remembers the value.
 - Under **Colour scheme**, choose **Colour by chain**, **Secondary structure**, **pLDDT confidence** or **Hydrophobicity**. **pLDDT confidence** is available for AlphaFold models only. A legend explains the colours.
 - With **Colour by chain**, choose a **Chain palette**.
 - Turn **Ligands**, **Waters** and **Spin** on or off.
@@ -258,9 +359,32 @@ If no PDB entries are listed, click **Open Sequence research** and run **Find PD
 
 Protein Lab highlights only the residues that the engine maps onto the structure. The panel tells you when positions are outside the model or in an alignment gap.
 
+### Highlight a chain interface
+
+The **Chain interface** panel appears when the structure has two or more protein chains. It finds the residues of each chain that touch another chain.
+
+1. Click **Highlight interface**. Residues with any heavy atom within the **Contact distance** of another chain are coloured; the rest are grey.
+2. Drag **Contact distance** between 3 and 6 Å. The default is 4.5 Å.
+3. Open a chain pair, for example **Chains A – B**, to see its residues and the closest distance. Click **Focus this interface** to zoom to it, or click a residue to go to it.
+4. Click **Hide interface** to return to the colour scheme.
+
+### Colour by conservation
+
+The **Conservation** panel colours each residue by how conserved it is across homologues, on ConSurf's 1–9 scale.
+
+1. Under **Conservation**, choose a source. **ConSurf** uses the newest ConSurf grades from [Sequence research](#conservation-with-consurf). **Alignment** scores each column of the newest protein BLAST alignment.
+2. Read the summary: the number of residues graded, with insufficient data, and not mapped. Each chain shows how many positions align to your sequence. A chain of another protein is left grey.
+3. Read the legend under the view: from **Variable** to **Conserved**, plus **Insufficient data** and **Not mapped**. The sequence strip uses the same colours.
+4. Choose **Off** to return to the colour scheme.
+
+![The Structure Viewer with the carbonic anhydrase II model coloured by ConSurf grades and the Conservation panel open](manual/structure-conservation.webp)
+*The AlphaFold model of carbonic anhydrase II coloured by its ConSurf grades.*
+
+> **Note:** Conservation colouring and interface highlighting replace each other. Turning one on turns the other off. A button is grey until its data exists; the panel tells you which job to run first.
+
 ### Get an AlphaFold model
 
-In the **AlphaFold model** panel, enter a **UniProt accession**, or leave it blank to use the inferred accession. Click **Retrieve AlphaFold DB model**. If there is no model in AlphaFold DB, click **Prepare AlphaFold Server job**. When the server returns the result, click **Import returned result**.
+In the **AlphaFold model** panel, enter a **UniProt accession**, or leave it blank to use the inferred accession. Click **Retrieve AlphaFold DB model**. If there is no model in AlphaFold DB, click **Prepare AlphaFold Server job**, or build a complete job with partners and ligands in [Choose reference match](#export-an-alphafold-server-job). When the server returns the result, click **Import returned result**.
 
 ## Protein readiness check
 
@@ -337,27 +461,42 @@ Click **Load backbone** to load a vector from the library, or **Import GenBank /
 ### Cell lysis
 
 1. Open **Cell lysis**. Each method card shows if it suits the saved host.
-2. Select a lysis method and click **Use this choice**.
-3. In **Lysis buffer**, read the **SUGGESTED FROM YOUR CHOICES** card. The suggestion starts from the binding buffer of your capture column. Each line tells you why a component is added or left out, for example imidazole for IMAC, a detergent for a membrane protein, or lysozyme for *E. coli*.
-4. Click **Apply suggestion** to put the suggestion into the composer. Or, under **Or start from a preset**, select a preset and click **Load into the lysis buffer**.
-5. Edit the buffer in the composer. If you click **Re-apply suggestion** after you edit, Protein Lab replaces your edits.
-6. Read the **Compatibility check**, then click **Save job**.
+2. Click a method card. Its window opens with a short animation of how the method breaks cells, followed by its **Mechanism**, **Best for**, **Advantages**, **Limitations**, **Compatible systems** and **Reference**.
+3. Click **Use this choice** to select the method, or **Close** to compare another.
+4. In **Lysis buffer**, read the **SUGGESTED FROM YOUR CHOICES** card. The suggestion starts from the binding buffer of your capture column. Each line tells you why a component is added or left out, for example imidazole for IMAC, a detergent for a membrane protein, or lysozyme for *E. coli*.
+5. Click **Apply suggestion** to put the suggestion into the composer. Or, under **Or start from a preset**, select a preset and click **Load into the lysis buffer**.
+6. Edit the buffer in the composer. If you click **Re-apply suggestion** after you edit, Protein Lab replaces your edits.
+7. Read the **Compatibility check**, then click **Save job**.
+
+![The Cell lysis job with the Probe sonication window open, showing the animation of cavitation breaking cells](manual/lysis-animation.webp)
+*Each method window starts with an animation of how the method opens cells.*
+
+> **Note:** If your computer is set to reduce motion, the window shows a still picture of intact and broken cells instead of the animation.
 
 > **Note:** A cell-free host has no cells to lyse, so Protein Lab does not suggest a lysis enzyme. Clarify the reaction mix by centrifugation before you load it.
 
 ### Compile workflow
 
+**Compile workflow** turns your saved planning choices into a timeline of bench steps, from expression and harvest to QC and storage. It checks each hand-off from one step to the next.
+
+![The Compile workflow timeline with the blocking, warning and passed counts, the overview rail of eight steps and the first step cards](manual/compile-workflow.webp)
+*A plan with no blocking issues and one warning, on the hand-off from lysis to affinity capture.*
+
 1. Open **Compile workflow**.
-2. Read the **Compatibility review**. It counts the **Blocking**, **Warning** and **Pass** findings for the complete design.
-3. Read the **Generated bench workflow**. It lists the steps from material preparation to quality control and storage.
-4. Click **Copy report** to copy the workflow to the clipboard.
-5. Click **Save workflow**. If there are blocking findings, the button is **Save draft**. Solve the blocking findings, then save again.
+2. Read the counts at the top: **Blocking**, **Warnings** and **Passed**. The chip shows **Ready for review** when nothing blocks, or **Draft** when something does.
+3. Read the overview rail. It shows each step with the verdict of the hand-off between steps: a tick, a warning sign or a blocking sign. Click a step to scroll to it.
+4. Read each step card: its **Step** number and type, the instruction, and what to **Record** at the bench. Between two cards, the hand-off shows each finding as **Blocking**, **Warning** or **Pass**, and **How to fix** when a change is needed.
+5. Read **Across the workflow** for the checks that apply to every step, and **Evidence basis** for the source of the starting conditions.
+6. Click **Copy report** to copy the workflow to the clipboard.
+7. Click **Save workflow**. If there are blocking findings, the button is **Save draft**. Solve the blocking findings, then save again.
+
+> **Tip:** If nothing is saved yet, the timeline shows **Nothing saved to compile yet** and generic placeholder steps. Save **Affinity capture**, **Subtractive cleanup**, **SEC polishing** and **Cell lysis** first.
 
 ## Transformation and Expression
 
 This job records the bench work that makes the protein.
 
-1. Open **Transformation and Expression** in the **Purify your protein** section.
+1. Open **Transformation and Expression** from the first step of the purification roadmap, or click **Next job** in **Compile workflow**.
 2. Under **1 · Starting material**, choose **Fresh transformation**, **Glycerol / cryo stock** or **Existing culture**.
 3. Under **2 · Host system and medium**, choose the host tab and a medium, then click **Use this medium**.
 4. Under **3 · Expression record**, enter the **Culture volume**, the **Temperature (°C)**, the **Induction / harvest plan**, the media composition and your notes.
@@ -385,12 +524,12 @@ To keep a bench record:
 
 Chromatogram Studio imports and processes chromatography traces locally. It can overlay traces, find or define peaks, mark fraction regions, make an SEC standard curve, and export data and figures.
 
-![The chromatogram studio showing a size-exclusion trace with three labelled peaks](manual/chromatogram.webp)
-*A size-exclusion run with labelled peaks.*
+![Chromatogram Studio with an imported size-exclusion trace of carbonic anhydrase II and its processing controls](manual/chromatogram.webp)
+*An imported size-exclusion run: a small aggregate peak, the main peak and a late peak.*
 
 ### Import and inspect a trace
 
-1. From a roadmap step, select **Chromatogram Studio**, or open the chromatography job in the workflow.
+1. From a roadmap step, select **Chromatogram Studio**, or click **Next job** in **Transformation and Expression**.
 2. Select **Data**, then **Import CSV / TSV / DAT**. The importer accepts `.csv`, `.tsv`, `.txt`, and `.dat` files.
 3. Select a trace in the spectra list. Adjust its name, colour, X shift, Y scale, Y offset, smoothing, baseline correction, or normalization as needed. These processing controls remain reversible in the project.
 4. Click **Save project** to keep the trace and its settings with this project.
@@ -428,7 +567,7 @@ The gel studio measures lanes and bands from SDS-PAGE or Native PAGE images with
 
 ### Detect and review bands
 
-1. Open **Quantify a gel** from a roadmap step, or open the gel job in the workflow.
+1. Open **Quantify a gel** from a roadmap step, or click **Next job** in **Chromatogram Studio**.
 2. In **Setup**, select **Import PNG, JPEG, or TIFF**, then choose the gel image. For TIFF files, the engine supplies a PNG preview after analysis.
 3. Under **Gel type**, choose **SDS-PAGE** or **Native PAGE**. Set the band sensitivity and rolling-ball radius if needed; the origin and dye-front guides help orient the image but do not change a measurement.
 4. Click **Detect lanes & bands**. Review the detected lanes and bands on the image. Detection keeps lightly loaded lanes separate, also next to a strongly stained ladder. Add or edit a lane when needed, then use **Re-detect in lanes** to measure those lanes again.
@@ -520,6 +659,40 @@ Inside **Expression vector design**, **Load backbone** opens the same library as
 
 The **Proteins** tab lists every purified batch: how much is left, its status, and exactly where it is kept (for example a freezer, shelf and box). Search by name, gene, construct, buffer or location; press <kbd>/</kbd> to jump to the search box. Narrow the list by status, temperature, location, method or tag. Select a batch to see its storage, stock and history, and click **Add protein** to record a new one. The dashboard card names the busiest storage places and warns when batches are running low.
 
+## Vector Workbench
+
+The **Vector Workbench** opens any vector as a plasmid map and its sequence, side by side, outside a project. Use it to read a vector, annotate features, find restriction sites and ORFs, and save the result to the vector library.
+
+![The Vector Workbench with pET28a-LIC as a circular map and a linear map beside the annotated sequence, with the lacI feature selected in both](manual/vector-workbench.webp)
+*Selecting lacI on the map selects it in the sequence and opens it in the Features tab.*
+
+### Open a vector
+
+1. On the dashboard, find the **Vector Workbench** card. Click **Open** to start with an empty workbench, or click the card to turn it over and choose one of the vectors listed on its back. Your own vectors are listed first.
+2. In an empty workbench, choose **Vector library**, **From a project** or **Import a file**. You can also paste DNA and click **New construct from DNA**.
+3. Later, click **Open** (<kbd>Ctrl+O</kbd>) or **Import** in the toolbar to open another vector. Click **Dashboard** to go back. If there are unsaved changes, Protein Lab asks before it discards them.
+
+### Read the map and sequence
+
+- The map and the sequence are linked. Click a feature or a cut site on the map, or drag across the map or the sequence, and the same region is selected in both. The bar at the bottom shows the selected range, its length and GC content, and the melting temperature of a selection of 60 bp or less.
+- Choose **Split**, **Map** or **Sequence** to show both panes or only one. **Split** needs a wide window.
+- Under **Cut sites**, choose **Unique**, **Two-cutters**, **All** or **None**. The count beside each shows how many enzymes it includes.
+- Tick or clear **Circular** to change the topology. Click **Reverse complement** to flip the whole construct.
+- Click **ORFs** to draw open reading frames on the maps.
+- Press <kbd>Ctrl+F</kbd> to find a DNA sequence.
+
+### Edit and save
+
+1. In the **Features** tab, select a range and enter a **Name**, **Type** and **Strand**, then click **Add feature**. To change a feature, select it, edit **Start**, **End** or **Notes**, and click **Apply changes**. Click **Delete** to remove it.
+2. In the **Enzymes** tab, read the cut sites of the chosen filter.
+3. In the **ORFs** tab, set the **Shortest ORF (aa)** and click **Keep as CDS** to turn an ORF into a feature.
+4. Click **Save to library** (<kbd>Ctrl+S</kbd>). Save a standard vector as a new entry; save your own vector as a new entry or overwrite it.
+5. Click **Export** (<kbd>Ctrl+E</kbd>) to save **GenBank (.gb)**, **SnapGene (.dna)** or **FASTA (.fasta)**.
+
+Use <kbd>Ctrl+Z</kbd> to undo and <kbd>Ctrl+Shift+Z</kbd> or <kbd>Ctrl+Y</kbd> to redo.
+
+> **Note:** Restriction sites and ORFs come from the local engine. If it is unavailable, the workbench says so; click **Retry** when the engine is back. You can still read and edit the map and sequence.
+
 ## Project trees
 
 Project trees connect related saved projects, such as construct variants, and describe differences on each branch.
@@ -544,6 +717,8 @@ To change appearance:
 2. Choose **Graphic novel**, **Monochrome dark**, or **Monochrome light**.
 3. Keep the menu open while comparing options; the chosen appearance is remembered for the next launch.
 
+The pictures in this manual follow the appearance: **Monochrome dark** shows them in the dark appearance, and the light appearances show them in **Graphic novel**.
+
 ![The Settings menu listing the three appearances](manual/settings-menu.webp)
 
 ## Keyboard and mouse
@@ -561,10 +736,17 @@ To change appearance:
 | Project-tree graph: <kbd>+</kbd> / <kbd>=</kbd>, <kbd>-</kbd> / <kbd>_</kbd> | Zoom in or out |
 | Project-tree graph: <kbd>0</kbd> | Fit the graph to the view |
 | Residue window: <kbd>←</kbd> <kbd>→</kbd> | Show the previous or next residue |
+| Organism field: <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Esc</kbd> | Move through the suggestions, choose one, close the list |
+| ConSurf strip: <kbd>←</kbd> <kbd>→</kbd> / <kbd>↑</kbd> <kbd>↓</kbd> | Move one residue / one row |
+| Structure Viewer, narrow window: <kbd>Esc</kbd> | Close the side panel |
+| Vector Workbench: <kbd>Ctrl+O</kbd> | Open a vector |
+| Vector Workbench: <kbd>Ctrl+S</kbd>, <kbd>Ctrl+E</kbd> | Save to the library, export |
+| Vector Workbench: <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+Shift+Z</kbd> | Undo, redo |
+| Vector Workbench: <kbd>Ctrl+F</kbd> | Find a DNA sequence |
 | Expression vector design: <kbd>Ctrl+S</kbd> | Save the vector |
 | Expression vector design: <kbd>?</kbd> | Show the shortcuts of the vector editor |
 
-On macOS, use <kbd>Cmd</kbd> in place of <kbd>Ctrl</kbd> for the library shortcuts.
+On macOS, use <kbd>Cmd</kbd> in place of <kbd>Ctrl</kbd> for the library and Vector Workbench shortcuts.
 
 ## Troubleshooting
 

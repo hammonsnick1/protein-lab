@@ -14,7 +14,7 @@ export type ManualBlock =
   | { kind: "heading"; level: 2 | 3; id: string; text: string }
   | { kind: "paragraph"; content: Inline[] }
   | { kind: "list"; ordered: boolean; items: Inline[][] }
-  | { kind: "figure"; src: string; alt: string; caption: Inline[] }
+  | { kind: "figure"; src: string; darkSrc: string; alt: string; caption: Inline[] }
   | { kind: "note"; tone: "tip" | "note" | "warning"; content: Inline[] }
   | { kind: "table"; header: Inline[][]; rows: Inline[][][] };
 
@@ -26,6 +26,12 @@ export function slugify(text: string): string {
 }
 
 const inlinePattern = /\*\*(.+?)\*\*|`([^`]+)`|<kbd>(.+?)<\/kbd>|\[([^\]]+)\]\(([^)\s]+)\)|\*(.+?)\*/g;
+
+// Every figure has a dark-appearance twin next to it: manual/x.webp and
+// manual/x-dark.webp.
+export function darkFigure(src: string): string {
+  return src.replace(/(\.[a-z0-9]+)?$/i, (extension) => `-dark${extension}`);
+}
 
 export function parseInline(source: string): Inline[] {
   const parts: Inline[] = [];
@@ -77,7 +83,7 @@ export function parseManual(markdown: string): Manual {
       // An italic line straight after an image is its caption.
       const next = lines[index + 1]?.trim() ?? "";
       const caption = /^\*(?!\*)(.+)\*$/.exec(next);
-      target().push({ kind: "figure", alt: image[1], src: image[2], caption: caption ? parseInline(caption[1]) : [] });
+      target().push({ kind: "figure", alt: image[1], src: image[2], darkSrc: darkFigure(image[2]), caption: caption ? parseInline(caption[1]) : [] });
       index += caption ? 2 : 1;
       continue;
     }
