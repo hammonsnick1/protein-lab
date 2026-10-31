@@ -16270,3 +16270,110 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .reference-workspace.empty > button {
   margin-top: 16px;
 }
+
+/* Shared citations (components/ui/citations.tsx): inline [n] markers and the
+   numbered reference list and licence table that go with them. */
+.cite-marker {
+  font-size: .72em;
+  line-height: 0;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.cite-marker a {
+  color: var(--primary);
+  text-decoration: none;
+  border-radius: 3px;
+}
+.cite-marker a:hover { text-decoration: underline; }
+.cite-marker a:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.reference-list h3,
+.license-list h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.reference-list h3 svg { width: 15px; height: 15px; color: var(--muted-foreground); }
+.reference-list ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.reference-list li {
+  display: grid;
+  grid-template-columns: 2.4em 1fr;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-left: 3px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 9px;
+  padding: 8px 10px 8px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.reference-list li:focus { outline: none; }
+.reference-list li:focus-visible,
+.reference-list li:target { outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent); outline-offset: 1px; }
+.reference-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.reference-list li p { margin: 0; overflow-wrap: anywhere; }
+.reference-list cite { font-style: italic; }
+.reference-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.reference-kind {
+  font-size: 12px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.reference-link,
+.license-list td a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.reference-link:hover,
+.license-list td a:hover { text-decoration: underline; }
+.reference-link svg,
+.license-list td a svg { width: 12px; height: 12px; flex: none; }
+.license-list-intro {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.license-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.license-list th,
+.license-list td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.license-list thead th {
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.license-list tbody th { font-weight: 700; }
+.license-list tbody th small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
