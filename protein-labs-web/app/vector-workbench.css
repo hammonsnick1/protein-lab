@@ -1,0 +1,430 @@
+/* ---------------------------------------------------------------------------
+   Vector Workbench: a construct editor reached from the dashboard. The map,
+   sequence and selection bar reuse the vector editor's .vmap / .vseq / .vsel
+   styles; this file only lays them out side by side and styles the side
+   panel, the start screen and the dialogs.
+   --------------------------------------------------------------------------- */
+.vwb {
+  height: calc(100vh - 62px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+
+.vwb-header {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 76%, var(--background));
+}
+.vwb-title {
+  flex: 1 1 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.vwb-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.vwb-kicker svg { width: 13px; height: 13px; color: var(--primary); }
+.vwb-title > input,
+.vwb-title > strong {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  padding: 1px 5px;
+  margin-left: -6px;
+  font-size: 17px;
+  font-weight: 750;
+}
+.vwb-title > input:hover { border-color: var(--border); }
+.vwb-title > input:focus { border-color: var(--primary); outline: none; background: var(--card); }
+.vwb-title > small {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vwb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.vwb > .vector-status { margin: 8px 16px 0; }
+.vwb-toolbar { flex: none; padding: 8px 16px 0; }
+.vwb-toolbar .vseg svg { width: 13px; height: 13px; }
+.vwb-toolbar .topology-toggle { padding: 4px 9px; }
+.vwb-analysis-error { margin: 8px 16px 0; }
+
+/* Map | sequence | side panel. One pane at a time below the split width. */
+.vwb-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) clamp(290px, 22vw, 380px);
+  gap: 10px;
+  min-height: 0;
+  padding: 8px 16px 10px;
+}
+.vwb-body.pane-map,
+.vwb-body.pane-sequence { grid-template-columns: minmax(0, 1fr) clamp(290px, 24vw, 380px); }
+.vwb-pane[hidden] { display: none; }
+.vwb-pane,
+.vwb-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.vwb-pane { padding: 8px; overflow: hidden; }
+.vwb-map .vmap-circular { min-height: 0; }
+.vwb-map > .vmap-linear { flex: 1; }
+.vwb-map .vmap-legend { flex: none; }
+.vwb-seq .vseq { min-height: 0; }
+.vwb .vsel-bar { padding: 4px 16px; }
+
+/* Side panel */
+.vwb-tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.vwb-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  padding: 6px 10px 7px;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.vwb-tabs button svg { width: 14px; height: 14px; }
+.vwb-tabs button:hover { color: var(--foreground); }
+.vwb-tabs button.active { border-bottom-color: var(--primary); color: var(--foreground); }
+.vwb-tabs button b {
+  min-width: 20px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  padding: 0 6px;
+  font: 600 12px var(--font-mono);
+  text-align: center;
+}
+.vwb-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  scrollbar-color: var(--border) transparent;
+}
+.vwb-features,
+.vwb-enzymes,
+.vwb-orfs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vwb-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--card) 60%, var(--background));
+  padding: 10px;
+}
+.vwb-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.vwb-card > header strong { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
+.vwb-card > header strong i { flex: none; width: 11px; height: 11px; border-radius: 3px; }
+.vwb-card > header small { color: var(--muted-foreground); font-size: 12px; }
+.vwb-card label,
+.vwb-orf-settings label,
+.vwb-project-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+.vwb-card input,
+.vwb-card select,
+.vwb-card textarea,
+.vwb-orf-settings input,
+.vwb-project-pick select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+.vwb-card input:disabled,
+.vwb-card select:disabled { opacity: 0.55; }
+.vwb-card textarea { resize: vertical; }
+.vwb-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: end; }
+.vwb-hint { color: var(--muted-foreground); font-size: 12px; }
+.vwb-editor-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.vwb-check { flex-direction: row !important; align-items: center; gap: 6px !important; }
+.vwb-check input { width: auto !important; }
+
+.vwb-translation { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 0; }
+.vwb-translation dt { color: var(--muted-foreground); font-size: 12px; font-weight: 650; }
+.vwb-translation dd {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 2px 0 0;
+  max-height: 84px;
+  overflow: auto;
+  font: 12.5px/1.45 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.vwb-copy {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  padding: 3px;
+  cursor: pointer;
+}
+.vwb-copy:hover { background: var(--muted); color: var(--foreground); }
+.vwb-copy svg { width: 13px; height: 13px; }
+
+/* Lists: features, enzymes, ORFs, dialog pickers */
+.vwb-feature-list,
+.vwb-enzyme-list,
+.vwb-orf-list,
+.vwb-open-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vwb-feature-list > button,
+.vwb-enzyme-list > button,
+.vwb-open-list > button {
+  display: grid;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--foreground);
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.vwb-feature-list > button { grid-template-columns: 12px minmax(0, 1fr) 16px; }
+.vwb-feature-list > button > i { width: 12px; height: 12px; border-radius: 3px; outline: 1px solid color-mix(in srgb, var(--foreground) 20%, transparent); }
+.vwb-feature-list > button > span,
+.vwb-open-list > button > span { display: flex; flex-direction: column; min-width: 0; }
+.vwb-feature-list strong,
+.vwb-open-list strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.vwb-feature-list small,
+.vwb-open-list small { overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.vwb-feature-list em { color: var(--muted-foreground); font-style: normal; font-weight: 700; text-align: center; }
+.vwb-feature-list > button:hover,
+.vwb-enzyme-list > button:hover,
+.vwb-open-list > button:hover:not(:disabled) { background: var(--muted); }
+.vwb-feature-list > button.selected,
+.vwb-enzyme-list > button.selected,
+.vwb-orf.selected { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--card)); }
+.vwb-feature-list > button:focus-visible,
+.vwb-enzyme-list > button:focus-visible,
+.vwb-open-list > button:focus-visible,
+.vwb-orf-pick:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+.vwb-note {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.vwb-note svg { flex: none; width: 14px; height: 14px; margin-top: 1px; }
+.vwb-enzyme-list > button { grid-template-columns: minmax(64px, auto) minmax(0, 1fr) auto; row-gap: 1px; }
+.vwb-enzyme-list code { overflow: hidden; color: var(--muted-foreground); font: 12px var(--font-mono); text-overflow: ellipsis; }
+.vwb-enzyme-list b { color: var(--muted-foreground); font-size: 12px; font-weight: 650; white-space: nowrap; }
+.vwb-enzyme-list b.unique { color: var(--foreground); }
+.vwb-enzyme-list small { grid-column: 1 / -1; color: var(--muted-foreground); font: 12px var(--font-mono); overflow-wrap: anywhere; }
+
+.vwb-orf-settings { grid-template-columns: minmax(0, 1fr) auto; }
+.vwb-orf {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 8px;
+}
+.vwb-orf-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.vwb-orf strong { font-size: 13px; }
+.vwb-orf strong em { color: var(--muted-foreground); font-size: 12px; font-style: normal; font-weight: 600; }
+.vwb-orf small { color: var(--muted-foreground); font-size: 12px; }
+.vwb-orf code { color: var(--muted-foreground); font: 12px var(--font-mono); overflow-wrap: anywhere; }
+.vwb-orf > button:not(.vwb-orf-pick) { align-self: flex-start; }
+
+/* Start screen */
+.vwb-start { flex: 1; min-height: 0; overflow: auto; padding: 0 16px; }
+.vwb-start.vpanel-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.vwb-start .vempty { margin: clamp(16px, 6vh, 56px) auto 24px; max-width: 760px; }
+.vwb-start .vempty p { margin: 0; line-height: 1.5; }
+.vwb-start-choices {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px !important;
+  width: 100%;
+  margin-top: 6px;
+}
+.vwb-start-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.25s ease;
+}
+.vwb-start-choices button:hover:not(:disabled) { border-color: var(--primary); transform: translateY(-2px); }
+.vwb-start-choices button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.vwb-start-choices svg { width: 20px; height: 20px; color: var(--primary); }
+.vwb-start-choices span { display: flex; flex-direction: column; gap: 2px; }
+.vwb-start-choices small { color: var(--muted-foreground); font-size: 12px; line-height: 1.4; }
+.vwb-paste { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; width: 100%; margin-top: 4px; }
+.vwb-paste .dna-editor { width: 100%; min-height: 120px; }
+
+/* Dialogs (portalled outside the app shell, so they read :root tokens) */
+.vwb-dialog { max-width: min(620px, calc(100vw - 32px)); scrollbar-color: var(--border) transparent; }
+.vwb-open { max-height: min(84vh, 760px); display: flex; flex-direction: column; }
+.vwb-open .vwb-tabs { padding: 0; }
+.vwb-open-list { flex: 1; min-height: 120px; max-height: 46vh; overflow: auto; }
+.vwb-open-list > button { grid-template-columns: 18px minmax(0, 1fr) auto; }
+.vwb-open-list > button > svg { width: 17px; height: 17px; color: var(--primary); }
+.vwb-open-list > button:disabled { cursor: default; opacity: 0.6; }
+.vwb-open-list em {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  padding: 1px 8px;
+  font-size: 12px;
+  font-style: normal;
+}
+.vwb-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 0 9px;
+}
+.vwb-search svg { width: 15px; height: 15px; color: var(--muted-foreground); }
+.vwb-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--foreground); padding: 8px 0; font: inherit; outline: none; }
+.vwb-search:focus-within { border-color: var(--primary); }
+.vwb-formats { display: flex; flex-direction: column; gap: 6px; }
+.vwb-formats button,
+.vwb-save-modes label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.vwb-formats button:hover:not(:disabled),
+.vwb-save-modes label:hover:not(.disabled) { border-color: var(--primary); }
+.vwb-formats button svg { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--primary); }
+.vwb-formats span,
+.vwb-save-modes span { display: flex; flex-direction: column; gap: 2px; }
+.vwb-formats small,
+.vwb-save-modes small { color: var(--muted-foreground); font-size: 12px; line-height: 1.4; }
+.vwb-save-modes { display: flex; flex-direction: column; gap: 6px; }
+.vwb-save-modes label.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
+.vwb-save-modes label.disabled { cursor: default; opacity: 0.65; }
+.vwb-save-modes input { margin-top: 3px; }
+
+/* Dashboard tile */
+.dashboard-board .dashboard-workbench-card { flex: 0 1 auto; min-height: 175px; }
+.tree-tile-list.workbench-tile-list > button { grid-template-columns: 18px minmax(0, 1fr) 18px; }
+.tree-tile-list.workbench-tile-list > button > svg:first-child { width: 17px; height: 17px; color: var(--primary); }
+.workbench-tile-list > button.workbench-tile-empty { border-style: dashed; }
+.workbench-tile-list > button.workbench-tile-empty small { white-space: normal; }
+
+/* Narrow windows: the side panel narrows, the header actions wrap. */
+@media (max-width: 1180px) {
+  .vwb-body.pane-map,
+  .vwb-body.pane-sequence { grid-template-columns: minmax(0, 1fr) 290px; }
+  .vwb-start-choices { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vwb-start-choices button { transition: none; }
+  .vwb-start-choices button:hover:not(:disabled) { transform: none; }
+}
