@@ -198,6 +198,13 @@ export const proteinLabsApi = {
   insertIntoVector: (proteinId: string, vectorId: string, fields: JsonObject) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/insert`, fields),
   digestVector: (proteinId: string, vectorId: string, enzymeNames: string[]) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/digest`, { enzymeNames }),
   alignVectors: (proteinId: string, vectorId: string, queryVectorId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/align`, { queryVectorId }),
+  // Vector Workbench: the same engine, without a project. SnapGene .dna
+  // content travels base64 encoded both ways.
+  parseVectorFile: (filename: string, content: string) => post<JsonObject & { fileFormat: string }>("/v1/vector-workbench/parse", { filename, content }),
+  exportWorkbenchVector: (vector: JsonObject, format: "genbank" | "fasta" | "snapgene") => post<{ filename: string; content: string; encoding: "text" | "base64" }>("/v1/vector-workbench/export", { vector, format }),
+  analyzeWorkbenchVector: (fields: { sequence: string; circular: boolean; enzymeNames?: string[]; minimumOrfAminoAcids?: number }) => post<{ restrictionSites: JsonObject[]; orfs: JsonObject[] }>("/v1/vector-workbench/analyze", fields),
+  saveLibraryVectorAsNew: (vector: JsonObject) => post<JsonObject>("/v1/protein-planner/vector-library", vector),
+  overwriteLibraryVector: (libraryId: string, vector: JsonObject) => post<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/contents`, vector),
   // Project trees and the project diff service. The tree response
   // embeds a one-line summary per branch so the tree view draws in one call;
   // the full diff is fetched lazily when a branch is selected.
