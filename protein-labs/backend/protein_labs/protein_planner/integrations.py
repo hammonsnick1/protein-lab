@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import copy
 from io import StringIO
 import json
@@ -30,6 +30,10 @@ class HttpResponse:
     status: int
     text: str
     headers: dict[str, str]
+    # `headers` collapses repeated names, so cookies are collected separately:
+    # a service that sets both a session and a CSRF cookie would otherwise lose
+    # one of them. Empty for the services that do not use cookies at all.
+    cookies: dict[str, str] = field(default_factory=dict)
 
 
 class HttpClient:
@@ -59,6 +63,7 @@ class HttpClient:
         timeout: float | None = None,
         retry_attempts: int = 0,
         allowed_statuses: Iterable[int] = (),
+        extra_headers: dict[str, str] | None = None,
     ) -> HttpResponse:
         if params:
             url = f"{url}?{urlencode(params, doseq=True)}"
@@ -70,6 +75,8 @@ class HttpClient:
         elif json_body is not None:
             data = json.dumps(json_body).encode("utf-8")
             headers["Content-Type"] = "application/json"
+        if extra_headers:
+            headers.update(extra_headers)
         # The default deliberately makes one request.  Some shared-client POST
         # callers submit remote jobs, so retry is opt-in and only used by RCSB
         # read/search traffic, whose requests are safe to repeat.
@@ -88,6 +95,7 @@ class HttpClient:
                             status=remote_response.status,
                             text=remote_response.read().decode(charset, errors="replace"),
                             headers=dict(remote_response.headers.items()),
+                            cookies=_cookies(remote_response.headers.get_all("Set-Cookie")),
                         )
                 if 200 <= response.status < 300 or response.status in allowed:
                     return response
@@ -934,6 +942,17 @@ def _number(value: Any) -> float | None:
         return None if value is None else float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _cookies(set_cookie_headers: list[str] | None) -> dict[str, str]:
+    """Name/value pairs from every Set-Cookie header, attributes discarded."""
+    jar: dict[str, str] = {}
+    for header in set_cookie_headers or []:
+        name, separator, remainder = str(header).partition("=")
+        if not separator:
+            continue
+        jar[name.strip()] = remainder.split(";", 1)[0].strip()
+    return jar
 
 
 def _normalize_pdb_query(sequence: str) -> str:

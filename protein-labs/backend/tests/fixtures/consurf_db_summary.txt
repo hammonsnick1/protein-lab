@@ -1,0 +1,53 @@
+	 Amino Acid Conservation Scores
+	=======================================
+
+The layers for assigning grades are as follows.
+from -1.700 to -1.322 the grade is 9
+from -1.322 to -0.944 the grade is 8
+from -0.944 to -0.567 the grade is 7
+from -0.567 to -0.189 the grade is 6
+from -0.189 to  0.285 the grade is 5
+from  0.285 to  0.856 the grade is 4
+from  0.856 to  1.427 the grade is 3
+from  1.427 to  1.998 the grade is 2
+from  1.998 to  2.569 the grade is 1
+
+If the difference between the colors of the CONFIDENCE INTERVAL COLORS is more than 3 or the msa number (under the column titled MSA) is less than 6, there is insufficient data and an * appears in the COLOR column.
+
+- POS: The position of the acid in the sequence.
+- SEQ: The acid one letter.
+- ATOM: When there's a model, The ATOM derived sequence in three letter code, including the acid's positions as they appear in the PDB file and the chain identifier.
+- SCORE: The normalized conservation scores.
+- COLOR: The color scale representing the conservation scores (9 - conserved, 1 - variable).
+- CONFIDENCE INTERVAL: When using the bayesian method for calculating rates, a confidence interval is assigned to each of the inferred evolutionary conservation scores, next to it are the colors of the lower and upper bounds of the confidence interval
+- B/E: Burried (b) or Exposed (e) residue.
+- F/S: functional (f) or structural (s) residue (f - highly conserved and exposed, s - highly conserved and burried).
+- MSA DATA: The number of aligned sequences having an acid (non-gapped) from the overall number of sequences at each position.
+- RESIDUE VARIETY: The residues variety at each position of the multiple sequence alignment.
+
+POS	SEQ	    ATOM	 SCORE	COLOR	CONFIDENCE INTERVAL	B/E	F/S	MSA DATA	RESIDUE VARIETY
+
+  1	  M	 MET:1:A	-1.527	   9 	-1.736, -1.428  9,9	  e	  f	 159/300	M 88%, L  5%, V  3%, I  3%, R <1%
+  2	  Q	 GLN:2:A	-0.599	   7 	-0.826, -0.489  7,6	  e	   	 206/300	Q 57%, E 14%, K 13%, R  3%, S  1%, H  1%, D  1%, N  1%, T <1%, F <1%, P <1%, I <1%, Y <1%, L <1%, M <1%
+  3	  I	 ILE:3:A	-0.768	   7 	-0.960, -0.626  8,7	  e	   	 245/300	I 65%, V 16%, L 14%, F  2%, Y <1%, S <1%
+  4	  F	 PHE:4:A	-0.103	   5 	-0.344,  0.081  6,5	  e	   	 250/300	F 63%, T 10%, K  4%, S  4%, L  3%, Y  3%, N  3%, I  2%, Q  2%, H <1%, R <1%, E <1%, C <1%, M <1%, V <1%
+  5	  V	 VAL:5:A	-0.737	   7 	-0.960, -0.626  8,7	  b	   	 257/300	V 64%, I 19%, L  8%, F  3%, A  1%, M <1%, C <1%, T <1%, P <1%
+  6	  K	 LYS:6:A	-0.812	   7 	-1.027, -0.694  8,7	  e	   	 260/300	K 71%, R 11%, E  4%, Q  2%, S  1%, I  1%, L  1%, M  1%, N  1%, A <1%, V <1%, F <1%, Y <1%, T <1%
+  7	  T	 THR:7:A	-0.297	   6 	-0.489, -0.187  6,5	  e	   	 268/300	T 60%, D  7%, N  6%, I  4%, S  3%, P  2%, V  2%, A  2%, G  2%, L  1%, M  1%, F  1%, R  1%, Q  1%, K <1%, Y <1%, E <1%
+  8	  L	 LEU:8:A	 0.523	   4 	 0.186,  0.737  5,4	  e	   	 271/300	L 63%, I  4%, V  4%, P  3%, M  2%, E  2%, F  2%, S  2%, T  1%, H  1%, A  1%, N  1%, Q  1%, R  1%, W  1%, Y  1%, D  1%, K <1%, C <1%, G <1%
+  9	  T	 THR:9:A	 0.125	   5 	-0.103,  0.301  5,4	  e	   	 272/300	T 40%, K 10%, S  7%, D  7%, Q  6%, N  5%, A  5%, G  3%, E  2%, R  2%, V  1%, L  1%, H  1%, P  1%, I <1%, C <1%, M <1%
+ 10	  G	GLY:10:A	-0.580	   7 	-0.826, -0.418  7,6	  e	   	 280/300	G 72%, N  6%, S  6%, Q  5%, D  3%, R  1%, E  1%, A <1%, K <1%, W <1%, V <1%, H <1%
+ 11	  K	LYS:11:A	 0.074	   5 	-0.187,  0.186  5,5	  e	   	 287/300	K 47%, R 13%, Q 11%, T  8%, S  3%, G  3%, A  2%, N  2%, E  2%, D  2%, I  1%, Y <1%, H <1%, V <1%, P <1%, M <1%, L <1%
+ 12	  T	THR:12:A	 0.165	   5 	-0.103,  0.301  5,4	  e	   	 288/300	T 49%, I 10%, S  6%, K  5%, E  5%, N  4%, V  3%, H  2%, A  2%, Q  1%, R  1%, M  1%, L  1%, G  1%, F <1%, D <1%, W <1%, P <1%
+ 13	  I	ILE:13:A	 0.320	   4 	 0.081,  0.426  5,4	  b	   	 289/300	I 42%, F 15%, L  8%, V  6%, Y  5%, T  5%, C  3%, M  2%, H  2%, S  2%, R  1%, A  1%, K  1%, Q <1%, W <1%, N <1%, E <1%
+ 14	  T	THR:14:A	 0.554	   4 	 0.301,  0.737  4,4	  e	   	 292/300	T 45%, S  7%, A  7%, E  7%, P  7%, V  6%, N  4%, I  3%, D  2%, K  2%, R  1%, Q  1%, H  1%, M <1%, L <1%, C <1%, F <1%, G <1%
+ 15	  L	LEU:15:A	 0.147	   5 	-0.103,  0.301  5,4	  b	   	 292/300	L 52%, I 18%, F  9%, V  7%, Y  6%, M  2%, A <1%, P <1%, Q <1%, T <1%, S <1%, H <1%, R <1%
+ 16	  E	GLU:16:A	 1.475	   2 	 0.942,  1.602  3,2	  e	   	 293/300	E 35%, D 16%, Q  7%, N  6%, T  5%, K  5%, R  5%, S  3%, H  2%, L  2%, M  2%, A  1%, P  1%, V  1%, I  1%, Y  1%, G  1%, F <1%, C <1%
+ 17	  V	VAL:17:A	-0.709	   7 	-0.892, -0.626  7,7	  b	   	 293/300	V 71%, I  9%, A  6%, L  5%, C  3%, M  1%, F  1%, T  1%, S <1%, Y <1%, P <1%, K <1%
+ 18	  E	GLU:18:A	 0.912	   3 	 0.569,  1.207  4,3	  e	   	 293/300	E 37%, D 12%, K 11%, S  6%, N  5%, Q  4%, T  3%, R  3%, L  3%, P  3%, H  2%, A  2%, Y  1%, M  1%, I <1%, C <1%, W <1%, G <1%
+ 19	  P	 PRO:19:A	 0.928	   3*	 0.301,  1.427  4,2	  e	   	   5/300	P 60%, S 20%, A 20%
+ 20	  S	 SER:20:A	 1.512	   2*	 0.737,  2.569  4,1	  e	   	   4/300	S 50%, N 25%, T 25%
+
+
+*Below the confidence cut-off - The calculations for this site were performed on less than 6 non-gaped homologue sequences,
+or the confidence interval for the estimated score is equal to- or larger than- 4 color grades.

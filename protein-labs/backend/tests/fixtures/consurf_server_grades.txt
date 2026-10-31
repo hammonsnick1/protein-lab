@@ -1,0 +1,39 @@
+	 Amino Acid Conservation Scores
+	=======================================
+
+The layers for assigning grades are as follows.
+from  -1.459 to  -1.079 the grade is 9
+from  -1.079 to  -0.699 the grade is 8
+from  -0.699 to  -0.319 the grade is 7
+from  -0.319 to   0.061 the grade is 6
+from   0.061 to   0.441 the grade is 5
+from   0.441 to   0.821 the grade is 4
+from   0.821 to   1.201 the grade is 3
+from   1.201 to   1.581 the grade is 2
+from   1.581 to   1.961 the grade is 1
+
+ POS: The position of the AA in the SEQRES derived sequence.
+ SEQ: The SEQRES derived sequence in one letter code.
+ 3LATOM: The ATOM derived sequence in three letter code, including the AA's positions as they appear in the PDB file and the chain identifier.
+ SCORE: The normalized conservation scores.
+ COLOR: The color scale representing the conservation scores (9 - conserved, 1 - variable).
+ CONFIDENCE INTERVAL: When using the bayesian method for calculating rates, a confidence interval is assigned to each of the inferred evolutionary conservation scores.
+ CONFIDENCE INTERVAL COLORS: When using the bayesian method for calculating rates. The color scale representing the lower and upper bounds of the confidence interval.
+ MSA DATA: The number of aligned sequences having an amino acid (non-gapped) from the overall number of sequences at each position.
+ RESIDUE VARIETY: The amino acids variety in the MSA at each position of the query sequence.
+
+ POS	 SEQ	    3LATOM	SCORE		COLOR	CONFIDENCE INTERVAL 	CONFIDENCE INTERVAL COLORS	B/E	FUNCTION	MSA DATA	RESIDUE VARIETY
+    	    	        	(normalized)	        	                   	                          	   	        	   	
+   1	   M	    MET1:A	-1.185		  9	-1.459,-1.079		    9,9			  e	       f	  150/300	M
+   2	   V	    VAL2:A	-0.941		  8	-1.079,-0.699		    9,8			  b	        	  212/300	V,I,L,A
+   3	   H	    HIS3:A	-0.512		  7	-0.699,-0.319		    8,7			  e	        	  254/300	H,Q,N,Y
+   4	   L	    LEU4:A	 0.233		  5	-0.319, 0.441		    6,4			  b	        	  271/300	L,M,F,V,I
+   5	   T	    THR5:A	 0.788		  4	 0.441, 1.201		    5,3			  e	        	  280/300	T,S,A,N,K
+   6	   P	    PRO6:A	 1.402		  2	 1.201, 1.961		    3,1			  e	        	  284/300	P,S,A,E,Q,T,G
+   7	   E	         -	 1.655		  1	 1.581, 1.961		    2,1			   	        	  281/300	E,D,K,Q,S,A,G,N
+   8	   E	         -	 1.120		  3	 0.821, 1.581		    4,2			   	        	  279/300	E,D,Q,K,T
+   9	   K	    LYS9:A	 0.902		  3*	 0.061, 1.961		    5,1			  e	        	    4/300	K,R,S,T
+  10	   S	   SER10:A	-0.274		  6*	-1.079, 0.441		    9,4			  e	        	    3/300	S,A
+
+*Below the confidence cut-off - The calculations for this site were performed on less than 6 non-gaped homologue sequences,
+or the confidence interval for the estimated score is equal to- or larger than- 4 color grades.

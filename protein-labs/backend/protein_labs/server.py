@@ -13,6 +13,7 @@ import traceback
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from .protein_planner.conservation import ConSurfDbClient
 from .protein_planner.database import Database, ProteinNotFoundError
 from .protein_planner.integrations import (
     AlphaFoldDBClient,
@@ -247,6 +248,24 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(
                     200, self.planner.get_alphafold_model(match.group(1), match.group(2))
                 )
+                return
+            match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/conservation", path
+            )
+            if match:
+                self._send(200, self.planner.list_conservation(match.group(1)))
+                return
+            match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/conservation/([^/]+)/msa", path
+            )
+            if match:
+                self._send(200, self.planner.get_conservation_msa(*match.groups()))
+                return
+            match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/conservation/([^/]+)", path
+            )
+            if match:
+                self._send(200, self.planner.get_conservation(*match.groups()))
                 return
             self._send(404, {"error": "Endpoint not found"})
         except Exception as error:
@@ -497,6 +516,24 @@ class ApiHandler(BaseHTTPRequestHandler):
                     self._send(201, self.planner.import_alphafold_result(
                         protein_id, source_path
                     ))
+                elif action == "conservation/consurf-job":
+                    self._send(201, self.planner.prepare_consurf_job(protein_id))
+                elif action == "conservation/consurf-db":
+                    self._send(200, self.planner.lookup_consurf_db(
+                        protein_id,
+                        str(body.get("pdbId") or ""),
+                        str(body.get("chain") or ""),
+                    ))
+                elif action == "conservation/import":
+                    grades_path = str(body.get("gradesPath") or "").strip()
+                    if not grades_path:
+                        raise ValueError("A ConSurf grades file path is required")
+                    self._send(201, self.planner.import_consurf_result(
+                        protein_id,
+                        grades_path,
+                        str(body.get("msaPath") or ""),
+                        str(body.get("jobId") or ""),
+                    ))
                 elif action == "jobs":
                     self._send(201, self.planner.create_project_job(protein_id, body))
                 elif action == "notebook":
@@ -671,6 +708,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 self._send(200, {"deleted": vector_match.group(2)})
                 return
+            conservation_match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/conservation/([^/]+)", path
+            )
+            if conservation_match:
+                self._send(200, self.planner.delete_conservation(
+                    *conservation_match.groups()
+                ))
+                return
             match = re.fullmatch(r"/v1/protein-planner/proteins/([^/]+)", path)
             if not match:
                 self._send(404, {"error": "Endpoint not found"})
@@ -683,7 +728,7 @@ class ApiHandler(BaseHTTPRequestHandler):
     @staticmethod
     def _protein_action(path: str) -> tuple[str, str] | None:
         match = re.fullmatch(
-            r"/v1/protein-planner/proteins/([^/]+)/(analyze|blast|research|pdb/search|uniprot/search|uniprot/fetch|uniprot/match|alphafold/db|alphafold/server-job|alphafold/import|jobs|notebook)",
+            r"/v1/protein-planner/proteins/([^/]+)/(analyze|blast|research|pdb/search|uniprot/search|uniprot/fetch|uniprot/match|alphafold/db|alphafold/server-job|alphafold/import|conservation/consurf-job|conservation/consurf-db|conservation/import|jobs|notebook)",
             path,
         )
         return (match.group(1), match.group(2)) if match else None
@@ -760,6 +805,7 @@ def make_planner(database_path: str | Path, email: str = "") -> ProteinPlanner:
         RCSBClient(http),
         AlphaFoldDBClient(http),
         PDBeSIFTSClient(http),
+        ConSurfDbClient(http),
         email=email,
     )
 
