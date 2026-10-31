@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Atom, BadgeCheck, Beaker, BookOpen, Boxes, Check, ChevronRight, CircleCheck, Dna, FlaskConical, GitBranch, Microscope, Search, SkipForward, Sparkles } from "lucide-react";
+import { Activity, Atom, BadgeCheck, Beaker, BookOpen, Boxes, Check, ChevronRight, CircleCheck, Dna, FlaskConical, GitBranch, Microscope, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
-import { buildSkipConfig, isComplete, jobsFor, workflowJobs, workflowSections, workflowState, type WorkflowJobDefinition } from "@/lib/workflow";
+import { isComplete, workflowJobs, workflowSections, workflowState } from "@/lib/workflow";
 
 const jobIcons = {
   sequence: Dna,
@@ -54,25 +54,10 @@ export function ProjectDashboard({ bundle, onResume, onRoadmap, onReports }: { b
   </main>;
 }
 
-export function ProjectWorkflow({ bundle, onOpenJob, onRoadmap, onRefresh }: { bundle: ProteinBundle; onOpenJob: (jobId: string) => void; onRoadmap: () => void; onRefresh: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const recommended = workflowDefinitions.find((definition) => !isComplete(bundle, definition)) ?? workflowDefinitions.at(-1)!;
+export function ProjectWorkflow({ bundle, onOpenJob, onRoadmap }: { bundle: ProteinBundle; onOpenJob: (jobId: string) => void; onRoadmap: () => void }) {
   const workflowComplete = workflowDefinitions.every((definition) => isComplete(bundle, definition));
 
-  async function skip(definition: WorkflowJobDefinition) {
-    setBusy(true); setMessage("");
-    try {
-      const existing = jobsFor(bundle, definition)[0];
-      const job = existing ?? await proteinLabsApi.createJob(bundle.protein.id, definition.label, definition.appType);
-      await proteinLabsApi.updateJob(bundle.protein.id, job.id, `Skipped — ${definition.label}`, "complete", buildSkipConfig(job.config));
-      await onRefresh();
-    } catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
-    finally { setBusy(false); }
-  }
-
   return <main className="workflow-screen workflow-card-only">
-    <section className="next-step-banner"><Sparkles/><span><b>{workflowComplete ? "WORKFLOW READY · PURIFY YOUR PROTEIN" : `RECOMMENDED NEXT · ${recommended.label}`}</b><small>{workflowComplete ? "Your saved choices are available in the purification roadmap." : recommended.description}</small></span><Button disabled={busy} onClick={() => workflowComplete ? onRoadmap() : onOpenJob(recommended.id)}>{workflowComplete ? "Open roadmap" : jobsFor(bundle, recommended).length ? "Continue" : "Start"}</Button>{!workflowComplete && recommended.appType !== "protein-planner" && <Button disabled={busy} variant="ghost" onClick={() => void skip(recommended)}><SkipForward/> Skip</Button>}</section>
     <div className="workflow-toolbar"><span><strong>Workflow</strong><small>{bundle.protein.name} · Complete the jobs in order or open any card when your experiment requires a different path.</small></span></div>
     <div className="workflow-card-view single-project-workflow">
       <section className="workflow-branch-card active"><div className="workflow-section-stack">
@@ -83,7 +68,6 @@ export function ProjectWorkflow({ bundle, onOpenJob, onRoadmap, onRefresh }: { b
         <section className="workflow-card-section roadmap-launch-section" style={{ "--section-color": "#ef8f47" } as React.CSSProperties}><header><span><strong>Purify your protein</strong><small>Carry the approved plan to the bench in its data-linked roadmap.</small></span><b>{workflowComplete ? "READY" : "LIVE"}</b></header><button className="workflow-roadmap-launch" onClick={onRoadmap}><span><FlaskConical/></span><strong>Open purification roadmap</strong><small>Run transformation, lysis, capture, cleavage, cleanup, SEC, and quality control. Workflow choices populate the steps automatically.</small><em className={workflowComplete ? "completed" : "available"}>{workflowComplete ? "plan ready" : "available now"}</em><ChevronRight/></button></section>
       </div></section>
     </div>
-    {message && <div className="workflow-message">{message}<button onClick={() => setMessage("")}>Dismiss</button></div>}
   </main>;
 }
 
