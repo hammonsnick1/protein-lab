@@ -1,0 +1,463 @@
+/* Compile workflow: the generated bench plan as a timeline. Each step is a card
+   with its step-type icon on a vertical spine; the connector between two steps
+   carries the compatibility checks for that hand-off. From 1100px of width an
+   overview rail runs across the top and workflow-wide checks sit beside the
+   timeline; below that everything stacks in one column. Status is always icon
+   plus word as well as colour, and errors and warnings also change the spine's
+   line pattern, so the review survives greyscale printing. */
+.compile-review {
+  --compile-pass: #36ad89;
+  --compile-warning: #df9a36;
+  --compile-error: #e56565;
+  --compile-node: 44px;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.compile-review .pass { --tone: var(--compile-pass); }
+.compile-review .warning { --tone: var(--compile-warning); }
+.compile-review .error { --tone: var(--compile-error); }
+
+/* Summary bar: verdict, counts and actions. */
+.compile-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  padding: 14px 16px;
+}
+.compile-summary-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.compile-summary-text strong {
+  font-size: 14px;
+}
+.compile-summary-text small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+.compile-metrics {
+  display: flex;
+  gap: 6px;
+}
+.compile-metrics > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--tone) 10%, var(--card));
+  padding: 6px 10px;
+}
+.compile-metrics svg {
+  width: 15px;
+  height: 15px;
+  color: color-mix(in srgb, var(--tone) 80%, var(--foreground));
+}
+.compile-metrics b {
+  font: 18px/1 var(--font-mono);
+}
+.compile-metrics small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.compile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Overview rail: one node per step, the hand-off verdicts between them. */
+.compile-rail {
+  display: none;
+}
+.compile-rail-item {
+  display: flex;
+  align-items: flex-start;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.compile-rail-item:first-child {
+  flex: 0 0 auto;
+}
+.compile-rail-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 96px;
+  flex: none;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  padding: 4px 2px;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.compile-rail-node:hover .compile-icon {
+  background: color-mix(in srgb, var(--primary) 24%, var(--card));
+}
+.compile-rail-node:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+.compile-rail-node small {
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.compile-rail-node small b {
+  margin-right: 4px;
+  font-family: var(--font-mono);
+  color: var(--foreground);
+}
+.compile-rail-link {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 26px;
+  height: 2px;
+  margin-top: 25px;
+  background: var(--border);
+}
+.compile-rail-link.pass { background: color-mix(in srgb, var(--tone) 70%, var(--border)); }
+.compile-rail-link.warning { background: repeating-linear-gradient(90deg, var(--tone) 0 6px, transparent 6px 9px); }
+.compile-rail-link.error { background: repeating-linear-gradient(90deg, var(--tone) 0 3px, transparent 3px 6px); }
+.compile-rail-link > svg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: var(--card);
+  color: color-mix(in srgb, var(--tone) 80%, var(--foreground));
+}
+
+/* Step-type icon disc, shared by the rail and the timeline. */
+.compile-icon {
+  display: grid;
+  place-items: center;
+  width: var(--compile-node);
+  height: var(--compile-node);
+  flex: none;
+  border: 2px solid color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 14%, var(--card));
+  color: var(--primary);
+  position: relative;
+  z-index: 1;
+}
+.compile-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.compile-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@container (min-width: 1100px) {
+  .compile-rail {
+    display: flex;
+    align-items: flex-start;
+    padding: 2px 4px;
+  }
+  .compile-body {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  }
+}
+
+/* The vertical timeline: a spine through every step node and connector. */
+.compile-timeline {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.compile-step,
+.compile-link {
+  display: grid;
+  grid-template-columns: var(--compile-node) minmax(0, 1fr);
+  column-gap: 12px;
+  position: relative;
+  padding-bottom: 12px;
+}
+.compile-step::before,
+.compile-link::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--compile-node) / 2 - 1px);
+  width: 2px;
+  background: var(--border);
+}
+.compile-item:first-child .compile-step::before {
+  top: calc(var(--compile-node) / 2);
+}
+.compile-item:last-child .compile-step::before {
+  bottom: auto;
+  height: calc(var(--compile-node) / 2);
+}
+.compile-step > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 12px 14px;
+}
+.compile-step:focus {
+  outline: none;
+}
+.compile-step:focus > div {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+.compile-step-kind {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.compile-step-kind b {
+  color: var(--primary);
+}
+.compile-step strong {
+  margin-top: 3px;
+  font-size: 14px;
+}
+.compile-step p {
+  margin: 4px 0 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.compile-record {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.compile-record b {
+  margin-right: 6px;
+  color: var(--foreground);
+}
+
+/* Compatibility connector between two steps. */
+.compile-link.pass::before { background: color-mix(in srgb, var(--tone) 70%, var(--border)); }
+.compile-link.warning::before { background: repeating-linear-gradient(180deg, var(--tone) 0 6px, transparent 6px 9px); }
+.compile-link.error::before { background: repeating-linear-gradient(180deg, var(--tone) 0 3px, transparent 3px 6px); }
+.compile-link-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 8px auto 0;
+  border: 1.5px solid var(--tone);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--tone) 16%, var(--card));
+  color: color-mix(in srgb, var(--tone) 80%, var(--foreground));
+  position: relative;
+  z-index: 1;
+}
+.compile-link-mark svg {
+  width: 16px;
+  height: 16px;
+}
+.compile-link-body {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, var(--border));
+  border-left: 3px solid var(--tone);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tone) 6%, var(--card));
+  padding: 10px 12px;
+}
+.compile-link-body > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.compile-link-route {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+.compile-link-route svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+/* A single check: level word and title, what it found, and how to fix it. */
+.compile-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.compile-finding {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.compile-finding > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: color-mix(in srgb, var(--tone) 80%, var(--foreground));
+}
+.compile-finding > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.compile-finding strong {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.compile-finding strong em {
+  margin-right: 6px;
+  color: color-mix(in srgb, var(--tone) 70%, var(--foreground));
+  font-style: normal;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.compile-finding small {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.compile-finding .compile-fix {
+  margin-top: 5px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--tone) 11%, var(--card));
+  padding: 5px 8px;
+  color: var(--foreground);
+}
+.compile-fix b {
+  margin-right: 6px;
+}
+
+/* Workflow-wide checks beside (or below) the timeline. */
+.compile-general {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  padding: 14px;
+}
+.compile-general > header {
+  display: flex;
+  flex-direction: column;
+}
+.compile-general > header strong {
+  font-size: 13px;
+}
+.compile-general > header small,
+.compile-none {
+  margin: 2px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.compile-aside .guidance-card {
+  margin-top: 12px;
+}
+
+/* Motion: each item fades up in turn (320 ms, 60 ms apart, see
+   lib/compile-timeline.ts), then its icon makes one short gesture for its step
+   type. Reduced motion shows everything in place at once. */
+.compile-item,
+.compile-rail-item,
+.compile-general {
+  animation: compile-reveal 320ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation-delay: var(--compile-delay, 0ms);
+}
+.compile-icon svg {
+  animation: compile-icon-pop 280ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+  animation-delay: calc(var(--compile-delay, 0ms) + 100ms);
+}
+[data-kind="expression"] .compile-icon svg { animation-name: compile-icon-tilt; }
+[data-kind="lysis"] .compile-icon svg { animation-name: compile-icon-flash; }
+[data-kind="affinity"] .compile-icon svg { animation-name: compile-icon-pull; }
+[data-kind="elution"] .compile-icon svg,
+[data-kind="subtractive"] .compile-icon svg { animation-name: compile-icon-drop; }
+[data-kind="cleavage"] .compile-icon svg { animation-name: compile-icon-snip; }
+[data-kind="exchange"] .compile-icon svg { animation-name: compile-icon-swap; }
+[data-kind="concentration"] .compile-icon svg { animation-name: compile-icon-squeeze; }
+[data-kind="sec"] .compile-icon svg { animation-name: compile-icon-stack; }
+@keyframes compile-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes compile-icon-pop {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes compile-icon-tilt {
+  from { opacity: 0; transform: rotate(-24deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes compile-icon-flash {
+  0% { opacity: 0; transform: scale(0.6); }
+  40% { opacity: 1; transform: scale(1.2); }
+  60% { opacity: 0.4; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes compile-icon-pull {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes compile-icon-drop {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes compile-icon-snip {
+  0% { opacity: 0; transform: rotate(-30deg); }
+  60% { opacity: 1; transform: rotate(12deg); }
+  100% { transform: none; }
+}
+@keyframes compile-icon-swap {
+  0% { opacity: 0; transform: translateX(6px); }
+  50% { opacity: 1; transform: translateX(-3px); }
+  100% { transform: none; }
+}
+@keyframes compile-icon-squeeze {
+  from { opacity: 0; transform: scale(1.4); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes compile-icon-stack {
+  from { opacity: 0; transform: scaleY(0.3); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compile-review * { animation: none !important; }
+}

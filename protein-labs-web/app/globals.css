@@ -4,6 +4,7 @@
 @import "./vector-library.css";
 @import "./protein-library.css";
 @import "./vector-workbench.css";
+@import "./compile-timeline.css";
 
 /* Graphic novel is the default appearance, so its tokens also sit on :root:
    dialogs portal into <body>, outside .app-shell, and read them from here. */
@@ -4178,8 +4179,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 }
 .catalog-pane,
 .catalog-details,
-.buffer-planner,
-.workflow-review > section {
+.buffer-planner {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: color-mix(in srgb, var(--card) 85%, transparent);
@@ -4545,163 +4545,6 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   line-height: 1.4;
   margin-top: 3px;
 }
-.workflow-review {
-  display: grid;
-  grid-template-columns: minmax(420px, 0.8fr) minmax(550px, 1.2fr);
-  gap: 15px;
-  align-items: start;
-}
-.workflow-review > section {
-  padding: 16px;
-}
-.review-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
-  margin-bottom: 12px;
-}
-.review-metrics > span {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-top: 3px solid currentColor;
-  border-radius: 8px;
-  padding: 10px;
-  background: var(--card);
-}
-.review-metrics b {
-  font: 24px var(--font-mono);
-}
-.review-metrics small {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.review-metrics small svg {
-  width: 13px;
-  height: 13px;
-  color: currentColor;
-}
-.review-metrics .error small svg { color: #e56565; }
-.review-metrics .warning small svg { color: #e0a53c; }
-.review-metrics .pass small svg { color: #4ac59d; }
-.review-section-head {
-  margin-bottom: 12px;
-}
-.review-section-head > span {
-  display: flex;
-  flex-direction: column;
-}
-.review-section-head strong {
-  font-size: 14px;
-}
-.review-section-head small {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  line-height: 1.45;
-  margin-top: 2px;
-}
-.review-metrics .error {
-  color: #e56565;
-}
-.review-metrics .warning {
-  color: #e0a53c;
-}
-.review-metrics .pass {
-  color: #4ac59d;
-}
-.review-checks {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 650px;
-  overflow: auto;
-}
-.review-checks article {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: start;
-  border: 1px solid var(--border);
-  border-left: 3px solid currentColor;
-  border-radius: 8px;
-  background: var(--card);
-  padding: 9px;
-}
-.review-checks article.pass {
-  color: #4ac59d;
-}
-.review-checks article.warning {
-  color: #e0a53c;
-}
-.review-checks article.error {
-  color: #e56565;
-}
-.review-checks article > span:first-child {
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-}
-.review-checks strong {
-  font-size: 12px;
-}
-.review-checks small {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  line-height: 1.4;
-  margin-top: 3px;
-}
-.bench-workflow > header {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding-bottom: 13px;
-  border-bottom: 1px solid var(--border);
-}
-.bench-workflow > header > span:first-child {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-.bench-workflow > header small {
-  color: var(--muted-foreground);
-}
-.bench-workflow > article {
-  display: grid;
-  grid-template-columns: 35px 1fr;
-  gap: 11px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
-}
-.bench-workflow > article > span {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--primary) 14%, var(--card));
-  color: var(--primary);
-  font: 12px var(--font-mono);
-}
-.bench-workflow article strong {
-  font-size: 13px;
-}
-.bench-workflow article p {
-  font-size: 12px;
-  line-height: 1.45;
-  margin: 4px 0;
-}
-.bench-workflow article small {
-  color: var(--muted-foreground);
-  font-size: 12px;
-}
-.bench-workflow article small b {
-  margin-right: 6px;
-  color: var(--foreground);
-  font-weight: 700;
-}
 .review-empty {
   display: flex;
   gap: 9px;
@@ -4744,8 +4587,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   font-size: 12px;
 }
 @media (max-width: 1050px) {
-  .purification-browser,
-  .workflow-review {
+  .purification-browser {
     grid-template-columns: 1fr;
   }
   .catalog-details {
