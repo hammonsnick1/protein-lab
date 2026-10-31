@@ -145,7 +145,7 @@ export function splitCofactorText(value: string): string[] {
   return value
     .split(/[;\n]|\band\b|\s\+\s|(?<![0-9]),(?!\s*[0-9])/gi)
     .map((part) => part.trim())
-        // Bare "NA" is "not applicable" far more often than it is sodium, and the
+    // Bare "NA" is "not applicable" far more often than it is sodium, and the
     // charge is what tells them apart: `Na+` and `sodium` still get through.
     .filter((part) => part.length > 0 && !/^(none|n\/a|na|no|unknown|not reviewed)$/i.test(part));
 }
@@ -170,11 +170,33 @@ function referenceEvidence(bundle: ProteinBundle): { accession: string; features
 }
 
 /**
+ * The key the export dialog removes a cofactor by: the entity AlphaFold Server
+ * would model, not the text the cofactor was recorded as. `heme b` and
+ * `heme b · CHEBI:60344` are one row in the preview and one `ligand:HEM` here,
+ * so removing that row removes both annotations behind it.
+ */
+export function cofactorKey(name: string): string {
+  const cleaned = name.trim();
+  const match = recogniseMolecule(cleaned);
+  return match ? `${match.kind}:${match.code}` : `text:${cleaned.toLowerCase()}`;
+}
+
+/**
  * The AlphaFold Server job request for a project: the construct as the required
  * chain, the recorded oligomeric state as its copy count, and every cofactor
  * and modification the chosen reference supports.
+ *
+ * `excluded` holds `cofactorKey` values the scientist removed in the export
+ * dialog. They are dropped here rather than filtered out of the built job, so
+ * the cofactor warnings below count what the job actually carries: a reference
+ * heme the scientist has already removed should not still be described as
+ * sitting in the job.
  */
-export function alphaFoldRequestFor(bundle: ProteinBundle, partners: PartnerChain[] = []): AlphaFoldJobRequest {
+export function alphaFoldRequestFor(
+  bundle: ProteinBundle,
+  partners: PartnerChain[] = [],
+  excluded: readonly string[] = [],
+): AlphaFoldJobRequest {
   const notes: ExportWarning[] = [];
   const state = readOligomericState(jobConfig(bundle, "protparam"));
   const copies = subunitCount(state);
@@ -257,6 +279,8 @@ export function alphaFoldRequestFor(bundle: ProteinBundle, partners: PartnerChai
 
   const cofactors: SmallMoleculeRequest[] = [];
   const seen = new Set<string>();
+  const dropped = new Set<string>();
+  const excludedKeys = new Set(excluded);
   // Dedupe on the entity AlphaFold Server will actually model, not on how the
   // cofactor was written down. The readiness check pre-fills its Cofactor
   // details from this same reference as `name · CHEBI:id`, so one heme reaches
@@ -267,8 +291,11 @@ export function alphaFoldRequestFor(bundle: ProteinBundle, partners: PartnerChai
   const addCofactor = (name: string, source: string) => {
     const cleaned = name.trim();
     if (!cleaned) return;
-    const match = recogniseMolecule(cleaned);
-    const key = match ? `${match.kind}:${match.code}` : `text:${cleaned.toLowerCase()}`;
+    const key = cofactorKey(cleaned);
+    if (excludedKeys.has(key)) {
+      dropped.add(cleaned);
+      return;
+    }
     if (seen.has(key)) return;
     seen.add(key);
     cofactors.push({ code: cleaned, copies: 1, source });
@@ -283,16 +310,33 @@ export function alphaFoldRequestFor(bundle: ProteinBundle, partners: PartnerChai
     // The scientist's own answer beats the homolog's annotation, but dropping a
     // haemoglobin's heme on the strength of one radio button would be worse
     // than carrying it, so the reference's cofactors stay and say so.
-    if (cofactors.length) {
+    //
+    // "below" means the Ligands and ions rows, and a cofactor AlphaFold Server
+    // cannot model never gets a row — it gets its own "left out" note instead.
+    // Counting those here would promise a row that is not there and ask for it
+    // to be removed with a button it does not have.
+    const shown = cofactors.filter((entry) => recogniseMolecule(entry.code)).length;
+    if (shown) {
       notes.push({
         category: "approximation", severity: "adjusted", subject: "Readiness check",
-        message: `The readiness check answers "no" to requiring a cofactor, so its own notes were not read. ${cofactors.length === 1 ? "The cofactor" : `The ${cofactors.length} cofactors`} below still ${cofactors.length === 1 ? "comes" : "come"} from ${evidence.accession || "the reference"} — remove ${cofactors.length === 1 ? "it" : "them"} from the job if this construct really binds nothing.`,
+        message: `The readiness check answers "no" to requiring a cofactor, so its own notes were not read. ${shown === 1 ? "The cofactor" : `The ${shown} cofactors`} below still ${shown === 1 ? "comes" : "come"} from ${evidence.accession || "the reference"} — remove ${shown === 1 ? "it" : "them"} from the job if this construct really binds nothing.`,
       });
     }
   } else {
     for (const name of splitCofactorText(String(readiness.cofactorDetails ?? ""))) {
       addCofactor(name, `${name} (readiness check)`);
     }
+  }
+  if (dropped.size) {
+    // Said out loud in the same list as everything else the job lost, so the
+    // downloaded file and the notes beside it never disagree about what is in
+    // it. Nothing is deleted from the project: the removals live in the dialog
+    // and "Add back" restores them.
+    const names = [...dropped].sort((left, right) => left.localeCompare(right));
+    notes.push({
+      category: "removed-by-hand", severity: "excluded", subject: "Removed here",
+      message: `${names.join(", ")} ${names.length === 1 ? "was" : "were"} removed in this dialog, so ${names.length === 1 ? "it is" : "they are"} not in the job. The project still records ${names.length === 1 ? "it" : "them"} — use "Add back" to put ${names.length === 1 ? "it" : "them"} in again.`,
+    });
   }
 
   const ptmAnswer = String(readiness.postTranslationalModification ?? "");

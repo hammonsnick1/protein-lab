@@ -16083,6 +16083,23 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+/* Pushed to the row's trailing edge, and centred rather than baseline-aligned
+   so a wrapped row does not leave the icon hanging off the first line. */
+.af-export-remove {
+  margin-left: auto;
+  align-self: center;
+}
+.af-export-restore {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.af-export-restore > span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
 .af-export-pills {
   display: flex;
   flex-wrap: wrap;

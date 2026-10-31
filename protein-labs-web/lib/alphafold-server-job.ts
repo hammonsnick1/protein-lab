@@ -184,7 +184,7 @@ export type AlphaFoldJobRequest = {
 
 export type WarningCategory =
   | "no-sequence" | "invalid-residue" | "empty-job"
-  | "unsupported-ligand" | "reclassified"
+  | "unsupported-ligand" | "reclassified" | "removed-by-hand"
   | "unsupported-ptm" | "ptm-position" | "ptm-residue" | "duplicate-ptm" | "approximation"
   | "unsupported-glycan" | "glycan-site" | "glycan-position" | "glycan-limit"
   | "token-limit";

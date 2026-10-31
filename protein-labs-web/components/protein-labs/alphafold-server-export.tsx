@@ -12,7 +12,7 @@
 // server.
 
 import { useMemo, useState } from "react";
-import { Atom, Braces, Check, Copy, Dna, Download, ExternalLink, FlaskConical, Plus, Trash2 } from "lucide-react";
+import { Atom, Braces, Check, Copy, Dna, Download, ExternalLink, FlaskConical, Plus, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatusChip, type StatusTone } from "@/components/ui/status-chip";
@@ -31,8 +31,12 @@ const chainKinds: Record<ChainSummary["kind"], string> = { protein: "Protein cha
 export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
   const [open, setOpen] = useState(false);
   const [partners, setPartners] = useState<PartnerChain[]>([]);
+  // `cofactorKey` values the scientist took out of the job. Kept here rather
+  // than written back to the project: the readiness check and the reference
+  // still say what they said, this is only what gets uploaded.
+  const [removed, setRemoved] = useState<string[]>([]);
   const [status, setStatus] = useState("");
-  const result = useMemo(() => buildAlphaFoldJob(alphaFoldRequestFor(bundle, partners)), [bundle, partners]);
+  const result = useMemo(() => buildAlphaFoldJob(alphaFoldRequestFor(bundle, partners, removed)), [bundle, partners, removed]);
   const fileName = alphaFoldFileName(bundle.protein.name);
   const { chains, molecules, tokens, tokenLimit } = result.summary;
   const blocking = result.warnings.filter((warning) => warning.severity === "blocking");
@@ -109,14 +113,33 @@ export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
 
           <section className="af-export-group">
             <header><FlaskConical aria-hidden="true"/><strong>Ligands and ions</strong><span>{molecules.length}</span></header>
+            {/* The empty state can only speak for this list. A project may also
+                record a cofactor AlphaFold Server cannot model, which never had
+                a row here and was left out rather than removed — saying "every
+                cofactor this project records" would claim that one too. */}
             {molecules.length ? <ul>
               {molecules.map((molecule) => <li key={`${molecule.kind}-${molecule.code}`}>
                 <div className="af-export-row">
                   <span className="af-export-name">{moleculeCode(molecule)}</span>
                   <small>{molecule.kind === "ion" ? "Ion" : "Ligand"} · {molecule.count} {molecule.count === 1 ? "copy" : "copies"} · {molecule.name} · {molecule.tokens.toLocaleString("en-US")} {molecule.tokens === 1 ? "token" : "tokens"}</small>
+                  <Button
+                    className="af-export-remove" variant="ghost" size="icon-sm"
+                    aria-label={`Remove ${moleculeCode(molecule)} from this job`}
+                    onClick={() => setRemoved((current) => [...current, `${molecule.kind}:${molecule.code}`])}
+                  ><Trash2/></Button>
                 </div>
               </li>)}
-            </ul> : <p className="af-export-none">No cofactor in this project maps to an AlphaFold Server ligand or ion.</p>}
+            </ul> : <p className="af-export-none">{removed.length
+              ? `${removed.length === 1 ? "The only cofactor" : "Every cofactor"} AlphaFold Server can model here has been removed. Add ${removed.length === 1 ? "it" : "one"} back below to put it in the job.`
+              : "No cofactor in this project maps to an AlphaFold Server ligand or ion."}</p>}
+            {removed.length > 0 && <div className="af-export-restore">
+              <span>Removed from this job:</span>
+              {removed.map((key) => <Button
+                key={key} variant="outline" size="sm"
+                aria-label={`Add ${removedLabel(key)} back to this job`}
+                onClick={() => setRemoved((current) => current.filter((entry) => entry !== key))}
+              ><Undo2/> {removedLabel(key)}</Button>)}
+            </div>}
           </section>
 
           <section className="af-export-group">
@@ -169,4 +192,11 @@ export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
 /** Ligands carry the CCD_ prefix in the JSON; ions do not. */
 function moleculeCode(molecule: MoleculeSummary) {
   return molecule.kind === "ligand" ? `CCD_${molecule.code}` : molecule.code;
+}
+
+/** A removed cofactor's `kind:code` key read back as the row's own label. */
+function removedLabel(key: string) {
+  const [kind, ...rest] = key.split(":");
+  const code = rest.join(":");
+  return kind === "ligand" ? `CCD_${code}` : code;
 }
