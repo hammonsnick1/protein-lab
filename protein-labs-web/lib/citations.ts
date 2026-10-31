@@ -1,0 +1,186 @@
+// One registry for every source the app cites: papers, tools, databases and
+// teaching websites. Screens show them through `components/ui/citations.tsx`
+// and the manual reads the same entries, so a reference is written once.
+//
+// Rules for adding an entry:
+// - Resolve the DOI against Crossref (https://api.crossref.org/works/<doi>) and
+//   copy authors, year, title and journal from that record, not from memory.
+// - Software and websites without a DOI carry a `url` instead.
+// - Anything whose code we might study or reuse carries a `license`. Read the
+//   LICENSE file in the upstream repository; an absent file means no licence
+//   was granted, so record `reuse: "none"`.
+// - Code that is actually copied or bundled also gets a full section in
+//   `protein-labs/THIRD_PARTY_NOTICES.md` (see the template at its top).
+
+export type CitationKind = "article" | "book" | "software" | "database" | "website";
+
+/**
+ * How far the licence lets the app reuse the code, as opposed to citing it:
+ * - `permissive`: MIT/BSD/Apache-style; copy with the notice kept.
+ * - `restricted`: use is limited (for example not-for-profit only); call it
+ *   or study it, but get CEO sign-off before shipping any of its code.
+ * - `none`: no licence was granted; read and cite only, never copy.
+ */
+export type LicenseReuse = "permissive" | "restricted" | "none";
+
+export type CitationLicense = {
+  /** SPDX identifier when there is one, otherwise a short name. */
+  name: string;
+  reuse: LicenseReuse;
+  /** Where the licence text was read. */
+  url: string;
+  /** What the app does with it today, in one line. */
+  usage: string;
+};
+
+export type Citation = {
+  id: string;
+  kind: CitationKind;
+  /** What a student will look for: the tool or resource name, when it has one. */
+  name?: string;
+  /** "Family Initials" separated by commas; trailing "et al." when cut. */
+  authors: string;
+  year: string;
+  title: string;
+  /** Journal with volume and pages, publisher, or site owner. */
+  source: string;
+  doi?: string;
+  url?: string;
+  license?: CitationLicense;
+};
+
+const entries = [
+  {
+    id: "shoebill2026", kind: "software", name: "Shoebill", authors: "Liao KJ, Sun YJ", year: "2026",
+    title: "Shoebill: an interpretable AlphaFold2-informed predictor of protein crystallization propensity using XGBoost",
+    source: "Brief Bioinform 27:bbag233", doi: "10.1093/bib/bbag233", url: "https://github.com/KJ-Liao/Shoebill",
+    license: { name: "No licence file", reuse: "none", url: "https://github.com/KJ-Liao/Shoebill", usage: "Method studied and cited; no code copied." },
+  },
+  {
+    id: "mall2025plm", kind: "article", name: "Protein language models for crystallization", authors: "Mall R, Kaushik R, Martinez ZA, Thomson MW, Castiglione F", year: "2025",
+    title: "Benchmarking protein language models for protein crystallization",
+    source: "Sci Rep 15:2381", doi: "10.1038/s41598-025-86519-5",
+  },
+  {
+    id: "mascl2025", kind: "article", name: "MASCL", authors: "Liao KJ, Sun YJ", year: "2025",
+    title: "Using AlphaFold and symmetrical docking to predict protein–protein interactions for exploring potential crystallization conditions",
+    source: "Proteins 93:1747–1766", doi: "10.1002/prot.26844",
+  },
+  {
+    id: "ucl-sgp", kind: "website", name: "UCL space-group diagrams", authors: "Cockcroft JK", year: "1999",
+    title: "A hypertext book of crystallographic space group diagrams and tables",
+    source: "Birkbeck College, University of London; hosted by the Department of Chemistry, UCL",
+    url: "http://img.chem.ucl.ac.uk/sgp/mainmenu.htm",
+    license: { name: "© 1997–1999 Birkbeck College", reuse: "none", url: "http://img.chem.ucl.ac.uk/sgp/mainmenu.htm", usage: "Visual model only; the app draws its own diagrams." },
+  },
+  {
+    id: "ita2016", kind: "book", name: "International Tables, Vol. A", authors: "Aroyo MI (ed.)", year: "2016",
+    title: "International Tables for Crystallography, Volume A: Space-group symmetry",
+    source: "International Union of Crystallography", doi: "10.1107/97809553602060000114",
+  },
+  {
+    id: "ucbshift2", kind: "software", name: "UCBShift 2.0", authors: "Ptaszek AL, Li J, Konrat R, Platzer G, Head-Gordon T", year: "2024",
+    title: "UCBShift 2.0: bridging the gap from backbone to side chain protein chemical shift prediction for protein structures",
+    source: "J Am Chem Soc 146:31733–31745", doi: "10.1021/jacs.4c10474", url: "https://github.com/THGLab/CSpred",
+    license: { name: "UC Regents, not-for-profit only", reuse: "restricted", url: "https://github.com/THGLab/CSpred/blob/master/LICENSE.txt", usage: "Method studied and cited; no code shipped." },
+  },
+  {
+    id: "legolas2025", kind: "software", name: "LEGOLAS", authors: "Darrows MY, Kodituwakku D, Xue J, Pickering I, Terrel NS, Roitberg AE", year: "2025",
+    title: "LEGOLAS: a machine learning method for rapid and accurate predictions of protein NMR chemical shifts",
+    source: "J Chem Theory Comput 21:4266–4275", doi: "10.1021/acs.jctc.5c00026", url: "https://github.com/roitberg-group/legolas",
+    license: { name: "MIT", reuse: "permissive", url: "https://github.com/roitberg-group/legolas", usage: "Method studied and cited; no code copied yet." },
+  },
+  {
+    id: "shiftx2", kind: "software", name: "SHIFTX2", authors: "Han B, Liu Y, Ginzinger SW, Wishart DS", year: "2011",
+    title: "SHIFTX2: significantly improved protein chemical shift prediction",
+    source: "J Biomol NMR 50:43–57", doi: "10.1007/s10858-011-9478-4", url: "http://www.shiftx2.ca",
+  },
+  {
+    id: "rdkit", kind: "software", name: "RDKit", authors: "RDKit contributors", year: "2006–",
+    title: "RDKit: open-source cheminformatics",
+    source: "rdkit.org", doi: "10.5281/zenodo.591637", url: "https://www.rdkit.org",
+    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Candidate for 2D ligand drawing; not bundled yet." },
+  },
+  {
+    id: "molstar", kind: "software", name: "Mol*", authors: "Sehnal D, Bittrich S, Deshpande M, Svobodová R, Berka K, Bazgier V, Velankar S, Burley SK, Koča J, Rose AS", year: "2021",
+    title: "Mol* Viewer: modern web app for 3D visualization and analysis of large biomolecular structures",
+    source: "Nucleic Acids Res 49:W431–W437", doi: "10.1093/nar/gkab314", url: "https://molstar.org",
+    license: { name: "MIT", reuse: "permissive", url: "https://github.com/molstar/molstar/blob/master/LICENSE", usage: "Bundled as the 3D structure viewer." },
+  },
+  {
+    id: "bmrb", kind: "database", name: "BMRB", authors: "Hoch JC, Baskaran K, Burr H, et al.", year: "2023",
+    title: "Biological Magnetic Resonance Data Bank",
+    source: "Nucleic Acids Res 51:D368–D376", doi: "10.1093/nar/gkac1050", url: "https://bmrb.io",
+  },
+  {
+    id: "ccd", kind: "database", name: "Chemical Component Dictionary (CCD)", authors: "Westbrook JD, Shao C, Feng Z, Zhuravleva M, Velankar S, Young J", year: "2015",
+    title: "The chemical component dictionary: complete descriptions of constituent molecules in experimentally determined 3D macromolecules in the Protein Data Bank",
+    source: "Bioinformatics 31:1274–1278", doi: "10.1093/bioinformatics/btu789", url: "https://www.wwpdb.org/data/ccd",
+  },
+  {
+    id: "opencloning", kind: "software", name: "OpenCloning", authors: "Lera-Ramirez M", year: "2022",
+    title: "OpenCloning backend", source: "GitHub", url: "https://github.com/OpenCloning/OpenCloning_backend",
+    license: { name: "MIT", reuse: "permissive", url: "https://github.com/OpenCloning/OpenCloning_backend", usage: "Vector builder conventions adapted (backend 1.9.5)." },
+  },
+] as const satisfies readonly Citation[];
+
+export type CitationId = (typeof entries)[number]["id"];
+
+export const citations: Readonly<Record<CitationId, Citation>> = Object.fromEntries(entries.map((entry) => [entry.id, entry])) as Record<CitationId, Citation>;
+
+export function getCitation(id: CitationId): Citation { return citations[id]; }
+
+/** The link a reader follows: the DOI when there is one, otherwise the URL. */
+export function citationHref(citation: Citation): string | null {
+  if (citation.doi) return `https://doi.org/${citation.doi}`;
+  return citation.url ?? null;
+}
+
+/** "Han et al. 2011" — for marker tooltips and running text. */
+export function citationShortLabel(citation: Citation): string {
+  const names = citation.authors.replace(/,?\s*et al\.$/, "").split(",").map((name) => name.trim()).filter(Boolean);
+  const family = (name: string) => name.replace(/\s+\(ed\.\)$/, "").replace(/\s+[A-Z]+$/, "");
+  const who = names.length === 0 ? citation.source
+    : names.length === 1 && !/et al\.$/.test(citation.authors) ? family(names[0])
+    : names.length === 2 ? `${family(names[0])} & ${family(names[1])}`
+    : `${family(names[0])} et al.`;
+  return `${who} ${citation.year}`;
+}
+
+/** A numbered reference list for one job or panel. Markers and the list read numbers from here, so they always agree. */
+export type CitationScope = {
+  /** Unique per screen; used for the anchor ids of the list items. */
+  key: string;
+  ids: readonly CitationId[];
+  number: (id: CitationId) => number;
+  anchor: (id: CitationId) => string;
+};
+
+/** Numbers follow the order given; duplicates keep their first number. */
+export function citationScope(key: string, ids: readonly CitationId[]): CitationScope {
+  const ordered = [...new Set(ids)];
+  const numbers = new Map(ordered.map((id, index) => [id, index + 1]));
+  return {
+    key,
+    ids: ordered,
+    number: (id) => {
+      const value = numbers.get(id);
+      if (value === undefined) throw new Error(`Citation "${id}" is not in the "${key}" reference list.`);
+      return value;
+    },
+    anchor: (id) => `ref-${key}-${id}`,
+  };
+}
+
+/** Every entry with a recorded licence, for the Licences section. */
+export function licenseRegister(): (Citation & { license: CitationLicense })[] {
+  return (entries as readonly Citation[])
+    .filter((entry): entry is Citation & { license: CitationLicense } => entry.license !== undefined)
+    .sort((a, b) => (a.name ?? a.title).localeCompare(b.name ?? b.title));
+}
+
+export const LICENSE_REUSE_LABELS: Record<LicenseReuse, string> = {
+  permissive: "Reuse allowed with notice",
+  restricted: "Restricted use",
+  none: "Cite only — no reuse",
+};
