@@ -14,6 +14,7 @@ import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { PurificationRoadmapWorkspace } from "@/components/protein-labs/purification-roadmap";
 import { LibraryHub } from "@/components/protein-labs/library-hub";
 import { UserManual } from "@/components/protein-labs/user-manual";
+import { VectorWorkbench } from "@/components/protein-labs/vector-workbench";
 import { JsonObject, ProteinBundle, ProteinRecord, proteinLabsApi } from "@/lib/protein-labs-api";
 import { definitionFor } from "@/lib/workflow";
 import { writeProjectTrees } from "@/lib/project-trees";
@@ -23,13 +24,13 @@ import { runViewTransition } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
 import { createLibraryOpener, libraryStorage, type LibraryTab } from "@/lib/library-hub";
 
-type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "library" | "manual" | "roadmap" | "reports" | "job";
+type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "library" | "workbench" | "manual" | "roadmap" | "reports" | "job";
 // Baked in by desktop/vite.config.ts from package.json.
 declare const __PROTEIN_LABS_VERSION__: string;
 const appVersion = __PROTEIN_LABS_VERSION__;
 
 // Depth of each view; moving to a shallower view animates as "back".
-const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, library: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
+const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, library: 1, workbench: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
 type VisualTheme = "paper" | "mono-dark" | "mono-light";
 
 // Each appearance carries its own light or dark mode, so the appearance is the
@@ -86,6 +87,8 @@ export default function Home() {
   const [shellNode, setShellNode] = useState<HTMLDivElement | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [manualVisit, setManualVisit] = useState<{ section?: string; visit: number }>({ visit: 0 });
+  // Each visit remounts the workbench; a dashboard pick opens that library vector straight away.
+  const [workbenchVisit, setWorkbenchVisit] = useState<{ libraryId?: string; visit: number }>({ visit: 0 });
   const [enginePath, setEnginePath] = useState("");
   const [projectDirectory, setProjectDirectory] = useState<ProjectDirectoryState | null>(null);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("vectors");
@@ -236,9 +239,10 @@ export default function Home() {
     {busy && <div className="global-working"><LoaderCircle className="spin"/> Working with the local scientific engine…</div>}
 
     <div className={`workspace-view-transition ${view === "home" ? "is-dashboard" : ""}`} key={`${view}:${selectedId}:${view === "job" ? activeJob : ""}`}>
-      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} storage={libraryStorage(projectDirectory, enginePath)} onLibrary={openLibrary} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()} onCreate={() => setCreateOpen(true)}/>
+      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} storage={libraryStorage(projectDirectory, enginePath)} onLibrary={openLibrary} onWorkbench={(libraryId) => setView("workbench", () => setWorkbenchVisit((current) => ({ libraryId, visit: current.visit + 1 })))} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()} onCreate={() => setCreateOpen(true)}/>
         : view === "projects" ? <ProjectGallery proteins={proteins} onOpen={(id) => void openProject(id)} onCreate={() => { setError(""); setCreateOpen(true); }}/>
         : view === "manual" ? <UserManual key={manualVisit.visit} initialSection={manualVisit.section}/>
+        : view === "workbench" ? <VectorWorkbench key={workbenchVisit.visit} proteins={proteins} initialLibraryId={workbenchVisit.libraryId} onBack={() => setView("home")}/>
         : view === "library" ? <LibraryHub tab={libraryTab} onTabChange={setLibraryTab} proteins={proteins} storage={libraryStorage(projectDirectory, enginePath)} onOpenVectorProject={(id) => void openProjectJob(id, "expression-vector")} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()}/>
         : view === "project-trees" ? <ProjectTrees proteins={proteins} trees={projectTrees} storageMode={treeStorage} loading={treesLoading} onChange={updateProjectTrees} onOpenProject={(id) => void openProject(id)}/>
         : bundle ? <>{view === "dashboard" && <ProjectDashboard bundle={bundle} onResume={() => setView("workflow")} onRoadmap={() => setView("roadmap")} onReports={() => setView("reports")}/>} {view === "workflow" && <ProjectWorkflow bundle={bundle} onOpenJob={(id) => openJob(id, "planning")} onRoadmap={() => setView("roadmap")} onRefresh={() => refreshBundle(selectedId)}/>} {view === "roadmap" && <PurificationRoadmapWorkspace bundle={bundle} onOpenJob={(id) => openJob(id, "roadmap")} onBackToWorkflow={() => setView("workflow")} onChanged={() => refreshBundle(selectedId)}/>} {view === "job" && <JobWorkspace key={`${selectedId}:${activeJob}:${jobReturn}`} jobId={activeJob} bundle={bundle} returnTo={jobReturn} onBack={() => setView(jobReturn === "roadmap" ? "roadmap" : "workflow")} onOpenJob={(id) => openJob(id, "planning")} onReports={() => setView("reports")} onRoadmap={() => setView("roadmap")} onChanged={() => refreshBundle(selectedId)}/>} {view === "reports" && <ReportsWorkspace bundle={bundle} onChanged={() => refreshBundle(selectedId)}/>}</>

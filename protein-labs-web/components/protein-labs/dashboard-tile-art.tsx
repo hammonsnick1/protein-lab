@@ -8,7 +8,7 @@
  * tile size, and they are decorative, so screen readers skip them.
  */
 
-export type TileArtKind = "projects" | "trees" | "job" | "reports" | "team" | "timeline" | "library" | "alphafold";
+export type TileArtKind = "projects" | "trees" | "job" | "reports" | "team" | "timeline" | "library" | "workbench" | "alphafold";
 
 export function TileArt({ kind }: { kind: TileArtKind }) {
   return <span className={`tile-art tile-art-${kind}`} aria-hidden="true">
@@ -134,6 +134,22 @@ function figure(kind: TileArtKind) {
         <path d="M66 82c5-24 12-24 10 0s9 24 10 0 10-24 10 0c-1 10 5 16 12 12" className="art-ribbon-outline"/>
         <path d="M66 82c5-24 12-24 10 0s9 24 10 0 10-24 10 0c-1 10 5 16 12 12" className="art-ribbon"/>
         <path d="M8 104h104" className="art-outline"/>
+      </>;
+    case "workbench":
+      // A screen split in two: a plasmid ring on the left, its sequence on
+      // the right, with one region picked out in both.
+      return <>
+        {shadow(48)}
+        <rect x="8" y="20" width="104" height="74" rx="6" className="art-paper"/>
+        <path d="M60 20V94" className="art-thin"/>
+        <circle cx="34" cy="57" r="17" className="art-ring-outline"/>
+        <circle cx="34" cy="57" r="17" className="art-ring"/>
+        <path d="M34 40a17 17 0 0 1 15 9" className="art-gene-sky"/>
+        <path d="M17 57a17 17 0 0 1 4-11" className="art-gene-leaf"/>
+        {[0, 1, 2, 3, 4].map((row) => <path key={row} d={`M67 ${36 + row * 10}H${row === 2 ? 104 : 98 - row * 3}`} className="art-thin"/>)}
+        <rect x="74" y="51" width="20" height="8" rx="2" className="art-sky art-thin"/>
+        <path d="M51 49L74 55" className="art-ink-line"/>
+        <path d="M46 100h28" className="art-outline"/>
       </>;
     case "alphafold":
       // A browser window showing a predicted fold: a helix and a strand.
