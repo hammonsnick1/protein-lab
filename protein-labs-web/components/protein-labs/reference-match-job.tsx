@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { BadgeCheck, Check, CircleAlert, Database, Dna, ExternalLink, LoaderCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AlphaFoldServerExport } from "@/components/protein-labs/alphafold-server-export";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
 
@@ -49,8 +50,12 @@ export function ReferenceMatchJob({ bundle, onChanged }: { bundle: ProteinBundle
     finally { setBusy(false); }
   }
 
+  // An AlphaFold Server job needs the sequence, the oligomeric state and the
+  // recorded cofactors, none of which come from here, so the export stays
+  // available to a project that has not matched a reference yet.
   if (!matches.length) return <div className="reference-workspace empty">
     <Database/><h2>Find a reference before choosing one</h2><p>Run the UniProt sequence match in Sequence research. Saved matches will appear here ranked by sequence identity, query coverage, and review status.</p>
+    <AlphaFoldServerExport bundle={bundle}/>
   </div>;
 
   return <div className="reference-workspace">
@@ -74,7 +79,7 @@ export function ReferenceMatchJob({ bundle, onChanged }: { bundle: ProteinBundle
         </> : <p>Select a match to inspect its biological annotations.</p>}
       </section>
     </div>
-    <footer><span>{message}</span><Button disabled={busy || !selected} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save selected reference</Button></footer>
+    <footer><span>{message}</span><AlphaFoldServerExport bundle={bundle}/><Button disabled={busy || !selected} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save selected reference</Button></footer>
   </div>;
 }
 

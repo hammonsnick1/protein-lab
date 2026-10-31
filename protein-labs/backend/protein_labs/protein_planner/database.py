@@ -29,6 +29,21 @@ def _loads(value: str | None, fallback: Any) -> Any:
     return json.loads(value)
 
 
+def _taxon_id(value: Any) -> int | None:
+    """NCBI taxon IDs are positive integers; empty means free-text only."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise ValueError("organismTaxonId must be a positive integer")
+    try:
+        taxon_id = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("organismTaxonId must be a positive integer") from None
+    if taxon_id <= 0 or str(value).strip() != str(taxon_id):
+        raise ValueError("organismTaxonId must be a positive integer")
+    return taxon_id
+
+
 class ProteinNotFoundError(LookupError):
     """Raised when a protein record does not exist."""
 
@@ -64,6 +79,7 @@ class Database:
                     name TEXT NOT NULL,
                     sequence TEXT NOT NULL,
                     organism TEXT NOT NULL DEFAULT '',
+                    organism_taxon_id INTEGER,
                     gene_name TEXT NOT NULL DEFAULT '',
                     description TEXT NOT NULL DEFAULT '',
                     expression_system TEXT NOT NULL DEFAULT '',
@@ -366,6 +382,13 @@ class Database:
                     ON protein_library_events(protein_library_id, occurred_at DESC);
                 """
             )
+            protein_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(proteins)").fetchall()
+            }
+            if "organism_taxon_id" not in protein_columns:
+                # Older projects keep their free-text organism with no taxon.
+                connection.execute("ALTER TABLE proteins ADD COLUMN organism_taxon_id INTEGER")
             vector_columns = {
                 row["name"]
                 for row in connection.execute(
@@ -490,16 +513,17 @@ class Database:
             connection.execute(
                 """
                 INSERT INTO proteins (
-                    id, name, sequence, organism, gene_name, description,
-                    expression_system, notes, tags_json, external_ids_json,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    id, name, sequence, organism, organism_taxon_id, gene_name,
+                    description, expression_system, notes, tags_json,
+                    external_ids_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     protein_id,
                     str(fields.get("name") or "Untitled protein").strip(),
                     sequence,
                     str(fields.get("organism") or "").strip(),
+                    _taxon_id(fields.get("organismTaxonId")),
                     str(fields.get("geneName") or "").strip(),
                     str(fields.get("description") or "").strip(),
                     str(fields.get("expressionSystem") or "").strip(),
@@ -542,21 +566,28 @@ class Database:
     ) -> dict[str, Any]:
         current = self.get_protein(protein_id)
         merged = {**current, **fields}
+        if (
+            "organismTaxonId" not in fields
+            and str(merged.get("organism") or "").strip() != current["organism"]
+        ):
+            # A retyped organism no longer names the chosen taxon.
+            merged["organismTaxonId"] = None
         next_sequence = sequence if sequence is not None else current["sequence"]
         timestamp = utc_now()
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE proteins SET
-                    name = ?, sequence = ?, organism = ?, gene_name = ?,
-                    description = ?, expression_system = ?, notes = ?,
-                    tags_json = ?, external_ids_json = ?, updated_at = ?
+                    name = ?, sequence = ?, organism = ?, organism_taxon_id = ?,
+                    gene_name = ?, description = ?, expression_system = ?,
+                    notes = ?, tags_json = ?, external_ids_json = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     str(merged.get("name") or "Untitled protein").strip(),
                     next_sequence,
                     str(merged.get("organism") or "").strip(),
+                    _taxon_id(merged.get("organismTaxonId")),
                     str(merged.get("geneName") or "").strip(),
                     str(merged.get("description") or "").strip(),
                     str(merged.get("expressionSystem") or "").strip(),
@@ -1995,6 +2026,28 @@ class Database:
                 connection.execute("DELETE FROM vector_tags WHERE library_id=?", (library_id,)); connection.executemany("INSERT OR IGNORE INTO vector_tags VALUES (?, ?)", [(library_id, tag.strip()) for tag in tags])
         return self.get_library_vector(library_id)
 
+    def replace_library_vector_contents(self, library_id: str, vector: dict[str, Any]) -> dict[str, Any]:
+        """Overwrite the sequence, topology and features of a user's catalogue record."""
+        sequence = str(vector.get("sequence") or "")
+        if not sequence:
+            raise ValueError("A catalogued vector needs a sequence")
+        circular = bool(vector.get("circular", True))
+        features = vector.get("features") or []
+        fingerprint = self._sequence_checksum(sequence, circular)
+        with self.connect() as connection:
+            row = connection.execute("SELECT is_standard FROM vector_library WHERE id=?", (library_id,)).fetchone()
+            if row is None: raise LookupError(f"Catalogued vector {library_id!r} was not found")
+            if row["is_standard"]: raise PermissionError("read_only")
+            # The fingerprint is unique; an identical twin elsewhere keeps its own.
+            if connection.execute("SELECT 1 FROM vector_library WHERE fingerprint=? AND id<>?", (fingerprint, library_id)).fetchone():
+                fingerprint = f"{fingerprint}:{uuid.uuid4()}"
+            insert_name = next((str(feature.get("name") or "") for feature in features if isinstance(feature, dict) and feature.get("isInsert")), "")
+            connection.execute(
+                "UPDATE vector_library SET name=?, sequence=?, circular=?, features_json=?, insert_name=?, fingerprint=?, updated_at=? WHERE id=?",
+                (str(vector.get("name") or "Untitled vector"), sequence, 1 if circular else 0, json.dumps(features, allow_nan=False), insert_name, fingerprint, utc_now(), library_id),
+            )
+        return self.get_library_vector(library_id)
+
     def restore_library_vector(self, library_id: str) -> dict[str, Any]:
         with self.connect() as connection:
             if connection.execute("UPDATE vector_library SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", (library_id,)).rowcount == 0: raise LookupError(f"Deleted vector {library_id!r} was not found")
@@ -2503,6 +2556,7 @@ class Database:
             "name": row["name"],
             "sequence": row["sequence"],
             "organism": row["organism"],
+            "organismTaxonId": row["organism_taxon_id"],
             "geneName": row["gene_name"],
             "description": row["description"],
             "expressionSystem": row["expression_system"],

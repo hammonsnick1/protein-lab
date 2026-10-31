@@ -4,7 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowRight, CalendarDays, ChevronLeft, ChevronRight,
   Clock3, ExternalLink, FlaskConical, FolderKanban, GitBranch, Pencil, Plus,
-  Disc3, FileText, FolderCog, FolderSearch, HardDrive, Library, Send, Sparkles, TestTubes, Trash2, UserPlus, Users, X,
+  Columns2, Disc3, FileText, FolderCog, FolderSearch, HardDrive, Library, Send, Sparkles, TestTubes, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,7 +49,7 @@ const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleCon
 const MASCOT_VISIBLE_KEY = "protein-labs-mascot-visible";
 const reportPages = ["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"];
 
-export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, storage, onLibrary, onRevealStorage, onChangeStorage, onCreate }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; storage: LibraryStorage; onLibrary: (tab: LibraryTab) => void; onRevealStorage: () => void; onChangeStorage: () => void; onCreate: () => void }) {
+export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, storage, onLibrary, onWorkbench, onRevealStorage, onChangeStorage, onCreate }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; storage: LibraryStorage; onLibrary: (tab: LibraryTab) => void; onWorkbench: (libraryVectorId?: string) => void; onRevealStorage: () => void; onChangeStorage: () => void; onCreate: () => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
   // Which project list the bundles were loaded for, so a newer list reads as loading.
@@ -144,6 +144,8 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   const activeProject = roots.find((protein) => protein.id === activeProjectId);
   const vectorProjects = new Set(vectors.flatMap((vector) => vector.projects.map((use) => use.proteinId))).size;
   const vectorCount = vectorsState === "ready" ? vectors.length : null;
+  // The workbench tile lists the user's own vectors first, newest first, then the standard ones.
+  const recentVectors = useMemo(() => [...vectors].sort((a, b) => Number(a.isStandard) - Number(b.isStandard) || String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""))).slice(0, 6), [vectors]);
   const proteinCount = stockState === "ready" ? stock?.total ?? 0 : null;
   const lowStock = stock?.facets.status?.find((option) => option.value === "low")?.count ?? 0;
   const proteinPlaces = summarizePlaces(stock?.facets.location);
@@ -255,6 +257,15 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
             {trees[0] && <button className="tree-feature" onClick={onTrees}><TreePreview tree={trees[0]} names={roots}/><span><strong>{trees[0].name}</strong><small>{trees[0].branches.length} branch{trees[0].branches.length === 1 ? "" : "es"} from {projectName(roots, trees[0].rootProjectId)}</small></span></button>}
             <div className="tree-tile-list">{trees.length ? trees.slice(1).map((tree, index) => { const projectIds = new Set([tree.rootProjectId, ...tree.branches.flatMap((link) => [link.fromProjectId, link.toProjectId])]); return <button key={tree.id} style={{ "--stagger": index } as React.CSSProperties} onClick={onTrees}><TreePreview tree={tree}/><span><strong>{tree.name}</strong><small>Root · {projectName(roots, tree.rootProjectId)}</small><small>{projectIds.size} projects · {tree.branches.length} branch{tree.branches.length === 1 ? "" : "es"}</small></span><ArrowRight/></button>; }) : <button className="tree-empty" onClick={onTrees}><TreePreview/><span><strong>Grow your first project tree</strong><small>Link construct, vector, host, or process changes between projects.</small></span><ArrowRight/></button>}</div>
           </>}
+        />
+        <FlipTile className="dashboard-workbench-card" icon={Columns2} art="workbench" title="Vector Workbench" subtitle="Map and sequence, side by side"
+          backSubtitle="Open a vector, or start from a file"
+          actions={<Button variant="outline" size="sm" onClick={() => onWorkbench()}>Open <ArrowRight/></Button>}
+          front={<TileHeadline value={vectorCount ?? "…"} label={vectorCount === 1 ? "vector to open" : "vectors to open"} detail={vectorsState === "error" ? "Library unavailable; import a file instead" : "Edit features, find sites and ORFs, outside any project"}/>}
+          back={<div className="tree-tile-list workbench-tile-list">
+            {recentVectors.map((vector, index) => <button key={vector.id} style={{ "--stagger": index } as React.CSSProperties} onClick={() => onWorkbench(vector.id)}><Disc3/><span><strong>{vector.name}</strong><small>{vector.lengthBp.toLocaleString()} bp · {vector.featureCount} feature{vector.featureCount === 1 ? "" : "s"}{vector.isStandard ? " · standard" : ""}</small></span><ArrowRight/></button>)}
+            {!recentVectors.length && <button className="workbench-tile-empty" onClick={() => onWorkbench()}><Columns2/><span><strong>Open the Workbench</strong><small>Import GenBank, FASTA or SnapGene .dna, or paste DNA</small></span><ArrowRight/></button>}
+          </div>}
         />
       </div>
 
@@ -475,6 +486,7 @@ type LibraryVector = {
   projectCount: number;
   projects: { proteinId: string; proteinName: string }[];
   updatedAt: string;
+  isStandard?: boolean;
 };
 
 /**

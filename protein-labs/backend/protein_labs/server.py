@@ -135,6 +135,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                     tree_match.group(1)
                 ))
                 return
+            if path == "/v1/taxonomy/search":
+                self._send(200, self.planner.search_taxonomy(
+                    (query.get("q") or [""])[0],
+                    int((query.get("limit") or ["10"])[0]),
+                ))
+                return
             if path == "/v1/protein-planner/construct-hosts":
                 self._send(200, self.planner.list_construct_hosts())
                 return
@@ -371,6 +377,25 @@ class ApiHandler(BaseHTTPRequestHandler):
             restore_match = re.fullmatch(r"/v1/protein-planner/vector-library/([^/]+)/restore", path)
             if restore_match:
                 self._send(200, self.planner.restore_library_vector(restore_match.group(1)))
+                return
+            # Vector Workbench: work on a construct without a project.
+            if path == "/v1/protein-planner/vector-library":
+                self._send(201, self.planner.create_library_vector(body))
+                return
+            contents_match = re.fullmatch(r"/v1/protein-planner/vector-library/([^/]+)/contents", path)
+            if contents_match:
+                self._send(200, self.planner.replace_library_vector(contents_match.group(1), body))
+                return
+            if path == "/v1/vector-workbench/parse":
+                self._send(200, self.planner.parse_workbench_file(
+                    str(body.get("filename") or "sequence.gb"), str(body.get("content") or "")
+                ))
+                return
+            if path == "/v1/vector-workbench/export":
+                self._send(200, self.planner.export_workbench_vector(body))
+                return
+            if path == "/v1/vector-workbench/analyze":
+                self._send(200, self.planner.analyze_workbench_vector(body))
                 return
             match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/vectors", path

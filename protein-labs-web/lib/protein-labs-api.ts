@@ -6,6 +6,7 @@ declare const __PROTEIN_LABS_API__: string | undefined;
 
 import type { RegionsResponse, StructureDetail, StructureListResponse, StructureSource } from "./structure-regions.ts";
 import type { ConservationJob, ConservationJobSummary } from "./conservation.ts";
+import type { TaxonomySearchResponse } from "./organism-search.ts";
 
 // An empty bundled value is meaningful: it means same-origin requests, so the
 // chain tests for a defined string rather than a truthy one.
@@ -20,6 +21,8 @@ export type ProteinRecord = {
   name: string;
   sequence: string;
   organism: string;
+  /** NCBI taxon ID chosen from the organism suggestions; null for free text. */
+  organismTaxonId?: number | null;
   geneName: string;
   description: string;
   expressionSystem: string;
@@ -126,6 +129,7 @@ export const proteinLabsApi = {
   createProtein: (fields: Partial<ProteinRecord>) => post<ProteinBundle>("/v1/protein-planner/proteins", fields as JsonObject),
   updateProtein: (proteinId: string, fields: Partial<ProteinRecord>) => patch<ProteinBundle>(`/v1/protein-planner/proteins/${proteinId}`, fields as JsonObject),
   deleteProtein: (proteinId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}`, { method: "DELETE" }),
+  searchTaxonomy: (query: string, limit = 12) => request<TaxonomySearchResponse>(`/v1/taxonomy/search?${new URLSearchParams({ q: query, limit: String(limit) })}`),
   analyze: (proteinId: string) => post<{ result: JsonObject }>(`/v1/protein-planner/proteins/${proteinId}/analyze`),
   analyzeSequence: (sequence: string) => post<{ result: JsonObject }>("/v1/protein-planner/analyze-sequence", { sequence }),
   uniprot: (proteinId: string) => post<{ matches: JsonObject[] }>(`/v1/protein-planner/proteins/${proteinId}/uniprot/match`, { size: 25 }),
@@ -213,6 +217,13 @@ export const proteinLabsApi = {
   insertIntoVector: (proteinId: string, vectorId: string, fields: JsonObject) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/insert`, fields),
   digestVector: (proteinId: string, vectorId: string, enzymeNames: string[]) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/digest`, { enzymeNames }),
   alignVectors: (proteinId: string, vectorId: string, queryVectorId: string) => post<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/vectors/${vectorId}/align`, { queryVectorId }),
+  // Vector Workbench: the same engine, without a project. SnapGene .dna
+  // content travels base64 encoded both ways.
+  parseVectorFile: (filename: string, content: string) => post<JsonObject & { fileFormat: string }>("/v1/vector-workbench/parse", { filename, content }),
+  exportWorkbenchVector: (vector: JsonObject, format: "genbank" | "fasta" | "snapgene") => post<{ filename: string; content: string; encoding: "text" | "base64" }>("/v1/vector-workbench/export", { vector, format }),
+  analyzeWorkbenchVector: (fields: { sequence: string; circular: boolean; enzymeNames?: string[]; minimumOrfAminoAcids?: number }) => post<{ restrictionSites: JsonObject[]; orfs: JsonObject[] }>("/v1/vector-workbench/analyze", fields),
+  saveLibraryVectorAsNew: (vector: JsonObject) => post<JsonObject>("/v1/protein-planner/vector-library", vector),
+  overwriteLibraryVector: (libraryId: string, vector: JsonObject) => post<JsonObject>(`/v1/protein-planner/vector-library/${encodeURIComponent(libraryId)}/contents`, vector),
   // Project trees and the project diff service. The tree response
   // embeds a one-line summary per branch so the tree view draws in one call;
   // the full diff is fetched lazily when a branch is selected.

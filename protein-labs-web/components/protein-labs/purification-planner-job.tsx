@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Beaker, Check, ChevronRight, CircleAlert, CircleCheck, CircleX, Clipboard, ClipboardList, FlaskConical, LoaderCircle, Search, ShieldAlert, TriangleAlert } from "lucide-react";
+import { Beaker, Check, ChevronRight, CircleAlert, CircleCheck, LoaderCircle, Search, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatusChip } from "@/components/ui/status-chip";
 import { CatalogCartoon, resinCartoonKind } from "@/components/protein-labs/catalog-cartoons";
 import { ChoiceInspector, CurrentChoice, PlannerIntro } from "@/components/protein-labs/catalog-choice";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
@@ -14,14 +13,14 @@ import { tagModuleForAffinityTag, type ConstructPlan } from "@/lib/construct-cat
 import { constructSummary, initialPlan, planConfig } from "@/lib/construct-records";
 import { saveBufferSteps } from "@/lib/purification-buffers";
 import { BufferComposer } from "@/components/protein-labs/buffer-composer";
+import { CompileReview } from "@/components/protein-labs/compile-timeline";
+import type { CompileCheck } from "@/lib/compile-timeline";
 
 type Section = "purification-affinity"|"purification-workflow";
 /** The buffers Affinity capture sets; the others belong to later jobs. */
 const affinityBufferSteps = ["binding", "wash", "elution"];
 function presetSteps(presetId:string){const preset=bufferPresets.find(value=>value.id===presetId)??bufferPresets[1];return Object.fromEntries(affinityBufferSteps.map(id=>[id,cloneSteps(preset.steps)[id]]).filter(([,step])=>step)) as Record<string,BufferStep>}
-type CheckResult = { level:"pass"|"warning"|"error"; title:string; detail:string };
-/** Blocking issues first, then warnings, then passes; one label and icon per level. */
-const checkLevels=[{level:"error",label:"Blocking",Icon:CircleX},{level:"warning",label:"Warning",Icon:TriangleAlert},{level:"pass",label:"Pass",Icon:CircleCheck}] as const;
+type CheckResult = CompileCheck;
 
 export function PurificationPlannerJob({ bundle, onChanged, section }: { bundle:ProteinBundle; onChanged:()=>Promise<void>; section:string }) {
   const mode = section as Section;
@@ -59,29 +58,9 @@ export function PurificationPlannerJob({ bundle, onChanged, section }: { bundle:
 
   return <div className="purification-planner">
     {mode==="purification-affinity"&&<><PlannerIntro title="Choose the affinity tag, linker and capture resin" subtitle="Pick a resin, then set the tag's position and linker below; the construct's sequence, mass and extinction coefficient update as you go. The protease that removes the tag is chosen in Subtractive cleanup."/><div className="purification-browser compact-choice"><section className="catalog-pane"><div className="catalog-filters"><label><Search/><input value={affinitySearch} onChange={e=>setAffinitySearch(e.target.value)} placeholder="Search tag, resin, use…"/></label><select value={affinityCategory} onChange={e=>setAffinityCategory(e.target.value)}>{affinityCategories.map(value=><option key={value}>{value}</option>)}</select></div><div className="purification-card-grid">{visibleAffinity.map(value=><button key={value.id} className={value.id===affinityId?"selected":""} style={{"--catalog-color":value.color} as React.CSSProperties} onClick={()=>setDetail({kind:"affinity",id:value.id})}><span className="resin-cartoon"><CatalogCartoon kind={resinCartoonKind(value.category, value.tag, value.name)}/></span><span><strong>{value.shortName}</strong><small>{value.name}</small><em>{value.tag} · {value.category}</em></span>{value.id===affinityId&&<Check/>}</button>)}</div></section><CurrentChoice color={affinity.color} cartoon={resinCartoonKind(affinity.category, affinity.tag, affinity.name)} label="Selected affinity strategy" title={affinity.name} subtitle={`${affinity.tag} · ${affinity.category}`}><div className="choice-buffer-summary"><Beaker/><span><strong>{bufferPresets.find(value=>value.id===affinity.presetId)?.name??"Product-specific buffer"}</strong><small>{affinity.binding} Wash: {affinity.wash}. Elute: {affinity.elution}.</small></span></div><CompactChecks checks={affinityChoiceChecks}/><Button disabled={busy} onClick={()=>void saveAffinity()}>{busy?<LoaderCircle className="spin"/>:<Check/>} Save tag, resin and buffers</Button></CurrentChoice></div><ConstructDesigner stage="tag" targetSequence={bundle.protein.sequence} targetName={bundle.protein.name} affinityTagLabel={affinity.tag} proteaseId={proteaseId} plan={plan} onPlanChange={setPlan} vectors={vectors} onReport={setReport}/><AffinityBuffers presetId={presetId} onPreset={applyPreset} steps={steps} activeStep={activeStep} onStep={setActiveStep} onUpdateStep={updateStep}/></>}
-    {mode==="purification-workflow"&&<><PlannerIntro title="Review compatibility and generate the workflow" subtitle="Protein Lab cross-checks the selected tag, construct annotations, cleavage enzyme, buffer chemistry, predicted pI, and cysteine context."/><CompileReview bundle={bundle} checks={checks} workflow={workflow} nothingSaved={![lysisSaved,affinitySaved,cleavageSaved,subtractiveSaved,secSaved,bufferSaved].some(value=>Object.keys(value).length)} busy={busy} onCopy={()=>void navigator.clipboard.writeText(workflowText(bundle,checks,workflow)).then(()=>setMessage("Workflow report copied to the clipboard."),e=>setMessage(errorText(e)))} onSave={()=>void saveWorkflow()}/></>}
+    {mode==="purification-workflow"&&<><PlannerIntro title="Review compatibility and generate the workflow" subtitle="Protein Lab cross-checks the selected tag, construct annotations, cleavage enzyme, buffer chemistry, predicted pI, and cysteine context."/><CompileReview proteinName={bundle.protein.name} checks={checks} workflow={workflow} nothingSaved={![lysisSaved,affinitySaved,cleavageSaved,subtractiveSaved,secSaved,bufferSaved].some(value=>Object.keys(value).length)} busy={busy} onCopy={()=>void navigator.clipboard.writeText(workflowText(bundle,checks,workflow)).then(()=>setMessage("Workflow report copied to the clipboard."),e=>setMessage(errorText(e)))} onSave={()=>void saveWorkflow()}/></>}
     {detail?.kind==="affinity"&&(()=>{const value=affinityColumns.find(item=>item.id===detail.id)!;return <ChoiceInspector color={value.color} cartoon={resinCartoonKind(value.category, value.tag, value.name)} eyebrow="AFFINITY STRATEGY" title={value.name} subtitle={`${value.tag} · ${value.category}`} rows={[["Ligand",value.ligand],["Binding",value.binding],["Wash",value.wash],["Elution",value.elution],["Best for",value.bestFor],["Strengths",value.strengths],["Cautions",value.cautions],["Reference",value.reference]]} onClose={()=>setDetail(null)} onChoose={()=>{chooseAffinity(value.id);setDetail(null)}}/>})()}
     {message&&<div className="purification-message">{message}</div>}
-  </div>;
-}
-
-/** Compile workflow: the compatibility review beside the generated bench plan. */
-function CompileReview({bundle,checks,workflow,nothingSaved,busy,onCopy,onSave}:{bundle:ProteinBundle;checks:CheckResult[];workflow:ReturnType<typeof compileWorkflow>;nothingSaved:boolean;busy:boolean;onCopy:()=>void;onSave:()=>void}){
-  const count=(level:CheckResult["level"])=>checks.filter(c=>c.level===level).length;
-  const blocking=count("error");
-  const ordered=checkLevels.flatMap(({level})=>checks.filter(c=>c.level===level));
-  return <div className="workflow-review">
-    <section className="compatibility-review">
-      <header className="review-section-head"><span><strong>Compatibility review</strong><small>{blocking?`${blocking} blocking issue${blocking===1?"":"s"} must be resolved before the plan is ready.`:"No blocking issues. Review any warnings before going to the bench."}</small></span></header>
-      <div className="review-metrics">{checkLevels.map(({level,label,Icon})=><span className={level} key={level}><b>{count(level)}</b><small><Icon aria-hidden="true"/>{level==="pass"?"Passed":level==="warning"?"Warnings":label}</small></span>)}</div>
-      <div className="review-checks">{ordered.map((check,index)=><article className={check.level} key={index}><span><strong>{check.title}</strong><small>{check.detail}</small></span><StatusChip tone={check.level} label={checkLevels.find(value=>value.level===check.level)!.label}/></article>)}</div>
-    </section>
-    <section className="bench-workflow">
-      <header><span><strong>Generated bench workflow</strong><small>{bundle.protein.name} · {workflow.length} steps</small></span><StatusChip tone={blocking?"error":"pass"} label={blocking?"Draft":"Ready for review"}/><Button variant="outline" onClick={onCopy}><Clipboard/> Copy report</Button><Button disabled={busy} onClick={onSave}>{busy?<LoaderCircle className="spin"/>:<Check/>}{blocking?"Save draft":"Save workflow"}</Button></header>
-      {nothingSaved&&<div className="review-empty"><ClipboardList aria-hidden="true"/><span><strong>Nothing saved to compile yet</strong><small>Save Affinity capture, Subtractive cleanup, SEC polishing and Cell lysis first. Until then the steps below are generic placeholders.</small></span></div>}
-      {workflow.map((item,index)=><article key={index}><span>{index+1}</span><div><strong>{item.title}</strong><p>{item.instruction}</p><small><b>Record</b>{item.record}</small></div></article>)}
-      <div className="guidance-card"><FlaskConical/><span><strong>Evidence basis</strong><small>Starting conditions synthesize official Cytiva, Thermo Fisher, NEB, and tag-specific manufacturer guidance. Reconcile this draft with exact product documentation.</small></span></div>
-    </section>
   </div>;
 }
 

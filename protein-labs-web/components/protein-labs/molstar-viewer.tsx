@@ -1,10 +1,13 @@
 "use client";
 
 import { CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Camera, CircleDot, LoaderCircle, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Camera, CircleDot, Crosshair, LoaderCircle, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { findStructurePalette, STRUCTURE_PALETTES, structurePaletteForKey, type StructurePaletteId } from "@/lib/structure-palettes";
 import { HYDROPHOBICITY_SCALE, SECONDARY_STRUCTURE_LEGEND } from "@/lib/structure-legends";
+import { coloringLegend, type ResidueColoring } from "@/lib/structure-coloring";
+import { clampCutoff, DEFAULT_INTERFACE_CUTOFF, findInterfaces, formatCutoff, INTERFACE_CUTOFF_RANGE, interfaceChainColor, interfaceColoring, type InterfaceAtom, type InterfaceResult } from "@/lib/structure-interface";
 import { residueKey, type LigandAddress, type ResidueAddress } from "@/lib/structure-regions";
 import type { MolstarStage, StageColor, StageRepresentation, StageResidue } from "./molstar-stage";
 
@@ -20,6 +23,8 @@ export type MolstarViewerProps = {
   /** The structure carries per-residue pLDDT (AlphaFold). */
   confidence?: boolean;
   region?: ViewerRegion | null;
+  /** Where to render the display and interface controls (the job's side panel); without one they sit beside the canvas. */
+  controlsHost?: HTMLElement | null;
 };
 
 type Status = { state: "loading" | "ready" | "error"; message: string };
@@ -39,7 +44,9 @@ const COLORS: { id: StageColor; label: string }[] = [
 const LEGACY_REPRESENTATION: Record<string, StageRepresentation> = { ribbon: "cartoon", surface: "surface", atoms: "ball-and-stick" };
 const toLegacy = (value: StageRepresentation) => value === "cartoon" ? "ribbon" : value === "ball-and-stick" ? "atoms" : "surface";
 
-export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null }: MolstarViewerProps) {
+const OPACITY_KEY = "protein-labs-structure-surface-opacity";
+
+export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null, controlsHost }: MolstarViewerProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<MolstarStage | null>(null);
   const [status, setStatus] = useState<Status>({ state: "loading", message: "Loading the 3D viewer…" });
@@ -56,6 +63,11 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   const [hovered, setHovered] = useState<string | null>(null);
   const [picked, setPicked] = useState<StageResidue | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [surfaceOpacity, setSurfaceOpacity] = useState(100);
+  const [proteinAtoms, setProteinAtoms] = useState<InterfaceAtom[]>([]);
+  // The structure revision the interface is shown for, so loading another structure switches it off.
+  const [interfaceFor, setInterfaceFor] = useState<number | null>(null);
+  const [cutoff, setCutoff] = useState(DEFAULT_INTERFACE_CUTOFF);
   const confidenceAvailable = confidence && hasConfidence;
   const color: StageColor = colorChoice === "plddt-confidence" && !confidenceAvailable ? "chain-id" : colorChoice ?? (confidenceAvailable ? "plddt-confidence" : "chain-id");
   const activePalette = paletteChoice === "theme" ? undefined : findStructurePalette(paletteChoice) ?? findStructurePalette(palette) ?? (paletteKey ? structurePaletteForKey(paletteKey) : undefined);
@@ -68,6 +80,8 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
     const savedColor = localStorage.getItem("protein-labs-structure-molstar-color");
     if (saved) queueMicrotask(() => setRepresentation(saved));
     if (COLORS.some((item) => item.id === savedColor)) queueMicrotask(() => setColorChoice(savedColor as StageColor));
+    const savedOpacity = Number(localStorage.getItem(OPACITY_KEY) ?? "");
+    if (localStorage.getItem(OPACITY_KEY) !== null && savedOpacity >= 0 && savedOpacity <= 100) queueMicrotask(() => setSurfaceOpacity(Math.round(savedOpacity)));
   }, []);
   useEffect(() => {
     if (!paletteKey) return;
@@ -103,6 +117,8 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
     stage.load(structureText, label).then((result) => {
       if (cancelled) return;
       setResidues(result.residues); setHasConfidence(result.hasConfidence); setPicked(null);
+      // Mol* groups chains by entity (A, C, B, D for haemoglobin); list them by name instead.
+      setProteinAtoms(stage.proteinHeavyAtoms().sort((one, other) => one.chain.localeCompare(other.chain, undefined, { numeric: true })));
       setLoadedRevision((value) => value + 1);
       setStatus({ state: "ready", message: "" });
     }).catch((reason: unknown) => { if (!cancelled) setStatus({ state: "error", message: `The structure file could not be read. ${messageOf(reason)}` }); });
@@ -112,10 +128,20 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   }, [structureText, stageReady]);
 
   const ready = status.state === "ready" && loadedRevision > 0;
+  const chainLabels = useMemo(() => new Map(residues.map((item) => [item.labelAsymId, item.authAsymId])), [residues]);
+  const residueByKey = useMemo(() => new Map(residues.map((item) => [residueKey(item.labelAsymId, item.labelSeqId), item])), [residues]);
+  const proteinChains = useMemo(() => new Set(proteinAtoms.map((atom) => atom.chain)).size, [proteinAtoms]);
+  const interfaceOn = interfaceFor === loadedRevision && proteinChains > 1;
+  const interfaces = useMemo<InterfaceResult | null>(() => interfaceOn ? findInterfaces(proteinAtoms, cutoff) : null, [interfaceOn, proteinAtoms, cutoff]);
+  // Every colour layer goes through here; a conservation source would be another option.
+  const coloring = useMemo<ResidueColoring | null>(() => interfaces ? interfaceColoring(interfaces, (chain) => chainLabels.get(chain) ?? chain) : null, [interfaces, chainLabels]);
+  const coloredKeys = useMemo(() => new Map(coloring?.groups.flatMap((group) => group.residues.map((item) => [residueKey(item.labelAsymId, item.labelSeqId), group.color] as const)) ?? []), [coloring]);
   useEffect(() => {
     if (!ready) return;
     stageRef.current?.setStyle({ representation, color, showLigands, showWaters, spin }, chainColors).catch((reason: unknown) => setStatus({ state: "error", message: `This view could not be drawn. ${messageOf(reason)}` }));
   }, [ready, loadedRevision, representation, color, showLigands, showWaters, spin, chainColors]);
+  useEffect(() => { if (ready) void stageRef.current?.setSurfaceOpacity(surfaceOpacity / 100); }, [ready, loadedRevision, surfaceOpacity]);
+  useEffect(() => { if (ready) void stageRef.current?.setColoring(coloring); }, [ready, loadedRevision, coloring]);
   useEffect(() => {
     if (!ready) return;
     void stageRef.current?.showRegion(region?.residues ?? [], region?.ligand ?? null);
@@ -127,6 +153,8 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   }, [hovered]);
 
   function chooseRepresentation(value: StageRepresentation) { setRepresentation(value); localStorage.setItem("protein-labs-structure-representation", toLegacy(value)); }
+  function chooseOpacity(value: number) { setSurfaceOpacity(value); localStorage.setItem(OPACITY_KEY, String(value)); }
+  function focusResidues(items: StageResidue[]) { if (items.length === 1) setPicked(items[0]); stageRef.current?.focusResidues(items); }
   function chooseColor(value: StageColor) { setColorChoice(value); localStorage.setItem("protein-labs-structure-molstar-color", value); }
   function choosePalette(value: StructurePaletteId | "auto" | "theme") {
     setPaletteChoice(value);
@@ -149,35 +177,90 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   function pickFromStrip(residue: StageResidue) { setPicked(residue); stageRef.current?.focusResidue(residue); }
 
   const chainCount = new Set(residues.map((item) => item.labelAsymId)).size;
+  const controls = <>
+    <section className="lab-panel structure-display" id="structure-display" aria-labelledby="structure-display-title">
+      <div className="panel-heading"><div><h2 id="structure-display-title">Display</h2><p>Representation, colours and what is drawn.</p></div></div>
+      <div className="structure-segmented" role="group" aria-label="Structure representation">
+        {REPRESENTATIONS.map(({ id, label: name, icon: Icon }) => <button key={id} type="button" aria-pressed={representation === id} className={representation === id ? "active" : ""} onClick={() => chooseRepresentation(id)}><Icon/>{name}</button>)}
+      </div>
+      <label className={`structure-range ${representation === "surface" ? "" : "disabled"}`}>
+        <span className="structure-range-label">Surface opacity <output>{surfaceOpacity}%</output></span>
+        <input type="range" min={0} max={100} step={5} value={surfaceOpacity} disabled={representation !== "surface"} aria-valuetext={`${surfaceOpacity}%`} onChange={(event) => chooseOpacity(Number(event.target.value))}/>
+        {representation !== "surface" && <small>Applies to the Surface view.</small>}
+      </label>
+      <label className="lab-field"><span>Colour scheme</span>
+        <select value={color} onChange={(event) => chooseColor(event.target.value as StageColor)}>
+          {COLORS.map((item) => <option key={item.id} value={item.id} disabled={item.id === "plddt-confidence" && !confidenceAvailable}>{item.label}{item.id === "plddt-confidence" && !confidenceAvailable ? " (AlphaFold models only)" : ""}</option>)}
+        </select>
+      </label>
+      {color === "chain-id" && <label className="lab-field"><span>Chain palette</span><select value={paletteChoice} onChange={(event) => choosePalette(event.target.value as StructurePaletteId | "auto" | "theme")}><option value="auto">{paletteKey ? "Project palette" : "Automatic palette"}</option><option value="theme">App theme</option>{STRUCTURE_PALETTES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
+      <div className="structure-toggles" role="group" aria-label="Molecule display options">
+        <button type="button" aria-pressed={showLigands} className={showLigands ? "active" : ""} onClick={() => setShowLigands((value) => !value)}>Ligands</button>
+        <button type="button" aria-pressed={showWaters} className={showWaters ? "active" : ""} onClick={() => setShowWaters((value) => !value)}>Waters</button>
+        <button type="button" aria-pressed={spin} className={spin ? "active" : ""} onClick={() => setSpin((value) => !value)}>Spin</button>
+      </div>
+    </section>
+    {ready && proteinChains > 1 && <InterfacePanel result={interfaces} chainCount={proteinChains} cutoff={cutoff} chainLabels={chainLabels} residueByKey={residueByKey}
+      onToggle={() => setInterfaceFor(interfaceOn ? null : loadedRevision)} onCutoff={(value) => setCutoff(clampCutoff(value))} onFocus={focusResidues}/>}
+  </>;
   return <div className={`structure-viewer molecular-viewer molstar-viewer representation-${representation}`} style={paletteStyle} data-structure-palette={activePalette?.id ?? "theme"}>
     <div className="molstar-stage">
       <div ref={host} className="molecular-webgl" aria-label="Interactive 3D structure. Drag to rotate, scroll to zoom." role="img"/>
       {status.state !== "ready" && <div className={`structure-overlay ${status.state}`} role={status.state === "error" ? "alert" : "status"}>
         {status.state === "loading" ? <LoaderCircle className="spin"/> : null}<strong>{status.state === "error" ? "The 3D view is unavailable" : status.message}</strong>{status.state === "error" && <small>{status.message}</small>}
       </div>}
-      <div className="structure-representation molecular-toolbar" role="toolbar" aria-label="Structure representation">
-        {REPRESENTATIONS.map(({ id, label: name, icon: Icon }) => <button key={id} type="button" aria-pressed={representation === id} className={representation === id ? "active" : ""} onClick={() => chooseRepresentation(id)}><Icon/>{name}</button>)}
-        <select aria-label="Colour scheme" value={color} onChange={(event) => chooseColor(event.target.value as StageColor)}>
-          {COLORS.map((item) => <option key={item.id} value={item.id} disabled={item.id === "plddt-confidence" && !confidenceAvailable}>{item.label}{item.id === "plddt-confidence" && !confidenceAvailable ? " (AlphaFold models only)" : ""}</option>)}
-        </select>
-        {color === "chain-id" && <select aria-label="Chain palette" value={paletteChoice} onChange={(event) => choosePalette(event.target.value as StructurePaletteId | "auto" | "theme")}><option value="auto">{paletteKey ? "Project palette" : "Automatic palette"}</option><option value="theme">App theme</option>{STRUCTURE_PALETTES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
-      </div>
-      <div className="molecular-options" role="group" aria-label="Molecule display options">
-        <button type="button" aria-pressed={showLigands} className={showLigands ? "active" : ""} onClick={() => setShowLigands((value) => !value)}>Ligands</button>
-        <button type="button" aria-pressed={showWaters} className={showWaters ? "active" : ""} onClick={() => setShowWaters((value) => !value)}>Waters</button>
-        <button type="button" aria-pressed={spin} className={spin ? "active" : ""} onClick={() => setSpin((value) => !value)}>Spin</button>
-      </div>
       <div className="structure-controls"><Button variant="secondary" size="icon" title="Reset view" aria-label="Reset view" onClick={() => stageRef.current?.resetCamera()}><RotateCcw/></Button><Button variant="secondary" size="icon" title="Zoom in" aria-label="Zoom in" onClick={() => stageRef.current?.zoom(0.8)}><Plus/></Button><Button variant="secondary" size="icon" title="Zoom out" aria-label="Zoom out" onClick={() => stageRef.current?.zoom(1.25)}><Minus/></Button><Button variant="secondary" size="icon" title="Save image (PNG)" aria-label="Save image (PNG)" disabled={!ready || saving === "Saving image…"} onClick={() => void saveImage()}><Camera/></Button></div>
       <div className="molstar-footer">
         <span className="structure-badge">{label}{ready ? ` · ${residues.length} residues · ${chainCount || 1} chain${chainCount === 1 ? "" : "s"}` : ""}</span>
         <div className="confidence-legend molecular-status">
-          <ColourLegend color={color}/>
+          {coloring ? <ColoringLegend coloring={coloring}/> : <ColourLegend color={color}/>}
           <small role="status">{saving ?? (picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it")}</small>
         </div>
       </div>
     </div>
-    <SequenceStrip residues={residues} hovered={hovered} picked={picked} regionKeys={regionKeys} onHover={hoverFromStrip} onPick={pickFromStrip}/>
+    <SequenceStrip residues={residues} hovered={hovered} picked={picked} regionKeys={regionKeys} coloredKeys={coloredKeys} onHover={hoverFromStrip} onPick={pickFromStrip}/>
+    {controlsHost ? createPortal(controls, controlsHost) : controlsHost === undefined ? <div className="molstar-inline-controls">{controls}</div> : null}
   </div>;
+}
+
+/** Legend for a residue colour layer (interface now; any later source uses the same shape). */
+function ColoringLegend({ coloring }: { coloring: ResidueColoring }) {
+  return <span className="legend-entries" aria-label={coloring.title}><span className="legend-title">{coloring.title}</span>{coloringLegend(coloring).map((entry) => <span key={entry.key}><i className="legend-swatch" style={{ background: entry.color }}/>{entry.label}</span>)}</span>;
+}
+
+/** One-click chain-interface highlight with the contacts listed per chain pair. */
+function InterfacePanel({ result, chainCount, cutoff, chainLabels, residueByKey, onToggle, onCutoff, onFocus }: {
+  result: InterfaceResult | null; chainCount: number; cutoff: number; chainLabels: Map<string, string>; residueByKey: Map<string, StageResidue>;
+  onToggle(): void; onCutoff(value: number): void; onFocus(residues: StageResidue[]): void;
+}) {
+  const on = result !== null;
+  const name = (chain: string) => chainLabels.get(chain) ?? chain;
+  const lookup = (chain: string, seqs: number[]) => seqs.flatMap((seq) => residueByKey.get(residueKey(chain, seq)) ?? []);
+  const total = result ? new Set(result.pairs.flatMap((pair) => pair.chains.flatMap((chain, side) => pair.residues[side].map((seq) => `${chain}:${seq}`)))).size : 0;
+  return <section className="lab-panel structure-interface" id="structure-interface" aria-labelledby="structure-interface-title">
+    <div className="panel-heading"><div><h2 id="structure-interface-title">Chain interface</h2><p>{chainCount} protein chains. Residues with any heavy atom within the contact distance of another chain.</p></div></div>
+    <Button variant={on ? "default" : "outline"} className="wide" aria-pressed={on} onClick={onToggle}><Crosshair/> {on ? "Hide interface" : "Highlight interface"}</Button>
+    <label className="structure-range">
+      <span className="structure-range-label">Contact distance <output>{formatCutoff(cutoff)}</output></span>
+      <input type="range" min={INTERFACE_CUTOFF_RANGE.min} max={INTERFACE_CUTOFF_RANGE.max} step={INTERFACE_CUTOFF_RANGE.step} value={cutoff} aria-valuetext={formatCutoff(cutoff)} onChange={(event) => onCutoff(Number(event.target.value))}/>
+    </label>
+    {result && (result.pairs.length ? <>
+      <p className="structure-note" role="status">{total} interface residue{total === 1 ? "" : "s"} across {result.pairs.length} chain pair{result.pairs.length === 1 ? "" : "s"}.</p>
+      <div className="interface-pairs">
+        {result.pairs.map((pair) => {
+          const sides = pair.chains.map((chain, side) => ({ chain, items: lookup(chain, pair.residues[side]) }));
+          return <details key={pair.chains.join("-")} className="interface-pair">
+            <summary><span>Chains {name(pair.chains[0])} – {name(pair.chains[1])}</span><small>{pair.residues[0].length} + {pair.residues[1].length} residues · closest {pair.minDistance.toFixed(1)} Å</small></summary>
+            <Button variant="outline" size="sm" onClick={() => onFocus(sides.flatMap((side) => side.items))}><Crosshair/> Focus this interface</Button>
+            {sides.map(({ chain, items }) => <div key={chain} className="interface-side">
+              <span className="interface-side-title"><i className="legend-swatch" style={{ background: interfaceChainColor(result, chain) }}/>Chain {name(chain)}</span>
+              <ul>{items.map((item) => <li key={item.labelSeqId}><button type="button" title={`Focus ${threeLetter(item.compId)} ${item.authSeqId}${item.insCode} of chain ${item.authAsymId}`} onClick={() => onFocus([item])}>{threeLetter(item.compId)} {item.authSeqId}{item.insCode}</button></li>)}</ul>
+            </div>)}
+          </details>;
+        })}
+      </div>
+    </> : <p className="structure-note" role="status">No chains touch within {formatCutoff(result.cutoff)}. Try a longer contact distance.</p>)}
+  </section>;
 }
 
 /** What the current colouring means; the swatches follow Mol*'s own colour themes. */
@@ -189,7 +272,7 @@ function ColourLegend({ color }: { color: StageColor }) {
 }
 
 /** One cell per modelled polymer residue, grouped by chain, in sync with the 3D view. */
-function SequenceStrip({ residues, hovered, picked, regionKeys, onHover, onPick }: { residues: StageResidue[]; hovered: string | null; picked: StageResidue | null; regionKeys: Set<string>; onHover(residue: StageResidue | null): void; onPick(residue: StageResidue): void }) {
+function SequenceStrip({ residues, hovered, picked, regionKeys, coloredKeys, onHover, onPick }: { residues: StageResidue[]; hovered: string | null; picked: StageResidue | null; regionKeys: Set<string>; coloredKeys: Map<string, string>; onHover(residue: StageResidue | null): void; onPick(residue: StageResidue): void }) {
   const [cursor, setCursor] = useState(-1);
   const chains = useMemo(() => {
     const groups: { chain: string; label: string; items: { residue: StageResidue; index: number; gap: number }[] }[] = [];
@@ -222,7 +305,8 @@ function SequenceStrip({ residues, hovered, picked, regionKeys, onHover, onPick 
           {gap > 0 && <span className="sequence-gap" title={`${gap} residue${gap === 1 ? "" : "s"} not modelled`}>···</span>}
           {(residue.authSeqId % 10 === 0) && <span className="sequence-number" aria-hidden="true">{residue.authSeqId}</span>}
           <span id={cellId(key)} role="option" aria-selected={key === pickedKey} aria-label={`${threeLetter(residue.compId)} ${residue.authSeqId}${residue.insCode} chain ${residue.authAsymId}`} title={`${threeLetter(residue.compId)} ${residue.authSeqId}${residue.insCode} · chain ${residue.authAsymId}`}
-            className={["sequence-cell", regionKeys.has(key) ? "in-region" : "", key === hovered ? "hovered" : "", key === pickedKey ? "picked" : "", index === cursor ? "cursor" : ""].filter(Boolean).join(" ")}
+            className={["sequence-cell", regionKeys.has(key) ? "in-region" : "", coloredKeys.has(key) ? "colored" : "", key === hovered ? "hovered" : "", key === pickedKey ? "picked" : "", index === cursor ? "cursor" : ""].filter(Boolean).join(" ")}
+            style={coloredKeys.has(key) ? { "--residue-color": coloredKeys.get(key) } as CSSProperties : undefined}
             onMouseEnter={() => onHover(residue)} onClick={() => { setCursor(index); onPick(residue); }}>{residue.code}</span>
         </span>;
       })}

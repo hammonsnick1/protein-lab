@@ -14,22 +14,23 @@ import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { PurificationRoadmapWorkspace } from "@/components/protein-labs/purification-roadmap";
 import { LibraryHub } from "@/components/protein-labs/library-hub";
 import { UserManual } from "@/components/protein-labs/user-manual";
+import { VectorWorkbench } from "@/components/protein-labs/vector-workbench";
 import { JsonObject, ProteinBundle, ProteinRecord, proteinLabsApi } from "@/lib/protein-labs-api";
 import { definitionFor } from "@/lib/workflow";
 import { writeProjectTrees } from "@/lib/project-trees";
 import type { ProjectTree } from "@/lib/project-tree-types";
 import { loadProjectTrees, type StorageMode } from "@/lib/project-tree-store";
-import { runViewTransition } from "@/lib/view-transition";
+import { runViewTransition, type NavDirection } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
 import { createLibraryOpener, libraryStorage, type LibraryTab } from "@/lib/library-hub";
 
-type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "library" | "manual" | "roadmap" | "reports" | "job";
+type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "library" | "workbench" | "manual" | "roadmap" | "reports" | "job";
 // Baked in by desktop/vite.config.ts from package.json.
 declare const __PROTEIN_LABS_VERSION__: string;
 const appVersion = __PROTEIN_LABS_VERSION__;
 
 // Depth of each view; moving to a shallower view animates as "back".
-const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, library: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
+const viewDepth: Record<View, number> = { home: 0, projects: 1, "project-trees": 1, library: 1, workbench: 1, manual: 1, dashboard: 2, workflow: 3, roadmap: 3, reports: 3, job: 4 };
 type VisualTheme = "paper" | "mono-dark" | "mono-light";
 
 // Each appearance carries its own light or dark mode, so the appearance is the
@@ -86,6 +87,8 @@ export default function Home() {
   const [shellNode, setShellNode] = useState<HTMLDivElement | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [manualVisit, setManualVisit] = useState<{ section?: string; visit: number }>({ visit: 0 });
+  // Each visit remounts the workbench; a dashboard pick opens that library vector straight away.
+  const [workbenchVisit, setWorkbenchVisit] = useState<{ libraryId?: string; visit: number }>({ visit: 0 });
   const [enginePath, setEnginePath] = useState("");
   const [projectDirectory, setProjectDirectory] = useState<ProjectDirectoryState | null>(null);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("vectors");
@@ -130,7 +133,7 @@ export default function Home() {
   useEffect(() => { desktopBridge()?.getProjectDirectory().then(setProjectDirectory).catch(() => undefined); }, []);
   useEffect(() => { const saved = savedVisualTheme(localStorage.getItem("protein-labs-visual-theme")); if (saved) queueMicrotask(() => setVisualTheme(saved)); }, []);
 
-  function setView(next: View, update?: () => void) { runViewTransition(() => { update?.(); setViewState(next); }, viewDepth[next] < viewDepth[viewRef.current] ? "back" : "forward"); }
+  function setView(next: View, update?: () => void, direction: NavDirection = viewDepth[next] < viewDepth[viewRef.current] ? "back" : "forward") { runViewTransition(() => { update?.(); setViewState(next); }, direction); }
   async function openProject(id: string, destination: View = "dashboard") { setBusy(true); setError(""); try { await loadProject(id, undefined, false); setView(destination, () => { setSelectedId(id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   async function createProject() { const sequence = newSequence.replace(/\s+/g, "").toUpperCase(); if (!sequence) { setError("Paste an amino-acid sequence before creating the project."); return; } setBusy(true); setError(""); try { const created = await proteinLabsApi.createProtein({ name: newName.trim() || `Protein project ${proteins.length + 1}`, sequence }); setNewName(""); setNewSequence(""); setCreateOpen(false); await loadProject(created.protein.id, undefined, false); setView("dashboard", () => { setSelectedId(created.protein.id); setActiveJob("sequence"); }); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(false); } }
   // The store already persisted the change; this keeps the dashboard count in
@@ -141,7 +144,7 @@ export default function Home() {
   // Reads the view through a ref: callbacks made once keep the opener, so a
   // captured `view` would stay "home" and replay the page transition.
   const openLibrary = createLibraryOpener({ currentView: () => viewRef.current, switchTab: setLibraryTab, openView: (tab) => setView("library", () => setLibraryTab(tab)) });
-  function openJob(value: string, returnTo: "planning" | "roadmap" = "planning") { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }); }
+  function openJob(value: string, returnTo: "planning" | "roadmap" = "planning", direction?: NavDirection) { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }, direction); }
   function chooseVisualTheme(theme: VisualTheme) { setVisualTheme(theme); localStorage.setItem("protein-labs-visual-theme", theme); }
   async function shareProject() { if (!bundle) return; const text = `${bundle.protein.name}\n${bundle.protein.sequence.length} aa\n${bundle.projectJobs.length} saved workflow jobs`; try { await navigator.clipboard.writeText(text); setError("Project summary copied to the clipboard."); } catch { setError("Clipboard access was not available."); } }
   // Each visit remounts the manual, so a Help item always lands on its section
@@ -236,12 +239,13 @@ export default function Home() {
     {busy && <div className="global-working"><LoaderCircle className="spin"/> Working with the local scientific engine…</div>}
 
     <div className={`workspace-view-transition ${view === "home" ? "is-dashboard" : ""}`} key={`${view}:${selectedId}:${view === "job" ? activeJob : ""}`}>
-      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} storage={libraryStorage(projectDirectory, enginePath)} onLibrary={openLibrary} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()} onCreate={() => setCreateOpen(true)}/>
+      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} storage={libraryStorage(projectDirectory, enginePath)} onLibrary={openLibrary} onWorkbench={(libraryId) => setView("workbench", () => setWorkbenchVisit((current) => ({ libraryId, visit: current.visit + 1 })))} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()} onCreate={() => setCreateOpen(true)}/>
         : view === "projects" ? <ProjectGallery proteins={proteins} onOpen={(id) => void openProject(id)} onCreate={() => { setError(""); setCreateOpen(true); }}/>
         : view === "manual" ? <UserManual key={manualVisit.visit} initialSection={manualVisit.section}/>
+        : view === "workbench" ? <VectorWorkbench key={workbenchVisit.visit} proteins={proteins} initialLibraryId={workbenchVisit.libraryId} onBack={() => setView("home")}/>
         : view === "library" ? <LibraryHub tab={libraryTab} onTabChange={setLibraryTab} proteins={proteins} storage={libraryStorage(projectDirectory, enginePath)} onOpenVectorProject={(id) => void openProjectJob(id, "expression-vector")} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()}/>
         : view === "project-trees" ? <ProjectTrees proteins={proteins} trees={projectTrees} storageMode={treeStorage} loading={treesLoading} onChange={updateProjectTrees} onOpenProject={(id) => void openProject(id)}/>
-        : bundle ? <>{view === "dashboard" && <ProjectDashboard bundle={bundle} onResume={() => setView("workflow")} onRoadmap={() => setView("roadmap")} onReports={() => setView("reports")}/>} {view === "workflow" && <ProjectWorkflow bundle={bundle} onOpenJob={(id) => openJob(id, "planning")} onRoadmap={() => setView("roadmap")} onRefresh={() => refreshBundle(selectedId)}/>} {view === "roadmap" && <PurificationRoadmapWorkspace bundle={bundle} onOpenJob={(id) => openJob(id, "roadmap")} onBackToWorkflow={() => setView("workflow")} onChanged={() => refreshBundle(selectedId)}/>} {view === "job" && <JobWorkspace key={`${selectedId}:${activeJob}:${jobReturn}`} jobId={activeJob} bundle={bundle} returnTo={jobReturn} onBack={() => setView(jobReturn === "roadmap" ? "roadmap" : "workflow")} onOpenJob={(id) => openJob(id, "planning")} onReports={() => setView("reports")} onRoadmap={() => setView("roadmap")} onChanged={() => refreshBundle(selectedId)}/>} {view === "reports" && <ReportsWorkspace bundle={bundle} onChanged={() => refreshBundle(selectedId)}/>}</>
+        : bundle ? <>{view === "dashboard" && <ProjectDashboard bundle={bundle} onResume={() => setView("workflow")} onRoadmap={() => setView("roadmap")} onReports={() => setView("reports")}/>} {view === "workflow" && <ProjectWorkflow bundle={bundle} onOpenJob={(id) => openJob(id, "planning")} onRoadmap={() => setView("roadmap")}/>} {view === "roadmap" && <PurificationRoadmapWorkspace bundle={bundle} onOpenJob={(id) => openJob(id, "roadmap")} onBackToWorkflow={() => setView("workflow")} onChanged={() => refreshBundle(selectedId)}/>} {view === "job" && <JobWorkspace key={`${selectedId}:${activeJob}:${jobReturn}`} jobId={activeJob} bundle={bundle} returnTo={jobReturn} onBack={() => setView(jobReturn === "roadmap" ? "roadmap" : "workflow")} onOpenJob={(id) => openJob(id, "planning")} onStep={(id, direction) => openJob(id, jobReturn, direction)} onReports={() => setView("reports")} onRoadmap={() => setView("roadmap")} onChanged={() => refreshBundle(selectedId)}/>} {view === "reports" && <ReportsWorkspace bundle={bundle} onChanged={() => refreshBundle(selectedId)}/>}</>
         : <main className="gallery"><p>Select a saved protein project.</p></main>}
     </div>
 

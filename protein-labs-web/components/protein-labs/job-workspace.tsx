@@ -1,7 +1,7 @@
 "use client";
 
-import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, MousePointerClick, Play, Scale, Search, ShieldCheck, Sparkles, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
+import { PointerEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, MousePointerClick, Play, Scale, Search, ShieldCheck, SkipForward, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -18,8 +18,11 @@ import { ReferenceMatchJob } from "@/components/protein-labs/reference-match-job
 import { StructureJob } from "@/components/protein-labs/structure-viewer-job";
 import { TransformationExpressionJob } from "@/components/protein-labs/transformation-expression-job";
 import { ExpressionJob } from "@/components/protein-labs/expression-system-job";
-import { isComplete, workflowJobs } from "@/lib/workflow";
+import { OrganismCombobox } from "@/components/protein-labs/organism-combobox";
+import { buildSkipConfig, definitionFor, jobsFor, type WorkflowJobDefinition } from "@/lib/workflow";
+import { canSkipJob, jobNeighbours } from "@/lib/job-navigation";
 import { aminoAcid, residueFamily, sideChainClassLabels } from "@/lib/amino-acids";
+import { mostAbundantResidues } from "@/lib/residue-composition";
 import { ResidueClassLegend, ResidueDetailDialog } from "@/components/protein-labs/residue-detail";
 import { isLowExtinction } from "@/lib/readiness";
 
@@ -44,28 +47,25 @@ const labels: Record<string, [string, string, typeof Dna]> = {
 
 type JobProps = { bundle: ProteinBundle; onChanged: () => Promise<void> };
 
-export function JobWorkspace({ jobId, bundle, returnTo, onBack, onOpenJob, onReports, onRoadmap, onChanged }: { jobId: string; bundle: ProteinBundle; returnTo: "planning" | "roadmap"; onBack: () => void; onOpenJob: (jobId: string) => void; onReports: () => void; onRoadmap: () => void; onChanged: () => Promise<void> }) {
+export function JobWorkspace({ jobId, bundle, returnTo, onBack, onOpenJob, onStep, onReports, onRoadmap, onChanged }: { jobId: string; bundle: ProteinBundle; returnTo: "planning" | "roadmap"; onBack: () => void; onOpenJob: (jobId: string) => void; onStep: (jobId: string, direction: "forward" | "back") => void; onReports: () => void; onRoadmap: () => void; onChanged: () => Promise<void> }) {
   const [title, description, Icon] = labels[jobId] ?? labels.sequence;
   const [online, setOnline] = useState<boolean | null>(null);
-  const [savedInSession, setSavedInSession] = useState(false);
+  const [saved, setSaved] = useState(0);
   const [workflowLayout, setWorkflowLayout] = useState<"tree" | "cards">("tree");
   useEffect(() => { proteinLabsApi.health().then(() => setOnline(true)).catch(() => setOnline(false)); }, []);
   useEffect(() => {
     const savedLayout = localStorage.getItem("protein-labs-workflow-layout");
     if (savedLayout === "cards") queueMicrotask(() => setWorkflowLayout("cards"));
   }, []);
+  // The "Saved" indicator shows briefly after each save, then clears itself.
+  useEffect(() => {
+    if (!saved) return;
+    const timer = window.setTimeout(() => setSaved(0), 2600);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
   async function handleChanged() {
     await onChanged();
-    setSavedInSession(true);
-  }
-  const planningJobs = workflowJobs.filter((definition) => definition.stage === "understand" || definition.stage === "plan");
-  const recommended = planningJobs.find((definition) => !isComplete(bundle, definition)) ?? planningJobs.at(-1)!;
-  const planningComplete = planningJobs.every((definition) => isComplete(bundle, definition));
-  const returnToRoadmap = returnTo === "roadmap" || planningComplete;
-  function continueWorkflow() {
-    setSavedInSession(false);
-    if (returnToRoadmap) onRoadmap();
-    else onOpenJob(recommended.id);
+    setSaved((count) => count + 1);
   }
   const changed = handleChanged;
   return <main className="job-workspace">
@@ -74,12 +74,47 @@ export function JobWorkspace({ jobId, bundle, returnTo, onBack, onOpenJob, onRep
     </button>
     <header className="job-header"><div className="job-title-row"><span className="job-hero-icon"><Icon /></span><div><span className="eyebrow">{bundle.protein.name} · CURRENT JOB</span><h1>{title}</h1><p>{description}</p></div></div><div className="job-header-actions"><span className={`engine-state ${online ? "online" : online === false ? "offline" : "checking"}`}><span />{online ? "Local engine connected" : online === false ? "Local engine unavailable" : "Checking engine"}</span><Button variant="outline" onClick={onRoadmap}><FlaskConical/> Roadmap</Button><Button variant="outline" onClick={onReports}><BookOpen /> Report</Button></div></header>
     <section className="job-surface">{jobId === "sequence" && <SequenceJob bundle={bundle} onChanged={changed} />}{jobId === "properties" && <PropertiesJob bundle={bundle} onChanged={changed} />}{jobId === "research" && <SequenceResearchJob bundle={bundle} onChanged={changed} />}{jobId === "reference-match" && <ReferenceMatchJob bundle={bundle} onChanged={changed} />}{jobId === "structure" && <StructureJob bundle={bundle} onChanged={changed} onOpenJob={onOpenJob} />}{jobId === "readiness" && <ProteinReadinessJob bundle={bundle} onChanged={changed} onReports={onReports} onOpenJob={onOpenJob} />}{jobId === "expression-system" && <ExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "expression-vector" && <ExpressionVectorJob bundle={bundle} onChanged={changed} />}{(["purification-lysis","purification-subtractive","purification-sec"] as string[]).includes(jobId) && <PurificationStageJob bundle={bundle} onChanged={changed} mode={jobId as "purification-lysis"|"purification-subtractive"|"purification-sec"} />}{(["purification-affinity","purification-workflow"] as string[]).includes(jobId) && <PurificationPlannerJob bundle={bundle} onChanged={changed} section={jobId} />}{jobId === "transformation-expression" && <TransformationExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "chromatogram" && <ChromatogramStudioJob bundle={bundle} onChanged={changed} />}{jobId === "gel" && <GelAnalysisJob bundle={bundle} onChanged={changed} />}</section>
-    {savedInSession && <button className="job-next-tab" onClick={continueWorkflow}>
-      <span className="job-next-status"><Check/> Saved</span>
-      <span className="job-next-copy"><small>{returnToRoadmap ? "CONTINUE THE PURIFICATION" : "RECOMMENDED NEXT PLANNING JOB"}</small><strong>{returnToRoadmap ? "Return to purification roadmap" : recommended.label}</strong><em>{returnToRoadmap ? "The saved result and planning choices are reflected in the roadmap." : recommended.description}</em></span>
-      {returnToRoadmap ? <FlaskConical/> : <><Sparkles className="job-next-sparkle"/><ChevronRight className="job-next-arrow"/></>}
-    </button>}
+    <JobNavigation bundle={bundle} jobId={jobId} saved={saved > 0} onStep={onStep} onChanged={onChanged}/>
   </main>;
+}
+
+/** Previous and Next job tabs in the bottom corners of an open job. They sit
+ *  in their own strip under the job, so they never cover its content. */
+function JobNavigation({ bundle, jobId, saved, onStep, onChanged }: { bundle: ProteinBundle; jobId: string; saved: boolean; onStep: (jobId: string, direction: "forward" | "back") => void; onChanged: () => Promise<void> }) {
+  const { previous, next } = jobNeighbours(jobId);
+  const [skipping, setSkipping] = useState(false);
+  const [failure, setFailure] = useState("");
+  const current = definitionFor(jobId);
+  async function skip(definition: WorkflowJobDefinition, then: WorkflowJobDefinition) {
+    setSkipping(true); setFailure("");
+    try {
+      const existing = jobsFor(bundle, definition)[0];
+      const job = existing ?? await proteinLabsApi.createJob(bundle.protein.id, definition.label, definition.appType);
+      await proteinLabsApi.updateJob(bundle.protein.id, job.id, `Skipped — ${definition.label}`, "complete", buildSkipConfig(job.config));
+      await onChanged();
+      onStep(then.id, "forward");
+    } catch (reason) { setFailure(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setSkipping(false); }
+  }
+  return <nav className="job-nav" aria-label="Workflow jobs">
+    {previous && <JobNavTab direction="back" target={previous} onStep={onStep}/>}
+    <span className="job-nav-trailing">
+      <span className={`job-nav-status ${failure ? "error" : ""}`} role="status">{failure ? <><CircleAlert/> {failure}</> : saved ? <><Check/> Saved</> : null}</span>
+      {next && canSkipJob(bundle, jobId) && <button type="button" className="job-nav-skip" disabled={skipping} onClick={() => void skip(current, next)} aria-label={`Skip ${current.label} and open the next job`}>{skipping ? <LoaderCircle className="spin"/> : <SkipForward/>} Skip</button>}
+      {next && <JobNavTab direction="forward" target={next} onStep={onStep}/>}
+    </span>
+  </nav>;
+}
+
+function JobNavTab({ direction, target, onStep }: { direction: "forward" | "back"; target: WorkflowJobDefinition; onStep: (jobId: string, direction: "forward" | "back") => void }) {
+  const tooltip = useId();
+  const label = direction === "back" ? "Previous job" : "Next job";
+  return <span className={`job-nav-corner ${direction === "back" ? "previous" : "next"}`}>
+    <button type="button" className="job-nav-tab" onClick={() => onStep(target.id, direction)} aria-describedby={tooltip}>
+      {direction === "back" && <ChevronLeft aria-hidden="true"/>}{label}{direction === "forward" && <ChevronRight aria-hidden="true"/>}
+    </button>
+    <span className="job-nav-tooltip" role="tooltip" id={tooltip}>{target.label}</span>
+  </span>;
 }
 
 function Panel({ title, hint, children, className = "" }: { title: string; hint?: string; children: React.ReactNode; className?: string }) { return <section className={`lab-panel ${className}`}><div className="panel-heading"><div><h2>{title}</h2>{hint && <p>{hint}</p>}</div></div>{children}</section>; }
@@ -90,7 +125,9 @@ function asArray(value: unknown): JsonObject[] { return Array.isArray(value) ? v
 function text(value: unknown, fallback: unknown = "—") { return String(value === null || value === undefined || value === "" ? fallback : value); }
 /** Residue counts and their share of the sequence, split into two aligned
  *  halves with a total row that shows the shares add up to the whole. Bars
- *  take the side-chain class colour; a row opens that residue's details. */
+ *  take the side-chain class colour; a row opens that residue's details.
+ *  The residue (or residues, on a tie) with the highest count is tinted and
+ *  badged "Most abundant". */
 function CompositionTable({ residues }: { residues: [string, unknown][] }) {
   const [open, setOpen] = useState<number | null>(null);
   const container = useRef<HTMLDivElement>(null);
@@ -103,19 +140,20 @@ function CompositionTable({ residues }: { residues: [string, unknown][] }) {
   const totalCount = rows.reduce((sum, row) => sum + row.count, 0);
   const totalPercent = rows.reduce((sum, row) => sum + row.percent, 0);
   const largest = Math.max(...rows.map((row) => row.percent));
+  const top = mostAbundantResidues(rows);
   const half = Math.ceil(rows.length / 2);
   const show = (aa: string) => { const index = details.findIndex((detail) => detail.acid.code === aa); if (index >= 0) setOpen(index); };
   return <div className="composition" ref={container}>
     <div className="composition-halves">
       {[rows.slice(0, half), rows.slice(half)].map((group, index) => <table className="composition-table" key={index}>
         <thead><tr><th scope="col">Residue</th><th scope="col" className="num">Count</th><th scope="col" className="num">% of protein</th><th scope="col" aria-label="Relative abundance"/></tr></thead>
-        <tbody>{group.map((row) => <tr key={row.aa} className={`aa-family-${row.family}${row.acid ? " is-clickable" : ""}`} onClick={row.acid ? () => show(row.aa) : undefined}>
+        <tbody>{group.map((row) => <tr key={row.aa} className={`aa-family-${row.family}${row.acid ? " is-clickable" : ""}${top.has(row.aa) ? " is-most-abundant" : ""}`} onClick={row.acid ? () => show(row.aa) : undefined}>
           <th scope="row">{row.acid
-            ? <button type="button" className="composition-residue" data-residue={row.aa} onClick={(event) => { event.stopPropagation(); show(row.aa); }} aria-label={`${row.name}, ${sideChainClassLabels[row.acid.family].toLowerCase()}: ${row.count} residues, ${row.percent.toFixed(2)}%. Show residue details`}><strong>{row.aa}</strong><span>{row.name}</span></button>
+            ? <button type="button" className="composition-residue" data-residue={row.aa} onClick={(event) => { event.stopPropagation(); show(row.aa); }} aria-label={`${row.name}, ${sideChainClassLabels[row.acid.family].toLowerCase()}: ${row.count} residues, ${row.percent.toFixed(2)}%${top.has(row.aa) ? ", most abundant" : ""}. Show residue details`}><strong>{row.aa}</strong><span>{row.name}</span></button>
             : <><strong>{row.aa}</strong><span>{row.name}</span></>}</th>
           <td className="num">{row.count}</td>
           <td className="num">{row.percent.toFixed(2)}%</td>
-          <td className="composition-bar-cell"><span className="composition-bar"><i style={{ width: `${largest ? (row.percent / largest) * 100 : 0}%` }}/></span></td>
+          <td className="composition-bar-cell">{top.has(row.aa) && <span className="composition-top-badge">Most abundant</span>}<span className="composition-bar"><i style={{ width: `${largest ? (row.percent / largest) * 100 : 0}%` }}/></span></td>
         </tr>)}</tbody>
       </table>)}
     </div>
@@ -132,6 +170,7 @@ function SequenceJob({ bundle, onChanged }: JobProps) {
   const [name, setName] = useState(protein.name);
   const [sequence, setSequence] = useState(protein.sequence);
   const [organism, setOrganism] = useState(protein.organism ?? "");
+  const [organismTaxonId, setOrganismTaxonId] = useState<number | null>(protein.organismTaxonId ?? null);
   const [geneName, setGeneName] = useState(protein.geneName ?? "");
   const [description, setDescription] = useState(protein.description ?? "");
   const [notes, setNotes] = useState(protein.notes ?? "");
@@ -141,14 +180,14 @@ function SequenceJob({ bundle, onChanged }: JobProps) {
     if (!normalized) { setFailed(true); setMessage("Enter an amino-acid sequence first."); return; }
     setBusy(true); setMessage("");
     try {
-      await proteinLabsApi.updateProtein(protein.id, { name: name.trim() || "Untitled protein", sequence: normalized, organism, geneName, description, notes });
+      await proteinLabsApi.updateProtein(protein.id, { name: name.trim() || "Untitled protein", sequence: normalized, organism, organismTaxonId, geneName, description, notes });
       const refreshed = await proteinLabsApi.getProtein(protein.id);
       await ensureProjectJob(protein.id, refreshed.projectJobs, "protein-planner", "Protein sequence", { sequenceLength: normalized.length, savedByUser: true });
       await onChanged(); setFailed(false); setMessage("Sequence saved and protein properties recalculated locally.");
     } catch (reason) { setFailed(true); setMessage(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }
   }
-  return <div className="two-column"><Panel title="Primary sequence" hint="Spaces and line breaks are ignored."><Field label="Construct name"><input value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Amino acid sequence"><textarea className="sequence-editor" value={sequence} onChange={(event) => setSequence(event.target.value.toUpperCase().replace(/[^A-Z\n\r ]/g, ""))} /></Field><div className="sequence-footer"><span>{sequence.replace(/\s/g, "").length} amino acids</span><Button disabled={busy} onClick={() => void save()}>{busy ? <LoaderCircle className="spin" /> : <Check />} Save sequence</Button></div><Notice message={message} error={failed} /></Panel><Panel title="Construct metadata" hint="Saved with the protein and used by later jobs."><Field label="Organism"><input value={organism} onChange={(event) => setOrganism(event.target.value)} placeholder="e.g. Pseudomonas aeruginosa" /></Field><Field label="Gene"><input value={geneName} onChange={(event) => setGeneName(event.target.value)} placeholder="e.g. PA0012" /></Field><Field label="Description"><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></Field><Field label="Notes"><textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field></Panel></div>;
+  return <div className="two-column"><Panel title="Primary sequence" hint="Spaces and line breaks are ignored."><Field label="Construct name"><input value={name} onChange={(event) => setName(event.target.value)} /></Field><Field label="Amino acid sequence"><textarea className="sequence-editor" value={sequence} onChange={(event) => setSequence(event.target.value.toUpperCase().replace(/[^A-Z\n\r ]/g, ""))} /></Field><div className="sequence-footer"><span>{sequence.replace(/\s/g, "").length} amino acids</span><Button disabled={busy} onClick={() => void save()}>{busy ? <LoaderCircle className="spin" /> : <Check />} Save sequence</Button></div><Notice message={message} error={failed} /></Panel><Panel title="Construct metadata" hint="Saved with the protein and used by later jobs."><OrganismCombobox value={organism} taxonId={organismTaxonId} onChange={(text, taxon) => { setOrganism(text); setOrganismTaxonId(taxon); }}/><Field label="Gene"><input value={geneName} onChange={(event) => setGeneName(event.target.value)} placeholder="e.g. PA0012" /></Field><Field label="Description"><textarea rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></Field><Field label="Notes"><textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} /></Field></Panel></div>;
 }
 
 function PropertiesJob({ bundle, onChanged }: JobProps) {
