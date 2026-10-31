@@ -5,6 +5,7 @@ import type { ProjectDiff, ProjectTree } from "@/lib/project-tree-types";
 declare const __PROTEIN_LABS_API__: string | undefined;
 
 import type { RegionsResponse, StructureDetail, StructureListResponse, StructureSource } from "./structure-regions.ts";
+import type { TaxonomySearchResponse } from "./organism-search.ts";
 
 // An empty bundled value is meaningful: it means same-origin requests, so the
 // chain tests for a defined string rather than a truthy one.
@@ -19,6 +20,8 @@ export type ProteinRecord = {
   name: string;
   sequence: string;
   organism: string;
+  /** NCBI taxon ID chosen from the organism suggestions; null for free text. */
+  organismTaxonId?: number | null;
   geneName: string;
   description: string;
   expressionSystem: string;
@@ -122,6 +125,7 @@ export const proteinLabsApi = {
   createProtein: (fields: Partial<ProteinRecord>) => post<ProteinBundle>("/v1/protein-planner/proteins", fields as JsonObject),
   updateProtein: (proteinId: string, fields: Partial<ProteinRecord>) => patch<ProteinBundle>(`/v1/protein-planner/proteins/${proteinId}`, fields as JsonObject),
   deleteProtein: (proteinId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}`, { method: "DELETE" }),
+  searchTaxonomy: (query: string, limit = 12) => request<TaxonomySearchResponse>(`/v1/taxonomy/search?${new URLSearchParams({ q: query, limit: String(limit) })}`),
   analyze: (proteinId: string) => post<{ result: JsonObject }>(`/v1/protein-planner/proteins/${proteinId}/analyze`),
   analyzeSequence: (sequence: string) => post<{ result: JsonObject }>("/v1/protein-planner/analyze-sequence", { sequence }),
   uniprot: (proteinId: string) => post<{ matches: JsonObject[] }>(`/v1/protein-planner/proteins/${proteinId}/uniprot/match`, { size: 25 }),

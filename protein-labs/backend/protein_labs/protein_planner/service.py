@@ -27,6 +27,7 @@ from .integrations import (
 from .structures import build_residue_mapping, compute_regions, summarize_structure
 from .protparam import analyze_sequence, normalize_sequence
 from .project_trees import ProjectTreeService
+from .taxonomy import TaxonomyClient
 from ..expression_planner import (
     COMMON_ENZYMES,
     align_dna_sequences,
@@ -76,6 +77,7 @@ class ProteinPlanner:
         alphafold: AlphaFoldDBClient | None = None,
         sifts: PDBeSIFTSClient | None = None,
         email: str = "",
+        taxonomy: TaxonomyClient | None = None,
     ):
         self.database = database
         self.blast = blast
@@ -84,6 +86,7 @@ class ProteinPlanner:
         self.alphafold = alphafold
         self.sifts = sifts
         self.email = email
+        self.taxonomy = taxonomy or TaxonomyClient(blast.http, email=email)
         self.project_trees = ProjectTreeService(database)
 
     def create_protein(self, fields: dict[str, Any]) -> dict[str, Any]:
@@ -101,6 +104,9 @@ class ProteinPlanner:
         if sequence is not None:
             self.database.save_protparam(protein_id, analyze_sequence(sequence))
         return self.database.get_bundle(protein_id)
+
+    def search_taxonomy(self, query: str, limit: int = 10) -> dict[str, Any]:
+        return self.taxonomy.search(query, limit)
 
     def analyze(self, protein_id: str) -> dict[str, Any]:
         protein = self.database.get_protein(protein_id)
