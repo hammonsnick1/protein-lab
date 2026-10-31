@@ -113,6 +113,10 @@ export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
 
           <section className="af-export-group">
             <header><FlaskConical aria-hidden="true"/><strong>Ligands and ions</strong><span>{molecules.length}</span></header>
+            {/* The empty state can only speak for this list. A project may also
+                record a cofactor AlphaFold Server cannot model, which never had
+                a row here and was left out rather than removed — saying "every
+                cofactor this project records" would claim that one too. */}
             {molecules.length ? <ul>
               {molecules.map((molecule) => <li key={`${molecule.kind}-${molecule.code}`}>
                 <div className="af-export-row">
@@ -126,7 +130,7 @@ export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
                 </div>
               </li>)}
             </ul> : <p className="af-export-none">{removed.length
-              ? `Every cofactor this project records has been removed from the job. Add ${removed.length === 1 ? "it" : "one"} back below to model it.`
+              ? `${removed.length === 1 ? "The only cofactor" : "Every cofactor"} AlphaFold Server can model here has been removed. Add ${removed.length === 1 ? "it" : "one"} back below to put it in the job.`
               : "No cofactor in this project maps to an AlphaFold Server ligand or ion."}</p>}
             {removed.length > 0 && <div className="af-export-restore">
               <span>Removed from this job:</span>

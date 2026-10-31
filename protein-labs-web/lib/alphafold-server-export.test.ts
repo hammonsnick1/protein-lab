@@ -247,6 +247,24 @@ describe("cofactors from earlier jobs", () => {
     assert.equal(request.cofactors?.length, 3);
   });
 
+  it("keeps an unmodellable cofactor when the last modellable one is removed", () => {
+    // What the empty Ligands and ions list is allowed to claim. Removing the
+    // heme empties that list, but molybdopterin is still recorded and still
+    // carried — it was left out for having no AlphaFold Server entity, not
+    // removed — so the empty state may only speak for what AlphaFold Server
+    // can model, never for every cofactor the project records.
+    const jobs = [monomer, reference([], [{ name: "heme b" }, { name: "molybdopterin" }])];
+    const request = alphaFoldRequestFor(bundle(jobs), [], ["ligand:HEM"]);
+    assert.deepEqual(request.cofactors?.map((entry) => entry.code), ["molybdopterin"]);
+    const result = buildAlphaFoldJob(request);
+    assert.deepEqual(result.summary.molecules, []);
+    assert.deepEqual(categories(result.warnings), ["removed-by-hand", "unsupported-ligand"]);
+    // The removal note names only the heme; molybdopterin has its own.
+    const note = result.warnings.find((entry) => entry.category === "removed-by-hand");
+    assert.match(note?.message ?? "", /^heme b was removed in this dialog/);
+    assert.equal(note?.message.includes("molybdopterin"), false);
+  });
+
   it("ignores a removal key no cofactor in the project matches", () => {
     const request = alphaFoldRequestFor(bundle([monomer, reference([], [{ name: "heme b" }])]), [], ["ion:MG"]);
     assert.deepEqual(request.cofactors?.map((entry) => entry.code), ["heme b"]);
