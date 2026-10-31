@@ -135,12 +135,14 @@ export function recogniseGlycan(description: string): string | null {
 }
 
 /**
- * Free-text cofactor notes split into one entry per cofactor. A `+` only
- * separates when it stands alone: `Zn2+` is one cofactor, `ATP + Mg` is two.
+ * Free-text cofactor notes split into one entry per cofactor. Chemical names
+ * carry their own punctuation, so a separator only counts where it cannot be
+ * part of a name: `Zn2+` is one cofactor and so is `2,3-bisphosphoglycerate`,
+ * while `ATP + Mg` and `heme, FAD` are two.
  */
 export function splitCofactorText(value: string): string[] {
   return value
-    .split(/[;,\n]|\band\b|\s\+\s/gi)
+    .split(/[;\n]|\band\b|\s\+\s|(?<![0-9]),(?!\s*[0-9])/gi)
     .map((part) => part.trim())
     .filter((part) => part.length > 0 && !/^(none|n\/a|no|unknown|not reviewed)$/i.test(part));
 }

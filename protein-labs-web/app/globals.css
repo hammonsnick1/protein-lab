@@ -15674,7 +15674,10 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   padding-right: 4px;
 }
 .af-export-meter {
-  --meter: #4f8ed6;
+  /* Ink while the job fits, red once it does not. A neutral default keeps the
+     dialog inside each appearance's own palette and leaves red to mean one
+     thing only, which the paper theme's coral accent would have muddied. */
+  --meter: var(--foreground);
   border: 1px solid color-mix(in srgb, var(--meter) 34%, var(--border));
   border-radius: 12px;
   background: color-mix(in srgb, var(--meter) 8%, var(--card));
@@ -15897,4 +15900,7 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   .af-export-dialog,
   .af-export-dialog ~ [data-slot="dialog-overlay"],
   [data-slot="dialog-overlay"]:has(~ .af-export-dialog) { animation: none !important; }
+}
+.reference-workspace.empty > button {
+  margin-top: 16px;
 }

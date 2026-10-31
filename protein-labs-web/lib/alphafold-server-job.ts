@@ -530,9 +530,12 @@ export function buildAlphaFoldJob(request: AlphaFoldJobRequest): AlphaFoldExport
     if (!raw) return;
     const match = recogniseMolecule(raw);
     if (!match) {
+      // The allowed vocabulary is long and the same every time, so it is spelled
+      // out once rather than repeated under every cofactor that missed it.
+      const first = !warnings.some((warning) => warning.category === "unsupported-ligand");
       warnings.push({
         category: "unsupported-ligand", severity: "excluded", subject,
-        message: `AlphaFold Server cannot model "${subject}". It accepts ${Object.keys(ligandAtoms).length} ligands (${Object.keys(ligandAtoms).join(", ")}) and ${ionCodes.length} ions (${ionCodes.join(", ")}). It was left out.`,
+        message: `AlphaFold Server cannot model "${subject}", so it was left out.${first ? ` It accepts ${Object.keys(ligandAtoms).length} ligands (${Object.keys(ligandAtoms).join(", ")}) and ${ionCodes.length} ions (${ionCodes.join(", ")}).` : ""}`,
       });
       return;
     }
@@ -573,16 +576,20 @@ export function buildAlphaFoldJob(request: AlphaFoldJobRequest): AlphaFoldExport
   // Trim to the token limit by dropping optional entities, newest first. The
   // required chains are never dropped and counts are never reduced: silently
   // turning a homodimer into a monomer would change the question being asked.
+  // Trimming only starts when it can actually succeed — throwing away the
+  // cofactors of a job that is over the limit on its chains alone would cost
+  // the scientist their ligands and still leave them with an invalid job.
   const dropped = new Set<number>();
   let tokens = entries.reduce((total, entry) => total + entry.tokens, 0);
-  for (let index = entries.length - 1; index >= 0 && tokens > tokenLimit; index -= 1) {
+  const requiredTokens = entries.reduce((total, entry) => total + (entry.required ? entry.tokens : 0), 0);
+  for (let index = entries.length - 1; index >= 0 && tokens > tokenLimit && requiredTokens <= tokenLimit; index -= 1) {
     if (entries[index].required) continue;
     const entry = entries[index];
     dropped.add(index);
     tokens -= entry.tokens;
     warnings.push({
       category: "token-limit", severity: "excluded", subject: entry.label,
-      message: `${entry.label} was left out to bring the job under AlphaFold Server's ${tokenLimit.toLocaleString("en-US")}-token limit. It cost ${entry.tokens.toLocaleString("en-US")} tokens.`,
+      message: `${entry.label} was left out to bring the job under AlphaFold Server's ${tokenLimit.toLocaleString("en-US")}-token limit. It cost ${entry.tokens.toLocaleString("en-US")} ${entry.tokens === 1 ? "token" : "tokens"}.`,
     });
   }
 

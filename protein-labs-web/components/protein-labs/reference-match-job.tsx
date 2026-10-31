@@ -50,8 +50,12 @@ export function ReferenceMatchJob({ bundle, onChanged }: { bundle: ProteinBundle
     finally { setBusy(false); }
   }
 
+  // An AlphaFold Server job needs the sequence, the oligomeric state and the
+  // recorded cofactors, none of which come from here, so the export stays
+  // available to a project that has not matched a reference yet.
   if (!matches.length) return <div className="reference-workspace empty">
     <Database/><h2>Find a reference before choosing one</h2><p>Run the UniProt sequence match in Sequence research. Saved matches will appear here ranked by sequence identity, query coverage, and review status.</p>
+    <AlphaFoldServerExport bundle={bundle}/>
   </div>;
 
   return <div className="reference-workspace">

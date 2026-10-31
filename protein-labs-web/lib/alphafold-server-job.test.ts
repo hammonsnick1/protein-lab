@@ -152,6 +152,16 @@ describe("ligands and ions", () => {
     assert.deepEqual(categories(result.warnings), ["unsupported-ligand"]);
   });
 
+  it("spells out the allowed vocabulary once, not under every cofactor that missed it", () => {
+    const result = buildAlphaFoldJob(request({ cofactors: [{ code: "molybdopterin" }, { code: "biotin" }, { code: "coenzyme A" }] }));
+    assert.equal(result.warnings.length, 3);
+    assert.match(result.warnings[0].message, /It accepts 19 ligands/);
+    for (const warning of result.warnings.slice(1)) {
+      assert.doesNotMatch(warning.message, /It accepts/);
+      assert.match(warning.message, /cannot model/);
+    }
+  });
+
   it("notes a substitution that is not an exact chemical match", () => {
     const result = buildAlphaFoldJob(request({ cofactors: [{ code: "NADH" }] }));
     assert.deepEqual(categories(result.warnings), ["approximation"]);
@@ -340,6 +350,18 @@ describe("the token limit", () => {
     assert.equal(proteins(result)[0].count, 2);
     assert.equal(result.summary.tokens, 6000);
     assert.equal(result.fitsTokenLimit, false);
+  });
+
+  it("keeps the cofactors when no amount of trimming could save the job", () => {
+    // Dropping the ATP cannot bring a 6,000-token chain under 5,000, so taking
+    // it would cost the scientist a cofactor and still leave an invalid job.
+    const result = buildAlphaFoldJob(request({
+      proteins: [{ label: "Construct", sequence: "A".repeat(6000), required: true }],
+      cofactors: [{ code: "ATP" }, { code: "Mg(2+)" }],
+    }));
+    assert.deepEqual(result.summary.molecules.map((entry) => entry.code), ["ATP", "MG"]);
+    assert.deepEqual(categories(result.warnings), ["token-limit"]);
+    assert.equal(result.warnings[0].severity, "blocking");
   });
 
   it("reports a blocking warning when the required chain alone is over the limit", () => {

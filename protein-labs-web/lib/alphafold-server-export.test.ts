@@ -117,6 +117,13 @@ describe("cofactors from earlier jobs", () => {
     assert.deepEqual(splitCofactorText("none"), []);
     assert.deepEqual(splitCofactorText(""), []);
   });
+
+  it("does not split a chemical name on its own punctuation", () => {
+    // A comma inside 2,3-bisphosphoglycerate is part of the name, not a list
+    // separator, and "Zn2+" must not lose its charge to the "+" separator.
+    assert.deepEqual(splitCofactorText("heme b; Zn(2+); 2,3-bisphosphoglycerate"), ["heme b", "Zn(2+)", "2,3-bisphosphoglycerate"]);
+    assert.deepEqual(splitCofactorText("N6,N6-dimethyllysine, ATP"), ["N6,N6-dimethyllysine", "ATP"]);
+  });
 });
 
 describe("modifications from the reference record", () => {

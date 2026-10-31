@@ -96,7 +96,7 @@ export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
               {chains.map((chain) => <li key={`${chain.kind}-${chain.label}`}>
                 <div className="af-export-row">
                   <span className="af-export-name">{chain.label}</span>
-                  <small>{chainKinds[chain.kind]} · {chain.length.toLocaleString("en-US")} {chain.kind === "protein" ? "residues" : "bases"} · {chain.count} {chain.count === 1 ? "copy" : "copies"} · {chain.tokens.toLocaleString("en-US")} tokens</small>
+                  <small>{chainKinds[chain.kind]} · {chain.length.toLocaleString("en-US")} {chain.kind === "protein" ? "residues" : "bases"} · {chain.count} {chain.count === 1 ? "copy" : "copies"} · {chain.tokens.toLocaleString("en-US")} {chain.tokens === 1 ? "token" : "tokens"}</small>
                 </div>
                 {(chain.ptms.length > 0 || chain.glycans.length > 0) && <div className="af-export-pills">
                   {chain.ptms.map((ptm) => <span key={`ptm-${ptm.position}`} className="af-export-pill ptm">CCD_{ptm.code} · {ptm.name} at {ptm.position}</span>)}
@@ -112,7 +112,7 @@ export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
               {molecules.map((molecule) => <li key={`${molecule.kind}-${molecule.code}`}>
                 <div className="af-export-row">
                   <span className="af-export-name">{moleculeCode(molecule)}</span>
-                  <small>{molecule.kind === "ion" ? "Ion" : "Ligand"} · {molecule.count} {molecule.count === 1 ? "copy" : "copies"} · {molecule.name} · {molecule.tokens.toLocaleString("en-US")} tokens</small>
+                  <small>{molecule.kind === "ion" ? "Ion" : "Ligand"} · {molecule.count} {molecule.count === 1 ? "copy" : "copies"} · {molecule.name} · {molecule.tokens.toLocaleString("en-US")} {molecule.tokens === 1 ? "token" : "tokens"}</small>
                 </div>
               </li>)}
             </ul> : <p className="af-export-none">No cofactor in this project maps to an AlphaFold Server ligand or ion.</p>}
