@@ -1028,6 +1028,70 @@ class ProteinPlanner:
         }, keep_both=keep_both)
         return {**vector, "duplicate": True} if duplicate else vector
 
+    # ------------------------------------------------------------------
+    # Vector Workbench: project-free parse, export, analysis and saving.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _workbench_vector(fields: dict[str, Any]) -> dict[str, Any]:
+        name = str(fields.get("name") or "Untitled vector").strip()
+        if not name or len(name) > 120:
+            raise ValueError("Vector names must be 1 to 120 characters")
+        sequence = normalize_dna(str(fields.get("sequence") or ""))
+        if not sequence:
+            raise ValueError("A vector needs a DNA sequence")
+        if len(sequence) > 5_000_000:
+            raise ValueError("Vectors are limited to 5,000,000 bases")
+        circular = bool(fields.get("circular", True))
+        return {
+            "name": name,
+            "sequence": sequence,
+            "circular": circular,
+            "features": normalize_features(fields.get("features") or [], len(sequence), circular=circular),
+        }
+
+    def parse_workbench_file(self, filename: str, content: str) -> dict[str, Any]:
+        """Read GenBank, FASTA or SnapGene (.dna, base64) without saving anything."""
+        if len(content) > 15_000_000:
+            raise ValueError("The sequence file is too large")
+        parsed = parse_sequence_file(content, filename)
+        vector = self._workbench_vector({**parsed, "name": str(parsed.get("name") or "Untitled vector")[:120]})
+        return {**vector, "fileFormat": parsed["history"][0]["fileFormat"]}
+
+    def export_workbench_vector(self, fields: dict[str, Any]) -> dict[str, Any]:
+        file_format = str(fields.get("format") or "genbank")
+        if file_format not in {"genbank", "fasta", "snapgene"}:
+            raise ValueError("Export format must be genbank, fasta, or snapgene")
+        vector = self._workbench_vector(dict(fields.get("vector") or {}))
+        extension = {"genbank": "gb", "fasta": "fasta", "snapgene": "dna"}[file_format]
+        return {
+            "filename": f"{vector['name']}.{extension}",
+            "format": file_format,
+            "content": export_sequence(vector, file_format),
+            "encoding": "base64" if file_format == "snapgene" else "text",
+        }
+
+    def analyze_workbench_vector(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """Restriction sites and ORFs for an unsaved sequence."""
+        sequence = normalize_dna(str(fields.get("sequence") or ""))
+        if len(sequence) > 5_000_000:
+            raise ValueError("Vectors are limited to 5,000,000 bases")
+        preview = vector_preview({
+            "sequence": sequence,
+            "circular": bool(fields.get("circular", True)),
+            "enzymeNames": fields.get("enzymeNames") or COMMON_ENZYMES,
+            "minimumOrfAminoAcids": int(fields.get("minimumOrfAminoAcids") or 50),
+        })
+        return {"restrictionSites": preview["restrictionSites"], "orfs": preview["orfs"], "enzymeNames": list(fields.get("enzymeNames") or COMMON_ENZYMES)}
+
+    def create_library_vector(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """Save a workbench vector as a new catalogue entry, even if its sequence is already there."""
+        vector, _ = self.database.import_library_vector(self._workbench_vector(fields), keep_both=True)
+        return self.database.get_library_vector(vector["id"])
+
+    def replace_library_vector(self, library_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        """Overwrite a user's catalogue entry; bundled standard vectors stay read-only."""
+        return self.database.replace_library_vector_contents(library_id, self._workbench_vector(fields))
+
     def export_library_vector(
         self, library_id: str, file_format: str
     ) -> dict[str, Any]:

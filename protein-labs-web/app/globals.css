@@ -3,6 +3,7 @@
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 @import "./vector-library.css";
 @import "./protein-library.css";
+@import "./vector-workbench.css";
 
 /* Graphic novel is the default appearance, so its tokens also sit on :root:
    dialogs portal into <body>, outside .app-shell, and read them from here. */
