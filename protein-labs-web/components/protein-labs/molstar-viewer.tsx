@@ -2,11 +2,13 @@
 
 import { CSSProperties, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Camera, CircleDot, Crosshair, LoaderCircle, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
+import { Camera, CircleAlert, CircleDot, Crosshair, LoaderCircle, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { findStructurePalette, STRUCTURE_PALETTES, structurePaletteForKey, type StructurePaletteId } from "@/lib/structure-palettes";
 import { HYDROPHOBICITY_SCALE, SECONDARY_STRUCTURE_LEGEND } from "@/lib/structure-legends";
 import { coloringLegend, type ResidueColoring } from "@/lib/structure-coloring";
+import { CONSERVATION_SOURCES, conservationColoring, INSUFFICIENT_COLOR, UNMAPPED_COLOR, type ChainSequence, type ConservationColoring, type ConservationSourceId, type ConservationSources } from "@/lib/conservation-coloring";
+import { CONSERVATION_COLORS, MAX_GRADE } from "@/lib/conservation";
 import { clampCutoff, DEFAULT_INTERFACE_CUTOFF, findInterfaces, formatCutoff, INTERFACE_CUTOFF_RANGE, interfaceChainColor, interfaceColoring, type InterfaceAtom, type InterfaceResult } from "@/lib/structure-interface";
 import { residueKey, type LigandAddress, type ResidueAddress } from "@/lib/structure-regions";
 import type { MolstarStage, StageColor, StageRepresentation, StageResidue } from "./molstar-stage";
@@ -25,6 +27,8 @@ export type MolstarViewerProps = {
   region?: ViewerRegion | null;
   /** Where to render the display and interface controls (the job's side panel); without one they sit beside the canvas. */
   controlsHost?: HTMLElement | null;
+  /** Conservation sources for this protein; without them the Conservation panel is not shown. */
+  conservation?: ConservationSources;
 };
 
 type Status = { state: "loading" | "ready" | "error"; message: string };
@@ -46,13 +50,15 @@ const toLegacy = (value: StageRepresentation) => value === "cartoon" ? "ribbon" 
 
 const OPACITY_KEY = "protein-labs-structure-surface-opacity";
 
-export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null, controlsHost }: MolstarViewerProps) {
+export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null, controlsHost, conservation }: MolstarViewerProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<MolstarStage | null>(null);
   const [status, setStatus] = useState<Status>({ state: "loading", message: "Loading the 3D viewer…" });
   const [stageReady, setStageReady] = useState(false);
   const [loadedRevision, setLoadedRevision] = useState(0);
   const [residues, setResidues] = useState<StageResidue[]>([]);
+  const [chainSequences, setChainSequences] = useState<ChainSequence[]>([]);
+  const [conservationChoice, setConservationChoice] = useState<ConservationSourceId | null>(null);
   const [hasConfidence, setHasConfidence] = useState(false);
   const [representation, setRepresentation] = useState<StageRepresentation>("cartoon");
   const [colorChoice, setColorChoice] = useState<StageColor | null>(null);
@@ -116,7 +122,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
     queueMicrotask(() => { if (!cancelled) setStatus({ state: "loading", message: "Drawing the structure…" }); });
     stage.load(structureText, label).then((result) => {
       if (cancelled) return;
-      setResidues(result.residues); setHasConfidence(result.hasConfidence); setPicked(null);
+      setResidues(result.residues); setChainSequences(result.chains); setHasConfidence(result.hasConfidence); setPicked(null);
       // Mol* groups chains by entity (A, C, B, D for haemoglobin); list them by name instead.
       setProteinAtoms(stage.proteinHeavyAtoms().sort((one, other) => one.chain.localeCompare(other.chain, undefined, { numeric: true })));
       setLoadedRevision((value) => value + 1);
@@ -133,8 +139,12 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   const proteinChains = useMemo(() => new Set(proteinAtoms.map((atom) => atom.chain)).size, [proteinAtoms]);
   const interfaceOn = interfaceFor === loadedRevision && proteinChains > 1;
   const interfaces = useMemo<InterfaceResult | null>(() => interfaceOn ? findInterfaces(proteinAtoms, cutoff) : null, [interfaceOn, proteinAtoms, cutoff]);
-  // Every colour layer goes through here; a conservation source would be another option.
-  const coloring = useMemo<ResidueColoring | null>(() => interfaces ? interfaceColoring(interfaces, (chain) => chainLabels.get(chain) ?? chain) : null, [interfaces, chainLabels]);
+  const conservationSource = conservationChoice ? conservation?.[conservationChoice] : undefined;
+  const conservationProfile = conservationSource?.state === "ready" ? conservationSource.profile : null;
+  const conservationResult = useMemo<ConservationColoring | null>(() => ready && conservationProfile ? conservationColoring(conservationProfile, chainSequences, residues) : null, [ready, conservationProfile, chainSequences, residues]);
+  // Every colour layer goes through here. The interface and conservation layers are exclusive: choosing one switches the other off.
+  const coloring = useMemo<ResidueColoring | null>(() => interfaces ? interfaceColoring(interfaces, (chain) => chainLabels.get(chain) ?? chain) : conservationResult?.coloring ?? null, [interfaces, chainLabels, conservationResult]);
+  const fillStrip = !interfaces && Boolean(conservationResult);
   const coloredKeys = useMemo(() => new Map(coloring?.groups.flatMap((group) => group.residues.map((item) => [residueKey(item.labelAsymId, item.labelSeqId), group.color] as const)) ?? []), [coloring]);
   useEffect(() => {
     if (!ready) return;
@@ -192,6 +202,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
         <select value={color} onChange={(event) => chooseColor(event.target.value as StageColor)}>
           {COLORS.map((item) => <option key={item.id} value={item.id} disabled={item.id === "plddt-confidence" && !confidenceAvailable}>{item.label}{item.id === "plddt-confidence" && !confidenceAvailable ? " (AlphaFold models only)" : ""}</option>)}
         </select>
+        {coloring && <small className="structure-scheme-note">{coloring.title} is painted over this scheme. Switch it off to see the scheme again.</small>}
       </label>
       {color === "chain-id" && <label className="lab-field"><span>Chain palette</span><select value={paletteChoice} onChange={(event) => choosePalette(event.target.value as StructurePaletteId | "auto" | "theme")}><option value="auto">{paletteKey ? "Project palette" : "Automatic palette"}</option><option value="theme">App theme</option>{STRUCTURE_PALETTES.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
       <div className="structure-toggles" role="group" aria-label="Molecule display options">
@@ -201,7 +212,9 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
       </div>
     </section>
     {ready && proteinChains > 1 && <InterfacePanel result={interfaces} chainCount={proteinChains} cutoff={cutoff} chainLabels={chainLabels} residueByKey={residueByKey}
-      onToggle={() => setInterfaceFor(interfaceOn ? null : loadedRevision)} onCutoff={(value) => setCutoff(clampCutoff(value))} onFocus={focusResidues}/>}
+      onToggle={() => { if (!interfaceOn) setConservationChoice(null); setInterfaceFor(interfaceOn ? null : loadedRevision); }} onCutoff={(value) => setCutoff(clampCutoff(value))} onFocus={focusResidues}/>}
+    {ready && conservation && <ConservationPanel sources={conservation} choice={conservationChoice} result={conservationResult}
+      onChoose={(value) => { if (value) setInterfaceFor(null); setConservationChoice(value); }}/>}
   </>;
   return <div className={`structure-viewer molecular-viewer molstar-viewer representation-${representation}`} style={paletteStyle} data-structure-palette={activePalette?.id ?? "theme"}>
     <div className="molstar-stage">
@@ -213,12 +226,12 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
       <div className="molstar-footer">
         <span className="structure-badge">{label}{ready ? ` · ${residues.length} residues · ${chainCount || 1} chain${chainCount === 1 ? "" : "s"}` : ""}</span>
         <div className="confidence-legend molecular-status">
-          {coloring ? <ColoringLegend coloring={coloring}/> : <ColourLegend color={color}/>}
+          {coloring?.id.startsWith("conservation-") ? <ConservationLegend title={coloring.title}/> : coloring ? <ColoringLegend coloring={coloring}/> : <ColourLegend color={color}/>}
           <small role="status">{saving ?? (picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it")}</small>
         </div>
       </div>
     </div>
-    <SequenceStrip residues={residues} hovered={hovered} picked={picked} regionKeys={regionKeys} coloredKeys={coloredKeys} onHover={hoverFromStrip} onPick={pickFromStrip}/>
+    <SequenceStrip residues={residues} hovered={hovered} picked={picked} regionKeys={regionKeys} coloredKeys={coloredKeys} baseColor={fillStrip ? coloring?.base?.color ?? null : null} onHover={hoverFromStrip} onPick={pickFromStrip}/>
     {controlsHost ? createPortal(controls, controlsHost) : controlsHost === undefined ? <div className="molstar-inline-controls">{controls}</div> : null}
   </div>;
 }
@@ -226,6 +239,52 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
 /** Legend for a residue colour layer (interface now; any later source uses the same shape). */
 function ColoringLegend({ coloring }: { coloring: ResidueColoring }) {
   return <span className="legend-entries" aria-label={coloring.title}><span className="legend-title">{coloring.title}</span>{coloringLegend(coloring).map((entry) => <span key={entry.key}><i className="legend-swatch" style={{ background: entry.color }}/>{entry.label}</span>)}</span>;
+}
+
+/** ConSurf's scale as one strip, variable to conserved, then the two greys. */
+function ConservationLegend({ title }: { title: string }) {
+  return <span className="legend-entries conservation-legend" aria-label={`${title}: grade 1 variable to grade ${MAX_GRADE} conserved; grey for insufficient data and for residues not mapped`}>
+    <span className="legend-title">{title}</span>
+    <span>Variable<span className="conservation-scale" aria-hidden="true">{Array.from({ length: MAX_GRADE }, (_, index) => <i key={index} style={{ background: CONSERVATION_COLORS[String(index + 1)] }} title={`Grade ${index + 1}`}/>)}</span>Conserved</span>
+    <span><i className="legend-swatch" style={{ background: INSUFFICIENT_COLOR }}/>Insufficient data</span>
+    <span><i className="legend-swatch" style={{ background: UNMAPPED_COLOR }}/>Not mapped</span>
+  </span>;
+}
+
+/** Colour by conservation: pick a source, see which chains it reached and how many residues it graded. */
+function ConservationPanel({ sources, choice, result, onChoose }: { sources: ConservationSources; choice: ConservationSourceId | null; result: ConservationColoring | null; onChoose(value: ConservationSourceId | null): void }) {
+  const active = choice && sources[choice].state === "ready" ? choice : null;
+  const source = choice ? sources[choice] : null;
+  const matching = result?.chains.filter((chain) => chain.matches) ?? [];
+  return <section className="lab-panel structure-conservation" id="structure-conservation" aria-labelledby="structure-conservation-title">
+    <div className="panel-heading"><div><h2 id="structure-conservation-title">Conservation</h2><p>Colour residues by how conserved they are across homologues, on ConSurf&apos;s 1–9 scale.</p></div></div>
+    <div className="structure-segmented" role="group" aria-label="Conservation source">
+      <button type="button" aria-pressed={!active} className={!active ? "active" : ""} onClick={() => onChoose(null)}>Off</button>
+      {CONSERVATION_SOURCES.map((item) => {
+        const state = sources[item.id];
+        const disabled = state.state !== "ready";
+        return <button key={item.id} type="button" aria-pressed={active === item.id} className={active === item.id ? "active" : ""} disabled={disabled}
+          title={disabled ? `${item.label}: ${state.hint}` : item.label} aria-describedby={disabled ? `conservation-hint-${item.id}` : undefined} onClick={() => onChoose(item.id)}>
+          {state.state === "loading" ? <LoaderCircle className="spin"/> : null}{item.short}
+        </button>;
+      })}
+    </div>
+    <ul className="conservation-hints">
+      {CONSERVATION_SOURCES.map((item) => { const state = sources[item.id]; return state.state === "ready" ? null : <li key={item.id} id={`conservation-hint-${item.id}`} className={state.state === "error" ? "error" : ""}><strong>{item.label}:</strong> {state.hint}</li>; })}
+    </ul>
+    {source?.state === "ready" && result && <div className="conservation-summary" aria-live="polite">
+      {source.profile.detail && <p className="structure-note">{source.profile.detail}</p>}
+      {matching.length ? <>
+        <p className="structure-note" role="status">{result.counts.graded} residue{result.counts.graded === 1 ? "" : "s"} graded · {result.counts.insufficient} with insufficient data · {result.counts.unmapped} not mapped</p>
+        <ul className="conservation-chains">
+          {result.chains.map((chain) => <li key={chain.labelAsymId}>
+            <strong>Chain {chain.authAsymId}</strong>
+            <small>{chain.matches ? `${chain.byLabelSeqId.size} positions aligned · ${Math.round(chain.identity * 100)}% identity` : "Not this protein; left grey"}</small>
+          </li>)}
+        </ul>
+      </> : <div className="inline-message error"><CircleAlert/> No chain in this structure aligns to the graded sequence, so nothing is coloured.</div>}
+    </div>}
+  </section>;
 }
 
 /** One-click chain-interface highlight with the contacts listed per chain pair. */
@@ -272,7 +331,7 @@ function ColourLegend({ color }: { color: StageColor }) {
 }
 
 /** One cell per modelled polymer residue, grouped by chain, in sync with the 3D view. */
-function SequenceStrip({ residues, hovered, picked, regionKeys, coloredKeys, onHover, onPick }: { residues: StageResidue[]; hovered: string | null; picked: StageResidue | null; regionKeys: Set<string>; coloredKeys: Map<string, string>; onHover(residue: StageResidue | null): void; onPick(residue: StageResidue): void }) {
+function SequenceStrip({ residues, hovered, picked, regionKeys, coloredKeys, baseColor, onHover, onPick }: { residues: StageResidue[]; hovered: string | null; picked: StageResidue | null; regionKeys: Set<string>; coloredKeys: Map<string, string>; /** Fill whole cells with the residue colour (conservation) instead of underlining them; residues no group claims take this colour. */ baseColor: string | null; onHover(residue: StageResidue | null): void; onPick(residue: StageResidue): void }) {
   const [cursor, setCursor] = useState(-1);
   const chains = useMemo(() => {
     const groups: { chain: string; label: string; items: { residue: StageResidue; index: number; gap: number }[] }[] = [];
@@ -296,22 +355,30 @@ function SequenceStrip({ residues, hovered, picked, regionKeys, coloredKeys, onH
     } else if ((event.key === "Enter" || event.key === " ") && cursor >= 0) { event.preventDefault(); onPick(residues[cursor]); }
   }
   const active = cursor >= 0 ? residues[cursor] : null;
-  return <div className="sequence-strip" role="listbox" tabIndex={0} aria-label="Sequence of the modelled residues. Use the arrow keys to move, Enter to focus a residue." aria-activedescendant={active ? cellId(residueKey(active.labelAsymId, active.labelSeqId)) : undefined} onKeyDown={onKeyDown} onMouseLeave={() => onHover(null)} onBlur={() => onHover(null)}>
+  return <div className={`sequence-strip ${baseColor ? "fill-colors" : ""}`} role="listbox" tabIndex={0} aria-label="Sequence of the modelled residues. Use the arrow keys to move, Enter to focus a residue." aria-activedescendant={active ? cellId(residueKey(active.labelAsymId, active.labelSeqId)) : undefined} onKeyDown={onKeyDown} onMouseLeave={() => onHover(null)} onBlur={() => onHover(null)}>
     {chains.map((group) => <div className="sequence-chain" key={group.chain}>
       <span className="sequence-chain-label">Chain {group.label}</span>
       {group.items.map(({ residue, index, gap }) => {
         const key = residueKey(residue.labelAsymId, residue.labelSeqId);
+        const fill = coloredKeys.get(key) ?? baseColor;
         return <span key={key} className="sequence-run">
           {gap > 0 && <span className="sequence-gap" title={`${gap} residue${gap === 1 ? "" : "s"} not modelled`}>···</span>}
           {(residue.authSeqId % 10 === 0) && <span className="sequence-number" aria-hidden="true">{residue.authSeqId}</span>}
           <span id={cellId(key)} role="option" aria-selected={key === pickedKey} aria-label={`${threeLetter(residue.compId)} ${residue.authSeqId}${residue.insCode} chain ${residue.authAsymId}`} title={`${threeLetter(residue.compId)} ${residue.authSeqId}${residue.insCode} · chain ${residue.authAsymId}`}
-            className={["sequence-cell", regionKeys.has(key) ? "in-region" : "", coloredKeys.has(key) ? "colored" : "", key === hovered ? "hovered" : "", key === pickedKey ? "picked" : "", index === cursor ? "cursor" : ""].filter(Boolean).join(" ")}
-            style={coloredKeys.has(key) ? { "--residue-color": coloredKeys.get(key) } as CSSProperties : undefined}
+            className={["sequence-cell", regionKeys.has(key) ? "in-region" : "", fill ? "colored" : "", key === hovered ? "hovered" : "", key === pickedKey ? "picked" : "", index === cursor ? "cursor" : ""].filter(Boolean).join(" ")}
+            style={fill ? { "--residue-color": fill, "--residue-ink": inkOn(fill) } as CSSProperties : undefined}
             onMouseEnter={() => onHover(residue)} onClick={() => { setCursor(index); onPick(residue); }}>{residue.code}</span>
         </span>;
       })}
     </div>)}
   </div>;
+}
+
+/** Dark ink on pale grades, white on the deep ones. */
+function inkOn(color: string) {
+  const value = parseInt(color.replace("#", ""), 16);
+  const [r, g, b] = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  return 0.299 * r + 0.587 * g + 0.114 * b < 140 ? "#ffffff" : "#23272f";
 }
 
 const cellId = (key: string) => `seq-${key.replace(/[^A-Za-z0-9_-]/g, "_")}`;

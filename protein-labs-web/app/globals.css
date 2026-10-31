@@ -15836,6 +15836,21 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .confidence-legend .legend-title { font-weight: 650; }
 .sequence-cell.colored { box-shadow: inset 0 -3px 0 var(--residue-color); }
 .sequence-cell.colored.cursor { box-shadow: inset 0 -3px 0 var(--residue-color), inset 0 0 0 1.5px var(--ring); }
+.sequence-strip.fill-colors .sequence-cell.colored { background: var(--residue-color); color: var(--residue-ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--comic-ink) 12%, transparent); }
+.sequence-strip.fill-colors .sequence-cell.colored.cursor { box-shadow: inset 0 0 0 1.5px var(--ring); }
+.structure-scheme-note { display: block; margin-top: 6px; color: var(--muted-foreground); font-size: 12px; line-height: 1.4; }
+.structure-conservation .structure-segmented button:disabled { opacity: .5; cursor: not-allowed; }
+.structure-conservation .structure-segmented button:disabled:hover { background: transparent; color: var(--muted-foreground); }
+.conservation-hints { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; padding: 0; list-style: none; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; }
+.conservation-hints:empty { display: none; }
+.conservation-hints strong { color: var(--foreground); font-weight: 650; }
+.conservation-hints li.error { color: var(--destructive); }
+.conservation-summary .structure-note { margin: 0 0 8px; }
+.conservation-chains { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.conservation-chains li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); font-size: 12px; }
+.conservation-chains small { color: var(--muted-foreground); font-size: 12px; text-align: right; }
+.confidence-legend .conservation-scale { display: inline-flex; margin: 0 4px; border-radius: 3px; overflow: hidden; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--comic-ink) 35%, transparent); }
+.confidence-legend .conservation-scale i { display: block; width: 9px; height: 10px; margin: 0; border-radius: 0; }
 .molstar-inline-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; padding: 12px; }
 @media (prefers-reduced-motion: reduce) {
   .structure-workbench * { scroll-behavior: auto; }

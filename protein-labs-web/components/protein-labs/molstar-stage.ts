@@ -18,6 +18,7 @@ import { MolScriptBuilder as MS } from "molstar/lib/mol-script/language/builder"
 import { Script } from "molstar/lib/mol-script/script";
 import { Overpaint } from "molstar/lib/mol-theme/overpaint";
 import { Color } from "molstar/lib/mol-util/color";
+import type { ChainSequence } from "@/lib/conservation-coloring";
 import type { ResidueColoring } from "@/lib/structure-coloring";
 import type { InterfaceAtom } from "@/lib/structure-interface";
 import type { LigandAddress, ResidueAddress } from "@/lib/structure-regions";
@@ -27,7 +28,7 @@ export type StageColor = "chain-id" | "secondary-structure" | "plddt-confidence"
 export type StageStyle = { representation: StageRepresentation; color: StageColor; showLigands: boolean; showWaters: boolean; spin: boolean };
 export type StageResidue = { labelAsymId: string; labelSeqId: number; authAsymId: string; authSeqId: number; insCode: string; compId: string; code: string };
 export type StageTheme = { highlight: string; select: string; region: string };
-export type StageLoad = { residues: StageResidue[]; hasConfidence: boolean };
+export type StageLoad = { residues: StageResidue[]; hasConfidence: boolean; chains: ChainSequence[] };
 
 type StructureCell = StateObjectSelector<PluginStateObject.Molecule.Structure>;
 type ReprCell = StateObjectSelector<PluginStateObject.Molecule.Structure.Representation3D>;
@@ -99,7 +100,7 @@ export class MolstarStage {
       const component = await builders.structure.tryCreateComponentStatic(this.structure, type);
       if (component) this.components[type] = component;
     }
-    return { residues: polymerResidues(this.structure.data), hasConfidence: text.includes("_ma_qa_metric_local") };
+    return { residues: polymerResidues(this.structure.data), hasConfidence: text.includes("_ma_qa_metric_local"), chains: chainSequences(this.structure.data) };
   }
 
   setStyle(style: StageStyle, chainColors: readonly string[]) { return this.serial(() => this.applyStyle(style, chainColors)); }
@@ -317,6 +318,31 @@ function polymerResidues(structure: Structure | undefined): StageResidue[] {
     }
   }
   return residues;
+}
+
+/** Each protein chain's full sequence (SEQRES, modelled or not) with the label_seq_id of every letter. */
+function chainSequences(structure: Structure | undefined): ChainSequence[] {
+  if (!structure) return [];
+  const chains: ChainSequence[] = [];
+  const seen = new Set<string>();
+  const location = StructureElement.Location.create(structure);
+  for (const unit of structure.units) {
+    if (!Unit.isAtomic(unit)) continue;
+    location.unit = unit;
+    location.element = unit.elements[0];
+    if (StructureProperties.entity.type(location) !== "polymer" || !/peptide/i.test(StructureProperties.entity.subtype(location))) continue;
+    const labelAsymId = StructureProperties.chain.label_asym_id(location);
+    if (seen.has(labelAsymId)) continue;
+    seen.add(labelAsymId);
+    const entity = unit.model.sequence.byEntityKey[StructureProperties.entity.key(location)];
+    if (!entity) continue;
+    const { code, seqId, length } = entity.sequence;
+    let sequence = "";
+    const seqIds: number[] = [];
+    for (let index = 0; index < length; index++) { sequence += (code.value(index) || "X").toUpperCase(); seqIds.push(seqId.value(index)); }
+    chains.push({ labelAsymId, authAsymId: StructureProperties.chain.auth_asym_id(location), sequence, seqIds });
+  }
+  return chains;
 }
 
 function residueFromLoci(loci: Loci): StageResidue | null {
