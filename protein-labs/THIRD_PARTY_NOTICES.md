@@ -1,5 +1,30 @@
 # Third-party notices
 
+## LEGOLAS (optional external NMR predictor)
+
+Protein Labs does not distribute LEGOLAS. When an operator installs it for the
+HSQC adapter, the adapter consumes its documented CSV output. LEGOLAS source is
+MIT licensed, Copyright (c) 2024 Roitberg Group:
+https://github.com/roitberg-group/legolas
+
+Permission is hereby granted, free of charge, to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, subject to
+including the copyright notice and this permission notice in all copies or
+substantial portions. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND.
+
+## RDKit
+
+Protein Labs uses RDKit for local 2D ligand depictions and stereochemistry
+annotations. RDKit is distributed under the BSD 3-Clause License.
+
+Source: https://www.rdkit.org/ and https://github.com/rdkit/rdkit
+
+Copyright (c) 2000-2026, the RDKit contributors. Redistribution and use in
+source and binary forms, with or without modification, are permitted provided
+that the BSD 3-Clause license conditions are retained. The full license is in
+the RDKit distribution and at https://github.com/rdkit/rdkit/blob/master/license.txt.
+
 ## OpenCloning
 
 Protein Labs' Expression Planning vector builder adapts sequence/source model
