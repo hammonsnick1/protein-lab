@@ -149,6 +149,40 @@ omitted. Region `type` values are:
 The surface group uses a documented fast Cα-neighbour exposure proxy, not a
 solvent-accessible surface-area calculation.
 
+## 2D ligand depiction
+
+`GET /v1/protein-planner/proteins/{proteinId}/structures/pdb/{pdbId}/ligand-depiction?chainId={chainId}&authSeqId={authSeqId}&ccdId={ccdId}[&insertionCode={code}]`
+
+Draws exactly one deposited ligand instance; it never combines instances that
+share a CCD code. `chainId` is the author chain and `authSeqId` is the author
+residue number (both strings); `insertionCode` is separate and is optional
+only when the deposited instance has no insertion code. AlphaFold DB requests
+return `400`, because AlphaFold models do not contain ligands.
+
+```json
+{
+  "source": "pdb",
+  "structureId": "...",
+  "ligand": {"ccdId": "ATP", "chainId": "A", "authSeqId": "401", "insertionCode": null},
+  "svg": "<svg ...>",
+  "atomIndexToPdbAtomName": {"0": "PG", "1": "O1G"},
+  "stereo": {
+    "method": "CCD connectivity with stereochemistry perceived from deposited 3D coordinates",
+    "cipLabels": {"5": "R"},
+    "doubleBondLabels": {"8": "E"}
+  },
+  "references": [{"label": "PDB Chemical Component Dictionary", "url": "..."}]
+}
+```
+
+Connectivity and bond orders come from the [PDB Chemical Component
+Dictionary](https://www.wwpdb.org/data/ccd); RDKit (BSD-3-Clause) uses the
+deposited ligand coordinates to perceive stereochemistry, then renders wedge/
+hash bonds and its built-in CIP R/S and E/Z annotations. Every CCD heavy atom
+must have a deposited coordinate; otherwise the endpoint returns a clear `400`
+instead of guessing stereo. An unknown CCD is a `404`; an unavailable CCD
+service is a bounded-time `502` with the source name.
+
 ## Conservation
 
 Per-residue ConSurf conservation grades live under

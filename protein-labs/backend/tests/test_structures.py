@@ -415,6 +415,10 @@ def test_structure_get_routes_keep_the_documented_paths():
             calls.append(("regions", protein_id, source, structure_id))
             return {"proteinId": protein_id, "groups": []}
 
+        def get_ligand_depiction(self, protein_id, source, structure_id, **query):
+            calls.append(("depiction", protein_id, source, structure_id, query))
+            return {"svg": "<svg/>", "atomIndexToPdbAtomName": {"0": "PG"}}
+
     handler = type("StructureApiHandler", (ApiHandler,), {"planner": FakePlanner()})
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -427,6 +431,8 @@ def test_structure_get_routes_keep_the_documented_paths():
             assert json.load(response)["structure"]["id"] == "1CRN"
         with urlopen(f"{base}/v1/protein-planner/proteins/p1/structures/alphafold_db/AF-P01542-F1/regions") as response:
             assert json.load(response)["groups"] == []
+        with urlopen(f"{base}/v1/protein-planner/proteins/p1/structures/pdb/1ATP/ligand-depiction?chainId=A&authSeqId=401&ccdId=ATP") as response:
+            assert json.load(response)["atomIndexToPdbAtomName"] == {"0": "PG"}
     finally:
         server.shutdown()
         server.server_close()
@@ -436,4 +442,5 @@ def test_structure_get_routes_keep_the_documented_paths():
         ("list", "p1", 3),
         ("structure", "p1", "pdb", "1CRN"),
         ("regions", "p1", "alphafold_db", "AF-P01542-F1"),
+        ("depiction", "p1", "pdb", "1ATP", {"chain_id": "A", "auth_seq_id": "401", "ccd_id": "ATP", "insertion_code": None}),
     ]
