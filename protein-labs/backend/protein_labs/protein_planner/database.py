@@ -1953,6 +1953,28 @@ class Database:
                 connection.execute("DELETE FROM vector_tags WHERE library_id=?", (library_id,)); connection.executemany("INSERT OR IGNORE INTO vector_tags VALUES (?, ?)", [(library_id, tag.strip()) for tag in tags])
         return self.get_library_vector(library_id)
 
+    def replace_library_vector_contents(self, library_id: str, vector: dict[str, Any]) -> dict[str, Any]:
+        """Overwrite the sequence, topology and features of a user's catalogue record."""
+        sequence = str(vector.get("sequence") or "")
+        if not sequence:
+            raise ValueError("A catalogued vector needs a sequence")
+        circular = bool(vector.get("circular", True))
+        features = vector.get("features") or []
+        fingerprint = self._sequence_checksum(sequence, circular)
+        with self.connect() as connection:
+            row = connection.execute("SELECT is_standard FROM vector_library WHERE id=?", (library_id,)).fetchone()
+            if row is None: raise LookupError(f"Catalogued vector {library_id!r} was not found")
+            if row["is_standard"]: raise PermissionError("read_only")
+            # The fingerprint is unique; an identical twin elsewhere keeps its own.
+            if connection.execute("SELECT 1 FROM vector_library WHERE fingerprint=? AND id<>?", (fingerprint, library_id)).fetchone():
+                fingerprint = f"{fingerprint}:{uuid.uuid4()}"
+            insert_name = next((str(feature.get("name") or "") for feature in features if isinstance(feature, dict) and feature.get("isInsert")), "")
+            connection.execute(
+                "UPDATE vector_library SET name=?, sequence=?, circular=?, features_json=?, insert_name=?, fingerprint=?, updated_at=? WHERE id=?",
+                (str(vector.get("name") or "Untitled vector"), sequence, 1 if circular else 0, json.dumps(features, allow_nan=False), insert_name, fingerprint, utc_now(), library_id),
+            )
+        return self.get_library_vector(library_id)
+
     def restore_library_vector(self, library_id: str) -> dict[str, Any]:
         with self.connect() as connection:
             if connection.execute("UPDATE vector_library SET deleted_at=NULL WHERE id=? AND deleted_at IS NOT NULL", (library_id,)).rowcount == 0: raise LookupError(f"Deleted vector {library_id!r} was not found")
