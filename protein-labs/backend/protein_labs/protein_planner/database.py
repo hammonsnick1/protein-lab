@@ -144,6 +144,28 @@ class Database:
                     PRIMARY KEY (protein_id, model_id)
                 );
 
+                -- ConSurf conservation runs. Per-residue grades live in
+                -- residues_json rather than one row per residue: they are only
+                -- ever read as a whole profile, and a 1000-residue protein
+                -- would otherwise add a thousand rows per run.
+                CREATE TABLE IF NOT EXISTS conservation_jobs (
+                    id TEXT PRIMARY KEY,
+                    protein_id TEXT NOT NULL REFERENCES proteins(id) ON DELETE CASCADE,
+                    method TEXT NOT NULL DEFAULT 'consurf',
+                    source TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    stage TEXT NOT NULL DEFAULT '',
+                    pdb_id TEXT NOT NULL DEFAULT '',
+                    chain TEXT NOT NULL DEFAULT '',
+                    query_sequence TEXT NOT NULL DEFAULT '',
+                    residues_json TEXT NOT NULL DEFAULT '[]',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    msa_text TEXT NOT NULL DEFAULT '',
+                    error TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS project_jobs (
                     id TEXT PRIMARY KEY,
                     protein_id TEXT NOT NULL REFERENCES proteins(id) ON DELETE CASCADE,
@@ -291,6 +313,8 @@ class Database:
                     ON pdb_matches(protein_id);
                 CREATE INDEX IF NOT EXISTS idx_alphafold_protein
                     ON alphafold_models(protein_id, imported_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_conservation_protein
+                    ON conservation_jobs(protein_id, created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_project_jobs_protein
                     ON project_jobs(protein_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_project_tree_links_tree
@@ -580,6 +604,12 @@ class Database:
                 )
                 connection.execute(
                     "DELETE FROM alphafold_models WHERE protein_id = ?", (protein_id,)
+                )
+                # Conservation grades are indexed by position in the sequence
+                # they were calculated for, so they stop being meaningful the
+                # moment that sequence changes.
+                connection.execute(
+                    "DELETE FROM conservation_jobs WHERE protein_id = ?", (protein_id,)
                 )
         return self.get_protein(protein_id)
 
@@ -873,6 +903,13 @@ class Database:
                 "SELECT * FROM alphafold_models WHERE protein_id = ? ORDER BY imported_at DESC",
                 (protein_id,),
             ).fetchall()
+            conservation = connection.execute(
+                """
+                SELECT * FROM conservation_jobs
+                WHERE protein_id = ? ORDER BY created_at DESC
+                """,
+                (protein_id,),
+            ).fetchall()
             jobs = connection.execute(
                 "SELECT * FROM project_jobs WHERE protein_id = ? ORDER BY created_at",
                 (protein_id,),
@@ -891,6 +928,11 @@ class Database:
             "uniprotMatches": [self._uniprot(row) for row in uniprot],
             "pdbMatches": [self._pdb(row) for row in pdb],
             "alphaFoldModels": [self._alphafold(row) for row in alphafold],
+            # Summaries only: the grade profile is fetched per run so a project
+            # with several long ConSurf runs still loads in one small response.
+            "conservationJobs": [
+                self._conservation(row, include_residues=False) for row in conservation
+            ],
             "projectJobs": [self._project_job(row) for row in jobs],
             "projectNotebook": None if notebook is None else self._notebook(notebook),
         }
@@ -2389,6 +2431,123 @@ class Database:
         value = self._alphafold(row)
         value["structureText"] = row["structure_text"]
         return value
+
+    # ------------------------------------------------------------------
+    # Conservation (ConSurf) jobs
+    # ------------------------------------------------------------------
+    def save_conservation_job(self, protein_id: str, job: dict[str, Any]) -> str:
+        """Insert or replace one conservation run and return its id."""
+        self.get_protein(protein_id)
+        job_id = str(job.get("id") or uuid.uuid4())
+        timestamp = utc_now()
+        with self.connect() as connection:
+            existing = connection.execute(
+                "SELECT created_at FROM conservation_jobs WHERE id = ? AND protein_id = ?",
+                (job_id, protein_id),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO conservation_jobs (
+                    id, protein_id, method, source, status, stage, pdb_id, chain,
+                    query_sequence, residues_json, metadata_json, msa_text, error,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    method = excluded.method,
+                    source = excluded.source,
+                    status = excluded.status,
+                    stage = excluded.stage,
+                    pdb_id = excluded.pdb_id,
+                    chain = excluded.chain,
+                    query_sequence = excluded.query_sequence,
+                    residues_json = excluded.residues_json,
+                    metadata_json = excluded.metadata_json,
+                    msa_text = excluded.msa_text,
+                    error = excluded.error,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    job_id,
+                    protein_id,
+                    str(job.get("method") or "consurf"),
+                    str(job.get("source") or ""),
+                    str(job.get("status") or "prepared"),
+                    str(job.get("stage") or ""),
+                    str(job.get("pdbId") or ""),
+                    str(job.get("chain") or ""),
+                    str(job.get("querySequence") or ""),
+                    json.dumps(job.get("residues") or [], allow_nan=False),
+                    json.dumps(job.get("metadata") or {}, allow_nan=False),
+                    str(job.get("msaFasta") or ""),
+                    str(job.get("error") or ""),
+                    existing["created_at"] if existing else timestamp,
+                    timestamp,
+                ),
+            )
+        return job_id
+
+    def list_conservation_jobs(
+        self, protein_id: str, *, include_residues: bool = False
+    ) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM conservation_jobs
+                WHERE protein_id = ? ORDER BY created_at DESC
+                """,
+                (protein_id,),
+            ).fetchall()
+        return [self._conservation(row, include_residues=include_residues) for row in rows]
+
+    def get_conservation_job(
+        self, protein_id: str, job_id: str, *, include_msa: bool = False
+    ) -> dict[str, Any]:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM conservation_jobs WHERE protein_id = ? AND id = ?",
+                (protein_id, job_id),
+            ).fetchone()
+        if row is None:
+            raise LookupError(f"Conservation job {job_id!r} was not found")
+        job = self._conservation(row, include_residues=True)
+        if include_msa:
+            job["msaFasta"] = row["msa_text"]
+        return job
+
+    def delete_conservation_job(self, protein_id: str, job_id: str) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM conservation_jobs WHERE protein_id = ? AND id = ?",
+                (protein_id, job_id),
+            )
+        if cursor.rowcount == 0:
+            raise LookupError(f"Conservation job {job_id!r} was not found")
+
+    @staticmethod
+    def _conservation(row: sqlite3.Row, *, include_residues: bool) -> dict[str, Any]:
+        metadata = _loads(row["metadata_json"], {})
+        residues = _loads(row["residues_json"], [])
+        job: dict[str, Any] = {
+            "id": row["id"],
+            "proteinId": row["protein_id"],
+            "method": row["method"],
+            "source": row["source"],
+            "status": row["status"],
+            "stage": row["stage"],
+            "pdbId": row["pdb_id"],
+            "chain": row["chain"],
+            "querySequence": row["query_sequence"],
+            "metadata": metadata,
+            "error": row["error"],
+            "residueCount": len(residues),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+        # The project bundle lists runs on every load, so the per-residue
+        # profile is only attached when a caller actually asked for it.
+        if include_residues:
+            job["residues"] = residues
+        return job
 
     @staticmethod
     def _protein(row: sqlite3.Row) -> dict[str, Any]:

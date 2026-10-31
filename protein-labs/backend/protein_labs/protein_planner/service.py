@@ -24,6 +24,12 @@ from .integrations import (
     parse_structure_geometry,
     structure_preview,
 )
+from .conservation import (
+    CONSURF_COLORS,
+    ConSurfDbClient,
+    parse_consurf_grades,
+    parse_consurf_msa,
+)
 from .structures import build_residue_mapping, compute_regions, summarize_structure
 from .protparam import analyze_sequence, normalize_sequence
 from .project_trees import ProjectTreeService
@@ -76,6 +82,7 @@ class ProteinPlanner:
         rcsb: RCSBClient,
         alphafold: AlphaFoldDBClient | None = None,
         sifts: PDBeSIFTSClient | None = None,
+        consurf: ConSurfDbClient | None = None,
         email: str = "",
         taxonomy: TaxonomyClient | None = None,
     ):
@@ -85,6 +92,7 @@ class ProteinPlanner:
         self.rcsb = rcsb
         self.alphafold = alphafold
         self.sifts = sifts
+        self.consurf = consurf
         self.email = email
         self.taxonomy = taxonomy or TaxonomyClient(blast.http, email=email)
         self.project_trees = ProjectTreeService(database)
@@ -770,6 +778,309 @@ class ProteinPlanner:
             raise ValueError("The selected AlphaFold results ZIP is damaged") from error
         file_format = "pdb" if selected.filename.lower().endswith(".pdb") else "cif"
         return text, file_format, selected.filename, {"summaryConfidence": summary}
+
+    # ------------------------------------------------------------------
+    # ConSurf conservation
+    # ------------------------------------------------------------------
+    CONSURF_SERVER_URL = "https://consurf.tau.ac.il/"
+    CONSURF_DB_URL = "https://consurfdb.tau.ac.il/"
+    # The grades file for a long protein is a few hundred kilobytes; the MSA
+    # ConSurf ships alongside it can be a few megabytes. Both bounds are far
+    # above any real ConSurf output and exist only to refuse a wrong file fast.
+    MAX_GRADES_BYTES = 20_000_000
+    MAX_MSA_BYTES = 60_000_000
+
+    def prepare_consurf_job(self, protein_id: str) -> dict[str, Any]:
+        """Write the input files for a ConSurf web-server submission.
+
+        ConSurf publishes no job-submission API, so Protein Lab prepares the
+        upload and records a job the user completes in their browser, the same
+        way AlphaFold Server submissions work.
+        """
+        protein = self.database.get_protein(protein_id)
+        sequence = re.sub(r"\s+", "", protein["sequence"]).upper()
+        if not sequence:
+            raise ValueError(
+                "This project has no amino-acid sequence yet. Add it in the "
+                "Sequence job before preparing a ConSurf submission."
+            )
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", protein["name"]).strip("._-")
+        safe_name = safe_name[:80] or f"protein_{protein_id[:8]}"
+        directory = self.database.path.parent / "consurf_submissions"
+        directory.mkdir(parents=True, exist_ok=True)
+        fasta_path = directory / f"{safe_name}_consurf.fasta"
+        wrapped = "\n".join(sequence[index:index + 60] for index in range(0, len(sequence), 60))
+        fasta_path.write_text(f">{safe_name}\n{wrapped}\n", encoding="utf-8")
+
+        files = [{
+            "kind": "fasta",
+            "path": str(fasta_path),
+            "label": "Query sequence (FASTA)",
+            "bytes": fasta_path.stat().st_size,
+        }]
+        structure = self._consurf_structure_file(protein_id, directory, safe_name)
+        if structure is not None:
+            files.append(structure)
+
+        job_id = self.database.save_conservation_job(protein_id, {
+            "method": "consurf",
+            "source": "consurf-server",
+            "status": "prepared",
+            "stage": "Ready to upload to the ConSurf server",
+            "chain": str(structure["chain"]) if structure else "",
+            "querySequence": sequence,
+            "metadata": {
+                "serverUrl": self.CONSURF_SERVER_URL,
+                "files": files,
+                "submissionDirectory": str(directory),
+                "steps": self._consurf_steps(bool(structure)),
+                "colors": dict(CONSURF_COLORS),
+            },
+        })
+        return self.database.get_conservation_job(protein_id, job_id)
+
+    def _consurf_structure_file(
+        self, protein_id: str, directory: Path, safe_name: str
+    ) -> dict[str, Any] | None:
+        """Write the best local model out for ConSurf, when the project has one."""
+        models = self.database.get_bundle(protein_id)["alphaFoldModels"]
+        if not models:
+            return None
+        model = models[0]
+        try:
+            stored = self.database.get_alphafold_model(protein_id, model["modelId"])
+        except LookupError:
+            return None
+        text = str(stored.get("structureText") or "")
+        if not text.strip():
+            return None
+        suffix = "pdb" if str(stored.get("format") or "cif") == "pdb" else "cif"
+        path = directory / f"{safe_name}_consurf_model.{suffix}"
+        path.write_text(text, encoding="utf-8")
+        geometry = parse_structure_geometry(text, suffix)
+        chains = [str(chain) for chain in (geometry.get("chains") or []) if str(chain)]
+        return {
+            "kind": "structure",
+            "path": str(path),
+            "label": f"{model.get('source') or 'Predicted'} model ({suffix.upper()})",
+            "bytes": path.stat().st_size,
+            "modelId": model["modelId"],
+            # ConSurf asks for one chain. The first is correct for a
+            # single-chain prediction and is a stated default otherwise.
+            "chain": chains[0] if chains else "A",
+            "chains": chains,
+        }
+
+    @staticmethod
+    def _consurf_steps(has_structure: bool) -> list[str]:
+        structure_step = (
+            "Upload the prepared model file and enter its chain, so the grades "
+            "carry PDB residue numbers."
+            if has_structure
+            else "Leave the structure empty, or paste a PDB ID if you have one."
+        )
+        return [
+            "Open the ConSurf server in your browser.",
+            structure_step,
+            "Paste or upload the prepared FASTA sequence.",
+            "Give the job a name and your email address, then submit it.",
+            "When ConSurf emails the finished run, download \"Amino Acid "
+            "Conservation Scores\" (and the MSA if you want it kept).",
+            "Come back here and import the downloaded grades file.",
+        ]
+
+    def lookup_consurf_db(
+        self, protein_id: str, pdb_id: str = "", chain: str = ""
+    ) -> dict[str, Any]:
+        """Fetch a pre-calculated ConSurf-DB analysis for this project.
+
+        ConSurf-DB has no documented API, so this uses the endpoints its own
+        pages call. A failure here is not a dead end: the caller falls back to
+        the prepared-upload flow.
+        """
+        if self.consurf is None:
+            raise RuntimeError("The ConSurf-DB client is not configured")
+        protein = self.database.get_protein(protein_id)
+        sequence = re.sub(r"\s+", "", protein["sequence"]).upper()
+        requested_pdb = pdb_id.strip().upper()
+        requested_chain = chain.strip()
+        if not requested_pdb:
+            requested_pdb, requested_chain = self._best_pdb_chain(protein_id)
+        if requested_pdb and not requested_chain:
+            chains = self.consurf.chains(requested_pdb)
+            if not chains:
+                raise LookupError(
+                    f"ConSurf-DB has no chains recorded for {requested_pdb}."
+                )
+            requested_chain = chains[0]
+        if requested_pdb:
+            identical_pdb, identical_chain = self.consurf.identical_chain(
+                requested_pdb, requested_chain
+            )
+            matched_by = "pdb"
+        else:
+            if not sequence:
+                raise ValueError(
+                    "This project has no amino-acid sequence yet, and it has no "
+                    "saved PDB match, so there is nothing to look up in ConSurf-DB."
+                )
+            identical_pdb, identical_chain = self.consurf.sequence_entry(sequence)
+            requested_pdb, requested_chain = identical_pdb, identical_chain
+            matched_by = "sequence"
+
+        grades_text = self.consurf.grades(identical_pdb, identical_chain)
+        parsed = parse_consurf_grades(grades_text, query_sequence=sequence)
+        msa_text = self.consurf.msa(identical_pdb, identical_chain)
+        job_id = self.database.save_conservation_job(protein_id, {
+            "method": "consurf",
+            "source": "consurf-db",
+            "status": "complete",
+            "stage": f"Pre-calculated ConSurf-DB analysis of {identical_pdb} chain {identical_chain}",
+            "pdbId": requested_pdb,
+            "chain": requested_chain,
+            "querySequence": sequence,
+            "residues": parsed["residues"],
+            "msaFasta": msa_text,
+            "metadata": self._conservation_metadata(parsed, msa_text, {
+                "matchedBy": matched_by,
+                "requestedPdbId": requested_pdb,
+                "requestedChain": requested_chain,
+                "identicalPdbId": identical_pdb,
+                "identicalChain": identical_chain,
+                "databaseUrl": self.CONSURF_DB_URL,
+                "entryUrl": (
+                    f"{self.CONSURF_DB_URL}final_output/"
+                    f"?pdb_id={requested_pdb}&chain={requested_chain}"
+                ),
+            }),
+        })
+        return self.database.get_conservation_job(protein_id, job_id)
+
+    def _best_pdb_chain(self, protein_id: str) -> tuple[str, str]:
+        """The saved PDB match most likely to hold this project's own sequence."""
+        matches = self.database.get_bundle(protein_id)["pdbMatches"]
+        if not matches:
+            return "", ""
+        best = max(matches, key=lambda item: float(item.get("identity") or 0))
+        record = best.get("record") if isinstance(best.get("record"), dict) else {}
+        chains = record.get("chainIds") if isinstance(record, dict) else None
+        chain = ""
+        if isinstance(chains, list) and chains:
+            chain = str(chains[0])
+        return str(best.get("pdbId") or "").upper(), chain
+
+    def import_consurf_result(
+        self,
+        protein_id: str,
+        grades_path: str,
+        msa_path: str = "",
+        job_id: str = "",
+    ) -> dict[str, Any]:
+        """Import a grades file (and optional MSA) downloaded from ConSurf."""
+        protein = self.database.get_protein(protein_id)
+        sequence = re.sub(r"\s+", "", protein["sequence"]).upper()
+        grades_file = self._readable_file(grades_path, "ConSurf grades", self.MAX_GRADES_BYTES)
+        grades_text = grades_file.read_text(encoding="utf-8", errors="replace")
+        parsed = parse_consurf_grades(grades_text, query_sequence=sequence)
+
+        msa_text = ""
+        msa_name = ""
+        if msa_path.strip():
+            msa_file = self._readable_file(msa_path, "ConSurf MSA", self.MAX_MSA_BYTES)
+            msa_text = msa_file.read_text(encoding="utf-8", errors="replace")
+            msa_name = msa_file.name
+            if not parse_consurf_msa(msa_text)["available"]:
+                raise ValueError(
+                    f"{msa_file.name} is not a FASTA alignment. ConSurf's MSA "
+                    "download is a FASTA file whose first line starts with \">\"."
+                )
+
+        chains = parsed["chains"]
+        existing = ""
+        if job_id.strip():
+            # Completing a prepared submission keeps one job row rather than
+            # leaving an orphaned "prepared" entry beside the imported result.
+            existing = self.database.get_conservation_job(protein_id, job_id.strip())["id"]
+        saved_id = self.database.save_conservation_job(protein_id, {
+            "id": existing or None,
+            "method": "consurf",
+            "source": "consurf-server-import",
+            "status": "complete",
+            "stage": f"Imported from {grades_file.name}",
+            "chain": chains[0] if chains else "",
+            "querySequence": sequence,
+            "residues": parsed["residues"],
+            "msaFasta": msa_text,
+            "metadata": self._conservation_metadata(parsed, msa_text, {
+                "importedFile": grades_file.name,
+                "importedPath": str(grades_file),
+                "msaFile": msa_name,
+                "serverUrl": self.CONSURF_SERVER_URL,
+            }),
+        })
+        return self.database.get_conservation_job(protein_id, saved_id)
+
+    def _readable_file(self, source_path: str, label: str, limit: int) -> Path:
+        path = Path(source_path).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError(f"The selected {label} file does not exist: {path}")
+        if path.stat().st_size > limit:
+            raise ValueError(
+                f"The selected {label} file is larger than {limit // 1_000_000} MB."
+            )
+        return path
+
+    @staticmethod
+    def _conservation_metadata(
+        parsed: dict[str, Any], msa_text: str, extra: dict[str, Any]
+    ) -> dict[str, Any]:
+        return {
+            **extra,
+            "layout": parsed["layout"],
+            "columns": parsed["columns"],
+            "gradeScale": parsed["gradeScale"],
+            "chains": parsed["chains"],
+            "residueCount": parsed["residueCount"],
+            "gradedCount": parsed["gradedCount"],
+            "insufficientDataCount": parsed["insufficientDataCount"],
+            "meanGrade": parsed["meanGrade"],
+            "skippedRowCount": parsed["skippedRowCount"],
+            "sequenceMatch": parsed["sequenceMatch"],
+            "gradedSequence": parsed["sequence"],
+            "msa": parse_consurf_msa(msa_text),
+            "colors": dict(CONSURF_COLORS),
+        }
+
+    def list_conservation(self, protein_id: str) -> dict[str, Any]:
+        self.database.get_protein(protein_id)
+        return {
+            "proteinId": protein_id,
+            "jobs": self.database.list_conservation_jobs(protein_id),
+            "colors": dict(CONSURF_COLORS),
+        }
+
+    def get_conservation(self, protein_id: str, job_id: str) -> dict[str, Any]:
+        """One conservation run with its full per-residue profile."""
+        self.database.get_protein(protein_id)
+        job = self.database.get_conservation_job(protein_id, job_id)
+        job["colors"] = dict(CONSURF_COLORS)
+        return job
+
+    def get_conservation_msa(self, protein_id: str, job_id: str) -> dict[str, Any]:
+        self.database.get_protein(protein_id)
+        job = self.database.get_conservation_job(protein_id, job_id, include_msa=True)
+        fasta = str(job.get("msaFasta") or "")
+        return {
+            "proteinId": protein_id,
+            "jobId": job["id"],
+            "fasta": fasta,
+            **parse_consurf_msa(fasta),
+        }
+
+    def delete_conservation(self, protein_id: str, job_id: str) -> dict[str, Any]:
+        self.database.get_protein(protein_id)
+        self.database.delete_conservation_job(protein_id, job_id)
+        return {"deleted": job_id}
 
     def get_alphafold_model(
         self, protein_id: str, model_id: str
