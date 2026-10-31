@@ -9692,12 +9692,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .workflow-card-view button > em.completed { color: #27a67e; }
 .workflow-card-view .workflow-card-add { border-style: dashed; border-top-width: 1px; border-color: var(--primary); --job-color: var(--primary); }
 
-/* Persistent navigation while an individual workflow job is open. */
+/* The way back from an individual workflow job. It scrolls with the job
+   header: fixed, it covered the job's content once the page scrolled. The
+   Previous/Next job strip is the navigation that stays in view. */
 .job-workspace .job-header {
   padding-left: 205px;
 }
 .job-return-tab {
-  position: fixed;
+  position: absolute;
   z-index: 45;
   top: 78px;
   left: 0;
