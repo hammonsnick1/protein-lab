@@ -134,6 +134,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                     tree_match.group(1)
                 ))
                 return
+            if path == "/v1/taxonomy/search":
+                self._send(200, self.planner.search_taxonomy(
+                    (query.get("q") or [""])[0],
+                    int((query.get("limit") or ["10"])[0]),
+                ))
+                return
             if path == "/v1/protein-planner/construct-hosts":
                 self._send(200, self.planner.list_construct_hosts())
                 return
