@@ -16,7 +16,10 @@ def test_assessment_reuses_known_facts_without_inventing_model_scores(tmp_path):
     }, "fixture", {"identity": 1.0})
     database.save_pdb_match(protein["id"], {
         "pdbId": "1ABC", "entityId": "1", "identity": 0.60,
-        "experimentalMethod": "X-RAY DIFFRACTION", "spaceGroup": "P 21 21 21",
+        # This mirrors RCSBClient's persisted record shape, including the
+        # entry-level provenance used by the UI beside the group.
+        "method": "X-RAY DIFFRACTION", "spaceGroup": "P 21 21 21",
+        "source": {"entryUrl": "https://www.rcsb.org/structure/1ABC"},
     })
 
     assessment = crystallization_assessment(database.get_bundle(protein["id"]))
@@ -29,6 +32,7 @@ def test_assessment_reuses_known_facts_without_inventing_model_scores(tmp_path):
         "spaceGroup": "P 21 21 21", "homologueCount": 1,
         "source": "Saved PDB homologue crystal forms",
     }]
+    assert assessment["facts"]["crystalForms"][0]["source"] == "https://www.rcsb.org/structure/1ABC"
     assert assessment["score"]["value"] is None
     assert assessment["uncertainty"]["status"] == "not_quantified"
     assert {item["id"] for item in assessment["predictors"]} == {"shoebill", "plm", "mascl"}
