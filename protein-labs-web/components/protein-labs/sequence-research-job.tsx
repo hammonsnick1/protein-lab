@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Atom, CircleAlert, CircleCheck, Database, Dna, ExternalLink, History, ListChecks, LoaderCircle, Play, RefreshCw, Rows3, Search, StopCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Atom, CircleAlert, CircleCheck, Database, Dna, ExternalLink, History, ListChecks, LoaderCircle, Play, RefreshCw, Rows3, Search, Shield, StopCircle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
 import { BLAST_STEPS, blastStepIndex, coverageTier, evalueTier, formatEvalue, identityTier, isTerminalStatus, normalizeHits, sortHits } from "@/lib/blast-alignment";
 import type { SortDirection, SortKey, Tier } from "@/lib/blast-alignment";
+import type { ConservationJob, ConservationJobSummary } from "@/lib/conservation";
+import { preferredJob } from "@/lib/conservation";
 import { BlastResultsWindow } from "@/components/protein-labs/blast-results-window";
 import type { BlastWindowTab } from "@/components/protein-labs/blast-results-window";
+import { ConservationPanel } from "@/components/protein-labs/conservation-panel";
 import { ResearchProgress } from "@/components/protein-labs/research-progress";
 
 type LocalRun = { title: string; steps: readonly string[]; active: number; detail: string; startedAt: number; blast: boolean };
@@ -22,6 +25,7 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
   const [query, setQuery] = useState("");
   const [accession, setAccession] = useState("");
   const [selectedRid, setSelectedRid] = useState("");
+  const conservation = useConservation(bundle, onChanged);
   const [windowState, setWindowState] = useState<{ open: boolean; tab: BlastWindowTab; focus: string }>({ open: false, tab: "pairwise", focus: "" });
   const sequence = bundle.protein.sequence.replace(/\s+/g, "").toUpperCase();
   const busy = Boolean(local);
@@ -132,6 +136,18 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
       <ResearchAction icon={Dna} title="UniProt sequence match" detail="Matches the sequence directly, then saves PTMs, maturation features, topology, cellular location, and cofactors." count={uniprot.length} busy={busy || !sequence} active={local?.title === "UniProt sequence match"} onRun={() => void runUniProt()} label="Find UniProt matches"/>
       <ResearchAction icon={Search} title="NCBI protein BLAST" detail="Searches Swiss-Prot, follows the queue, saves every alignment, and enriches hits with UniProt evidence." count={blastJobs.length} countLabel="run" busy={busy || activeJobs.length > 0 || !sequence} active={Boolean(local?.blast) || activeJobs.length > 0} onRun={() => void runBlast()} label={activeJobs.length ? "BLAST running…" : "Run protein BLAST"}/>
       <ResearchAction icon={Atom} title="PDB structures & conditions" detail="Finds experimental structures and evidence-linked crystallization and purification conditions." count={pdb.length} busy={busy || !sequence} active={local?.title === "RCSB PDB sequence search"} onRun={() => void runPdb()} label="Find PDB structures"/>
+      <ResearchAction
+        icon={Shield}
+        title="ConSurf conservation"
+        detail="Grades every residue 1–9 for evolutionary conservation. Looks for a pre-calculated ConSurf-DB entry first; ConSurf has no submission API, so a new run is prepared for their web server."
+        count={conservation.jobs.length}
+        countLabel="run"
+        busy={busy || conservation.busy || !sequence}
+        active={conservation.busy}
+        onRun={() => void conservation.lookupDb()}
+        label={conservation.busy ? "Working…" : "Find ConSurf grades"}
+        secondary={{ label: "Prepare ConSurf server job", icon: Upload, onRun: () => void conservation.prepare() }}
+      />
     </section>
     <section className="manual-research"><label>Optional UniProt text query<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. hemoglobin beta reviewed:true" onKeyDown={(event) => { if (event.key === "Enter") void manualSearch(); }}/></label><Button variant="outline" disabled={busy || !query.trim()} onClick={() => void manualSearch()}><Search/> Search</Button><label>Optional accession<input value={accession} onChange={(event) => setAccession(event.target.value.toUpperCase())} placeholder="e.g. P02067" onKeyDown={(event) => { if (event.key === "Enter") void fetchAccession(); }}/></label><Button variant="outline" disabled={busy || !accession.trim()} onClick={() => void fetchAccession()}><Database/> Fetch</Button></section>
     {local
@@ -153,6 +169,19 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
       {blastRuns.length > 0 && <details className="research-run-history"><summary><History/> Run history <span>{blastRuns.length}</span></summary>{blastRuns.map((job) => <BlastRunRow key={String(job.rid)} job={job} selected={job === shownJob} onShow={() => setSelectedRid(String(job.rid))} onPoll={pollNow} onTerminate={terminate}/>)}</details>}
     </section>
 
+    <ConservationPanel
+      proteinId={bundle.protein.id}
+      jobs={conservation.jobs}
+      selectedId={conservation.selectedId}
+      onSelect={conservation.select}
+      loading={conservation.loading}
+      job={conservation.job}
+      error={conservation.error}
+      busy={conservation.busy}
+      onImport={conservation.importResult}
+      onDelete={conservation.remove}
+    />
+
     <section className="research-results">
       <ResultSection icon={Dna} title="UniProt matches and PTMs" count={uniprot.length}>{uniprot.length ? uniprot.map((match, index) => <UniProtCard key={`${String(match.accession)}-${index}`} match={match} featured={index === 0}/>) : <Empty text="No UniProt matches have been saved yet. Run a UniProt sequence match, or fetch an accession you already know."/>}</ResultSection>
       <ResultSection icon={Atom} title="PDB structures and conditions" count={pdb.length}>{pdb.length > 0 && <p className="pdb-metrics-legend"><strong>Identity</strong> — identical residues. <strong>Similarity</strong> — identical or chemically similar (BLOSUM62). Both are measured over the aligned region; <strong>coverage</strong> is how much of your sequence that region spans.</p>}{pdb.length ? pdb.map((record, index) => <PdbCard key={`${String(record.pdbId)}-${index}`} record={record}/>) : <Empty text="No matching PDB structures have been saved yet."/>}</ResultSection>
@@ -160,6 +189,107 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
 
     <BlastResultsWindow open={windowState.open} onOpenChange={(open) => setWindowState((state) => ({ ...state, open }))} tab={windowState.tab} onTabChange={(tab) => setWindowState((state) => ({ ...state, tab }))} focusHitId={windowState.focus} hits={hits} query={blastQuery} proteinName={bundle.protein.name || "Protein"} runLabel={shownJob ? `RID ${String(shownJob.rid ?? "")} · ${when(shownJob.submittedAt)}` : ""}/>
   </div>;
+}
+
+/** Conservation runs and the grade profile of the one on screen.
+ *
+ *  ConSurf has no submission API, so the two ways in are a ConSurf-DB lookup,
+ *  which answers immediately, and a prepared submission the user finishes in
+ *  their browser and imports back. Both land in the same list of runs. */
+function useConservation(bundle: ProteinBundle, onChanged: () => Promise<void>) {
+  const proteinId = bundle.protein.id;
+  // The run list comes from the project bundle, with a local copy taking over
+  // after a lookup or import so the section updates before the bundle reloads.
+  // Both are tagged with the project, so switching projects falls back cleanly.
+  const [local, setLocalJobs] = useState<{ proteinId: string; jobs: ConservationJobSummary[] } | null>(null);
+  const [chosen, setChosen] = useState<{ proteinId: string; id: string } | null>(null);
+  const [job, setJob] = useState<ConservationJob | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  // Memoised so the fallback does not hand the fetch effect a fresh array on
+  // every render and make it reload the profile each time.
+  const jobs = useMemo(
+    () => (local?.proteinId === proteinId ? local.jobs : bundle.conservationJobs ?? []),
+    [local, proteinId, bundle.conservationJobs],
+  );
+  const selectedId = chosen?.proteinId === proteinId ? chosen.id : "";
+
+  // Pick the newest run that has grades, until the user chooses another.
+  const shownId = selectedId && jobs.some((item) => item.id === selectedId)
+    ? selectedId
+    : preferredJob(jobs)?.id ?? "";
+
+  useEffect(() => {
+    if (!shownId) { setJob(null); return; }
+    const summary = jobs.find((item) => item.id === shownId);
+    if (summary && summary.residueCount === 0) { setJob({ ...summary, residues: [] }); return; }
+    let stopped = false;
+    setLoading(true);
+    proteinLabsApi.getConservation(proteinId, shownId)
+      .then((value) => { if (!stopped) { setJob(value); setError(""); } })
+      .catch((reason) => { if (!stopped) { setJob(null); setError(errorText(reason)); } })
+      .finally(() => { if (!stopped) setLoading(false); });
+    return () => { stopped = true; };
+  }, [proteinId, shownId, jobs]);
+
+  const refresh = useCallback(async (focusId: string) => {
+    const listed = await proteinLabsApi.listConservation(proteinId);
+    setLocalJobs({ proteinId, jobs: listed.jobs });
+    setChosen({ proteinId, id: focusId });
+    await onChanged();
+  }, [proteinId, onChanged]);
+
+  const select = useCallback((id: string) => setChosen({ proteinId, id }), [proteinId]);
+
+  const run = useCallback(async (action: () => Promise<ConservationJob>, failure: string) => {
+    setBusy(true);
+    setError("");
+    try {
+      const value = await action();
+      setJob(value);
+      await refresh(value.id);
+      return value;
+    } catch (reason) {
+      setError(`${failure}: ${errorText(reason)}`);
+      return null;
+    } finally { setBusy(false); }
+  }, [refresh]);
+
+  return {
+    jobs,
+    selectedId: shownId,
+    job,
+    loading,
+    busy,
+    error,
+    select,
+    lookupDb: () => run(
+      () => proteinLabsApi.lookupConsurfDb(proteinId),
+      "The ConSurf-DB lookup failed",
+    ),
+    prepare: () => run(
+      () => proteinLabsApi.prepareConsurfJob(proteinId),
+      "Preparing the ConSurf submission failed",
+    ),
+    importResult: async (gradesPath: string, msaPath: string) => {
+      const target = job?.id ?? "";
+      await run(
+        () => proteinLabsApi.importConsurf(proteinId, gradesPath, msaPath, target),
+        "Importing the ConSurf grades failed",
+      );
+    },
+    remove: async (jobId: string) => {
+      setBusy(true);
+      setError("");
+      try {
+        await proteinLabsApi.deleteConservation(proteinId, jobId);
+        setJob(null);
+        await refresh("");
+      } catch (reason) { setError(`Deleting the conservation run failed: ${errorText(reason)}`); }
+      finally { setBusy(false); }
+    },
+  };
 }
 
 function QueryCard({ bundle, sequence, counts }: { bundle: ProteinBundle; sequence: string; counts: { blast: number; uniprot: number; pdb: number } }) {
@@ -261,7 +391,7 @@ function BlastRunRow({ job, selected, onShow, onPoll, onTerminate }: { job: Json
   </article>;
 }
 
-function ResearchAction({ icon: Icon, title, detail, count, countLabel = "saved result", busy, active, onRun, label }: { icon: typeof Dna; title: string; detail: string; count: number; countLabel?: string; busy: boolean; active: boolean; onRun: () => void; label: string }) { return <article className={active ? "active" : ""}><span className="research-action-icon"><Icon/></span><div><h3>{title}</h3><p>{detail}</p><small>{count} {countLabel}{count === 1 ? "" : "s"}</small></div><Button disabled={busy} onClick={onRun}>{active ? <LoaderCircle className="spin"/> : <Play/>}{label}</Button></article>; }
+function ResearchAction({ icon: Icon, title, detail, count, countLabel = "saved result", busy, active, onRun, label, secondary }: { icon: typeof Dna; title: string; detail: string; count: number; countLabel?: string; busy: boolean; active: boolean; onRun: () => void; label: string; secondary?: { label: string; icon: typeof Dna; onRun: () => void } }) { return <article className={active ? "active" : ""}><span className="research-action-icon"><Icon/></span><div><h3>{title}</h3><p>{detail}</p><small>{count} {countLabel}{count === 1 ? "" : "s"}</small></div><Button disabled={busy} onClick={onRun}>{active ? <LoaderCircle className="spin"/> : <Play/>}{label}</Button>{secondary && <Button variant="outline" disabled={busy} onClick={secondary.onRun}><secondary.icon/>{secondary.label}</Button>}</article>; }
 function ResultSection({ icon: Icon, title, count, children }: { icon: typeof Dna; title: string; count: number; children: React.ReactNode }) { return <section><header><h3><Icon/>{title}</h3><span>{count}</span></header><div>{children}</div></section>; }
 function Empty({ text }: { text: string }) { return <div className="research-empty"><Database/><span>{text}</span></div>; }
 function UniProtCard({ match, featured }: { match: JsonObject; featured: boolean }) { const record = Object.keys(object(match.record)).length ? object(match.record) : match; const organism = object(record.organism); const ptms = objects(record.postTranslationalModifications); const topology = objects(record.transmembraneRegions); const disorder = objects(record.disorderedRegions); const cofactors = objects(record.cofactors); const identity = Number(match.identity), coverage = Number(match.queryCoverage); return <article className={`research-result-card${featured ? " featured" : ""}`}><span><Dna/></span><div>{featured && <span className="research-best-match">Best match</span>}<strong>{String(record.accession ?? match.accession ?? "UniProt")} · {String(record.proteinName ?? record.uniProtkbId ?? record.name ?? "")}</strong><small><i>{String(organism.scientificName ?? "Unknown organism")}</i> · {record.reviewed === true ? "reviewed (Swiss-Prot)" : "unreviewed (TrEMBL)"}</small><span className="research-chip-row">{Number.isFinite(identity) && <span className={`hit-chip ${identityTier(identity)}`}><b>{percent(identity)}</b> identity</span>}{Number.isFinite(coverage) && <span className={`hit-chip ${coverageTier(coverage)}`}><b>{percent(coverage)}</b> coverage</span>}</span><div className="evidence-tags"><b>{ptms.length} PTM/maturation</b><b>{topology.length} transmembrane</b><b>{disorder.length} disorder</b><b>{cofactors.length} cofactor</b></div>{ptms.slice(0, featured ? 8 : 3).map((ptm, index) => { const location = object(ptm.location); return <em key={index}>{String(ptm.type)}: {String(ptm.description ?? "")} ({String(location.start ?? "?")}–{String(location.end ?? "?")})</em>; })}</div>{Boolean(record.accession) && <a href={`https://www.uniprot.org/uniprotkb/${String(record.accession)}`} target="_blank" rel="noreferrer" aria-label={`Open ${String(record.accession)} at UniProt`}><ExternalLink/></a>}</article>; }
