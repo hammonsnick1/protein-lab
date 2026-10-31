@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { BadgeCheck, Check, CircleAlert, Database, Dna, ExternalLink, LoaderCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AlphaFoldServerExport } from "@/components/protein-labs/alphafold-server-export";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
 
@@ -74,7 +75,7 @@ export function ReferenceMatchJob({ bundle, onChanged }: { bundle: ProteinBundle
         </> : <p>Select a match to inspect its biological annotations.</p>}
       </section>
     </div>
-    <footer><span>{message}</span><Button disabled={busy || !selected} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save selected reference</Button></footer>
+    <footer><span>{message}</span><AlphaFoldServerExport bundle={bundle}/><Button disabled={busy || !selected} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save selected reference</Button></footer>
   </div>;
 }
 

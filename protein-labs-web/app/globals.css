@@ -15643,3 +15643,258 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 @media (prefers-reduced-motion: reduce) {
   .organism-status .spin { animation: none; }
 }
+/* "Export AlphaFold Server JSON" preview, opened from Choose reference match.
+   The dialog is sized to fit the 900x650 minimum window: the body scrolls so
+   the header, token meter and footer buttons are always reachable. */
+.af-export-dialog {
+  width: min(960px, calc(100vw - 32px));
+  max-width: min(960px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 13px;
+  padding: 18px;
+}
+.af-export-dialog a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.af-export-dialog a > svg {
+  width: 12px;
+  height: 12px;
+}
+.af-export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.af-export-meter {
+  --meter: #4f8ed6;
+  border: 1px solid color-mix(in srgb, var(--meter) 34%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--meter) 8%, var(--card));
+  padding: 10px 12px;
+}
+.af-export-meter.over {
+  --meter: #e56565;
+}
+.af-export-meter > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.af-export-meter strong {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.af-export-meter small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.af-export-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--meter) 18%, var(--border));
+  overflow: hidden;
+}
+.af-export-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--meter);
+  transition: width .18s ease;
+}
+.af-export-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 84%, transparent);
+  padding: 10px 12px;
+}
+.af-export-group > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.af-export-group > header > svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: #f2c14e;
+}
+.af-export-group > header > strong {
+  font-size: 13px;
+}
+.af-export-group > header > span {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  padding: 1px 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.af-export-group > ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.af-export-group > ul > li {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--card);
+  padding: 7px 9px;
+}
+.af-export-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 9px;
+}
+.af-export-name {
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.af-export-row > small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.af-export-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.af-export-pill {
+  --pill: #8b79d4;
+  border: 1px solid color-mix(in srgb, var(--pill) 40%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--pill) 12%, var(--card));
+  padding: 1px 7px;
+  color: color-mix(in srgb, var(--pill) 66%, var(--foreground));
+  font-size: 12px;
+}
+.af-export-pill.glycan {
+  --pill: #36ad89;
+  border-style: dashed;
+}
+.af-export-none {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
+.af-export-group > ul + .af-export-none {
+  margin: 8px 0 0;
+}
+.af-export-partner {
+  display: grid;
+  grid-template-columns: minmax(96px, .5fr) minmax(0, 1.6fr) 72px auto;
+  align-items: end;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+.af-export-partner label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.af-export-partner label > span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.af-export-partner input,
+.af-export-partner textarea {
+  width: 100%;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: var(--background);
+  padding: 5px 8px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.af-export-partner textarea {
+  font-family: var(--font-mono);
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+.af-export-partner input:focus-visible,
+.af-export-partner textarea:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.af-export-group.warnings > ul > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.af-export-group.warnings > ul > li > span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.af-export-json {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 84%, transparent);
+}
+.af-export-json > summary {
+  cursor: pointer;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.af-export-json > summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+.af-export-json > pre {
+  max-height: 260px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.af-export-footer {
+  align-items: center;
+}
+.af-export-footer > span {
+  margin-right: auto;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+@media (max-width: 760px) {
+  .af-export-partner {
+    grid-template-columns: minmax(0, 1fr) 72px auto;
+  }
+  .af-export-partner-sequence {
+    grid-column: 1 / -1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .af-export-bar > span { transition: none; }
+  .af-export-dialog,
+  .af-export-dialog ~ [data-slot="dialog-overlay"],
+  [data-slot="dialog-overlay"]:has(~ .af-export-dialog) { animation: none !important; }
+}
