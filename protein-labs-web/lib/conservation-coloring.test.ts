@@ -127,14 +127,24 @@ describe("conservationColoring", () => {
 describe("consurfProfile", () => {
   const row = (position: number, residue: string, grade: number, insufficientData = false) => ({ position, residue, grade, insufficientData }) as ConservationResidue;
 
-  it("numbers grades by the sequence ConSurf was given", () => {
-    const profile = consurfProfile({ querySequence: "MKV", residues: [row(1, "M", 9), row(2, "K", 3, true), row(3, "V", 1)] });
-    assert.equal(profile.query, "MKV");
+  it("numbers grades by the graded rows, not by the project's query sequence", () => {
+    // ConSurf-DB grades a representative chain whose SEQRES lacks the initiator Met.
+    const profile = consurfProfile({ residues: [row(1, "S", 9), row(2, "H", 3, true), row(3, "H", 1)] });
+    assert.equal(profile.query, "SHH");
     assert.deepEqual(profile.grades, [{ grade: 9, insufficientData: false }, { grade: 3, insufficientData: true }, { grade: 1, insufficientData: false }]);
   });
 
-  it("rebuilds the query from the rows when the stated one is missing", () => {
-    const profile = consurfProfile({ querySequence: "", residues: [row(1, "M", 9), row(3, "V", 1)] });
+  it("lands each ConSurf-DB grade on its own residue of a chain that starts with Met", () => {
+    const residues = Array.from(CA2.slice(1), (letter, index) => row(index + 1, letter, (index % 9) + 1));
+    const item = chain("A", CA2);
+    const result = conservationColoring(consurfProfile({ residues }), [item], residuesOf(item));
+    assert.equal(gradeOf(result, "A", 1), null, "the Met ConSurf did not grade stays unmapped");
+    assert.equal(gradeOf(result, "A", 2), "1");
+    assert.equal(gradeOf(result, "A", 11), String((9 % 9) + 1));
+  });
+
+  it("leaves positions without a row ungraded", () => {
+    const profile = consurfProfile({ residues: [row(1, "M", 9), row(3, "V", 1)] });
     assert.equal(profile.query, "MXV");
     assert.equal(profile.grades[1], null);
   });

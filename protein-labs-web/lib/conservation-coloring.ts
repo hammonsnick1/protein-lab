@@ -20,6 +20,17 @@ export type ConservationProfile = {
   detail: string;
 };
 
+/** What the viewer is told about one source: a profile to paint, or why it cannot be chosen. */
+export type ConservationSourceState =
+  | { state: "ready"; profile: ConservationProfile }
+  | { state: "loading" | "unavailable" | "error"; hint: string };
+export type ConservationSources = Record<ConservationSourceId, ConservationSourceState>;
+
+export const CONSERVATION_SOURCES: { id: ConservationSourceId; label: string; short: string }[] = [
+  { id: "consurf", label: "ConSurf grades", short: "ConSurf" },
+  { id: "alignment", label: "Alignment conservation", short: "Alignment" },
+];
+
 /** A polymer chain as the structure defines it: the full SEQRES and the label_seq_id of each letter. */
 export type ChainSequence = { labelAsymId: string; authAsymId: string; sequence: string; seqIds: number[] };
 
@@ -138,20 +149,22 @@ export function mapChain(query: string, chain: ChainSequence): ChainMapping {
 // ---------------------------------------------------------------------------
 // Sources.
 
-/** ConSurf grades numbered against the sequence ConSurf was given. */
-export function consurfProfile(job: { querySequence: string; residues: ConservationResidue[] }, detail = ""): ConservationProfile {
+/**
+ * ConSurf grades numbered against the sequence that was graded. That sequence is
+ * rebuilt from the rows themselves, because `position` counts along it: for a
+ * ConSurf-DB run it is the representative chain's SEQRES, which can start at a
+ * different residue than the project's `querySequence`.
+ */
+export function consurfProfile(job: { residues: ConservationResidue[] }, detail = ""): ConservationProfile {
   const length = Math.max(0, ...job.residues.map((residue) => residue.position));
-  const fromRows = new Array<string>(length).fill("X");
-  for (const residue of job.residues) if (residue.position >= 1) fromRows[residue.position - 1] = (residue.residue || "X").toUpperCase();
-  const given = clean(job.querySequence ?? "");
-  // The stated query, unless it is too short to number every graded row.
-  const query = given.length >= length ? given : fromRows.join("");
-  const grades: ConservationProfile["grades"] = new Array(query.length).fill(null);
+  const letters = new Array<string>(length).fill("X");
+  const grades: ConservationProfile["grades"] = new Array(length).fill(null);
   for (const residue of job.residues) {
-    if (residue.position < 1 || residue.position > query.length) continue;
+    if (residue.position < 1) continue;
+    letters[residue.position - 1] = clean(residue.residue || "X").slice(0, 1) || "X";
     grades[residue.position - 1] = { grade: Math.min(MAX_GRADE, Math.max(MIN_GRADE, Math.round(residue.grade))), insufficientData: residue.insufficientData };
   }
-  return { source: "consurf", query, grades, detail };
+  return { source: "consurf", query: letters.join(""), grades, detail };
 }
 
 /**
