@@ -21,6 +21,7 @@ import { ExpressionJob } from "@/components/protein-labs/expression-system-job";
 import { buildSkipConfig, definitionFor, jobsFor, type WorkflowJobDefinition } from "@/lib/workflow";
 import { canSkipJob, jobNeighbours } from "@/lib/job-navigation";
 import { aminoAcid, residueFamily, sideChainClassLabels } from "@/lib/amino-acids";
+import { mostAbundantResidues } from "@/lib/residue-composition";
 import { ResidueClassLegend, ResidueDetailDialog } from "@/components/protein-labs/residue-detail";
 import { isLowExtinction } from "@/lib/readiness";
 
@@ -123,7 +124,9 @@ function asArray(value: unknown): JsonObject[] { return Array.isArray(value) ? v
 function text(value: unknown, fallback: unknown = "—") { return String(value === null || value === undefined || value === "" ? fallback : value); }
 /** Residue counts and their share of the sequence, split into two aligned
  *  halves with a total row that shows the shares add up to the whole. Bars
- *  take the side-chain class colour; a row opens that residue's details. */
+ *  take the side-chain class colour; a row opens that residue's details.
+ *  The residue (or residues, on a tie) with the highest count is tinted and
+ *  badged "Most abundant". */
 function CompositionTable({ residues }: { residues: [string, unknown][] }) {
   const [open, setOpen] = useState<number | null>(null);
   const container = useRef<HTMLDivElement>(null);
@@ -136,19 +139,20 @@ function CompositionTable({ residues }: { residues: [string, unknown][] }) {
   const totalCount = rows.reduce((sum, row) => sum + row.count, 0);
   const totalPercent = rows.reduce((sum, row) => sum + row.percent, 0);
   const largest = Math.max(...rows.map((row) => row.percent));
+  const top = mostAbundantResidues(rows);
   const half = Math.ceil(rows.length / 2);
   const show = (aa: string) => { const index = details.findIndex((detail) => detail.acid.code === aa); if (index >= 0) setOpen(index); };
   return <div className="composition" ref={container}>
     <div className="composition-halves">
       {[rows.slice(0, half), rows.slice(half)].map((group, index) => <table className="composition-table" key={index}>
         <thead><tr><th scope="col">Residue</th><th scope="col" className="num">Count</th><th scope="col" className="num">% of protein</th><th scope="col" aria-label="Relative abundance"/></tr></thead>
-        <tbody>{group.map((row) => <tr key={row.aa} className={`aa-family-${row.family}${row.acid ? " is-clickable" : ""}`} onClick={row.acid ? () => show(row.aa) : undefined}>
+        <tbody>{group.map((row) => <tr key={row.aa} className={`aa-family-${row.family}${row.acid ? " is-clickable" : ""}${top.has(row.aa) ? " is-most-abundant" : ""}`} onClick={row.acid ? () => show(row.aa) : undefined}>
           <th scope="row">{row.acid
-            ? <button type="button" className="composition-residue" data-residue={row.aa} onClick={(event) => { event.stopPropagation(); show(row.aa); }} aria-label={`${row.name}, ${sideChainClassLabels[row.acid.family].toLowerCase()}: ${row.count} residues, ${row.percent.toFixed(2)}%. Show residue details`}><strong>{row.aa}</strong><span>{row.name}</span></button>
+            ? <button type="button" className="composition-residue" data-residue={row.aa} onClick={(event) => { event.stopPropagation(); show(row.aa); }} aria-label={`${row.name}, ${sideChainClassLabels[row.acid.family].toLowerCase()}: ${row.count} residues, ${row.percent.toFixed(2)}%${top.has(row.aa) ? ", most abundant" : ""}. Show residue details`}><strong>{row.aa}</strong><span>{row.name}</span></button>
             : <><strong>{row.aa}</strong><span>{row.name}</span></>}</th>
           <td className="num">{row.count}</td>
           <td className="num">{row.percent.toFixed(2)}%</td>
-          <td className="composition-bar-cell"><span className="composition-bar"><i style={{ width: `${largest ? (row.percent / largest) * 100 : 0}%` }}/></span></td>
+          <td className="composition-bar-cell">{top.has(row.aa) && <span className="composition-top-badge">Most abundant</span>}<span className="composition-bar"><i style={{ width: `${largest ? (row.percent / largest) * 100 : 0}%` }}/></span></td>
         </tr>)}</tbody>
       </table>)}
     </div>
