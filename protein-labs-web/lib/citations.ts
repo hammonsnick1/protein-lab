@@ -99,7 +99,7 @@ const entries = [
     id: "rdkit", kind: "software", name: "RDKit", authors: "RDKit contributors", year: "2006–",
     title: "RDKit: open-source cheminformatics",
     source: "rdkit.org", doi: "10.5281/zenodo.591637", url: "https://www.rdkit.org",
-    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Candidate for 2D ligand drawing; not bundled yet." },
+    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Backend dependency for 2D ligand drawing and R/S, E/Z labels; notice in THIRD_PARTY_NOTICES.md." },
   },
   {
     id: "molstar", kind: "software", name: "Mol*", authors: "Sehnal D, Bittrich S, Deshpande M, Svobodová R, Berka K, Bazgier V, Velankar S, Burley SK, Koča J, Rose AS", year: "2021",

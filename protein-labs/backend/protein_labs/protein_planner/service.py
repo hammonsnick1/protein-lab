@@ -31,6 +31,7 @@ from .conservation import (
     parse_consurf_msa,
 )
 from .structures import build_residue_mapping, compute_regions, summarize_structure
+from .ligand_depiction import render_ligand_depiction
 from .protparam import analyze_sequence, normalize_sequence
 from .project_trees import ProjectTreeService
 from .taxonomy import TaxonomyClient
@@ -622,6 +623,59 @@ class ProteinPlanner:
             "numbering": structure["mapping"]["numbering"],
             **computed,
             "errors": structure["errors"],
+        }
+
+    def get_ligand_depiction(
+        self,
+        protein_id: str,
+        source: str,
+        structure_id: str,
+        *,
+        chain_id: str,
+        auth_seq_id: str,
+        ccd_id: str,
+        insertion_code: str | None = None,
+    ) -> dict[str, Any]:
+        """Draw one deposited ligand instance, without merging like CCD codes."""
+        if source.strip().lower() != "pdb":
+            raise ValueError("Ligand depictions are available only for experimental PDB entries; AlphaFold DB models contain no ligands")
+        structure = self.get_structure(protein_id, source, structure_id)
+        from .structures import parse_mmcif_structure
+
+        wanted = {
+            "chainId": chain_id.strip(),
+            "authSeqId": auth_seq_id.strip(),
+            "ccdId": ccd_id.strip().upper(),
+            "insertionCode": insertion_code.strip() if insertion_code and insertion_code.strip() else None,
+        }
+        ligand = next((item for item in parse_mmcif_structure(str(structure["structureText"]))["ligands"] if all(
+            item.get(key) == value for key, value in wanted.items()
+        )), None)
+        if ligand is None:
+            raise LookupError(
+                "No ligand instance matches chainId, authSeqId, insertionCode, and ccdId in this PDB entry"
+            )
+        try:
+            ccd_text = self.rcsb.fetch_chemical_component(wanted["ccdId"])
+        except RemoteServiceError as error:
+            if error.status == 404:
+                raise LookupError(f"PDB Chemical Component Dictionary has no definition for {wanted['ccdId']}") from error
+            raise
+        depiction = render_ligand_depiction(ccd_text, ligand)
+        return {
+            "proteinId": protein_id,
+            "structureId": structure["structure"]["id"],
+            "source": "pdb",
+            "ligand": {
+                key: ligand[key] for key in (
+                    "ccdId", "name", "chainId", "labelChainId", "authSeqId", "insertionCode", "classification"
+                )
+            },
+            **depiction,
+            "references": [
+                {"label": "PDB Chemical Component Dictionary", "url": "https://www.wwpdb.org/data/ccd"},
+                {"label": "RDKit depiction and stereochemistry", "url": "https://www.rdkit.org/docs/"},
+            ],
         }
 
     def fetch_alphafold_db(

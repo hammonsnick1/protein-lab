@@ -1,3 +1,4 @@
 biopython>=1.85,<2
 matplotlib>=3.8,<4
 pillow>=10,<13
+rdkit>=2024.3,<2026
