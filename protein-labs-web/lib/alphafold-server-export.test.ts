@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
 import type { ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
-import { alphaFoldRequestFor, descriptionKey, recogniseGlycan, recognisePtm, splitCofactorText } from "./alphafold-server-export.ts";
+import { alphaFoldRequestFor, cofactorKey, descriptionKey, recogniseGlycan, recognisePtm, splitCofactorText } from "./alphafold-server-export.ts";
 import type { PartnerChain } from "./alphafold-server-export.ts";
 import { buildAlphaFoldJob } from "./alphafold-server-job.ts";
 import type { AlphaFoldProteinChain, ExportWarning } from "./alphafold-server-job.ts";
@@ -183,6 +183,74 @@ describe("cofactors from earlier jobs", () => {
     ]));
     assert.deepEqual(request.cofactors, []);
     assert.equal((request.notes ?? []).filter((entry) => entry.subject === "Readiness check").length, 0);
+  });
+
+  it("leaves out a cofactor the scientist removed in the export dialog, and says so", () => {
+    const jobs = [monomer, reference([], [{ name: "heme b" }, { name: "Zn(2+)" }])];
+    const result = buildAlphaFoldJob(alphaFoldRequestFor(bundle(jobs), [], ["ligand:HEM"]));
+    assert.deepEqual(result.jobs[0].sequences.slice(1), [{ ion: { ion: "ZN", count: 1 } }]);
+    const note = result.warnings.find((entry) => entry.category === "removed-by-hand");
+    assert.ok(note);
+    assert.equal(note.severity, "excluded");
+    assert.match(note.message, /heme b was removed in this dialog/);
+    // And nothing is said about it when it is put back.
+    const restored = buildAlphaFoldJob(alphaFoldRequestFor(bundle(jobs), [], []));
+    assert.equal(restored.jobs[0].sequences.length, 3);
+    assert.equal(categories(restored.warnings).includes("removed-by-hand"), false);
+  });
+
+  it("removes every spelling of a removed cofactor, not just the one that was clicked", () => {
+    // The row the scientist clicks stands for one AlphaFold Server entity, and
+    // the same heme reaches the export as both "heme b" and
+    // "heme b · CHEBI:60344". Keying the removal on the text would leave the
+    // other spelling behind and the ligand still in the job.
+    const result = buildAlphaFoldJob(alphaFoldRequestFor(bundle([
+      monomer,
+      reference([], [{ name: "heme b", chebiId: "CHEBI:60344" }]),
+      job("protein-readiness", { cofactorRequired: "Yes", cofactorDetails: "heme b · CHEBI:60344" }),
+    ]), [], ["ligand:HEM"]));
+    assert.equal(result.jobs[0].sequences.length, 1);
+    assert.deepEqual(result.summary.molecules, []);
+  });
+
+  it("keys a removal on the entity AlphaFold Server models", () => {
+    assert.equal(cofactorKey("heme b"), "ligand:HEM");
+    assert.equal(cofactorKey("heme b · CHEBI:60344"), "ligand:HEM");
+    assert.equal(cofactorKey("Zn(2+)"), "ion:ZN");
+    assert.equal(cofactorKey("molybdopterin"), "text:molybdopterin");
+  });
+
+  it("stops telling the scientist to remove a cofactor they have already removed", () => {
+    // The "readiness answers no" note counts what is in the job. Once the last
+    // reference cofactor is gone the note has nothing left to point at, so it
+    // must not still be asking for a removal that already happened.
+    const jobs = [monomer, reference([], [{ name: "heme b" }]), job("protein-readiness", { cofactorRequired: "No" })];
+    const kept = alphaFoldRequestFor(bundle(jobs));
+    assert.match((kept.notes ?? []).find((entry) => entry.subject === "Readiness check")?.message ?? "", /remove it from the job/);
+    const emptied = alphaFoldRequestFor(bundle(jobs), [], ["ligand:HEM"]);
+    assert.equal((emptied.notes ?? []).filter((entry) => entry.subject === "Readiness check").length, 0);
+    assert.deepEqual(emptied.cofactors, []);
+  });
+
+  it("counts only the cofactors the preview actually lists below the note", () => {
+    // Molybdopterin has no AlphaFold Server entity, so it never becomes a row:
+    // counting it would promise four rows under a list of three and ask for a
+    // removal the fourth has no button for.
+    const request = alphaFoldRequestFor(bundle([
+      monomer,
+      reference([], [{ name: "heme b" }, { name: "Zn(2+)" }, { name: "molybdopterin" }]),
+      job("protein-readiness", { cofactorRequired: "No" }),
+    ]));
+    const note = (request.notes ?? []).find((entry) => entry.subject === "Readiness check");
+    assert.match(note?.message ?? "", /The 2 cofactors below still come from P68871/);
+    // The unmodellable one is still carried and still reported, just elsewhere.
+    assert.equal(request.cofactors?.length, 3);
+  });
+
+  it("ignores a removal key no cofactor in the project matches", () => {
+    const request = alphaFoldRequestFor(bundle([monomer, reference([], [{ name: "heme b" }])]), [], ["ion:MG"]);
+    assert.deepEqual(request.cofactors?.map((entry) => entry.code), ["heme b"]);
+    assert.equal(categories(request.notes ?? []).includes("removed-by-hand"), false);
   });
 
   it("does not split a chemical name on its own punctuation", () => {
