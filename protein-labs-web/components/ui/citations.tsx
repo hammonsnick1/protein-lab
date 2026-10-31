@@ -3,8 +3,8 @@ import { BookOpen, ExternalLink } from "lucide-react";
 import {
   citationHref, citationShortLabel, getCitation, LICENSE_REUSE_LABELS, licenseRegister,
   type Citation, type CitationId, type CitationKind, type CitationScope, type LicenseReuse,
-} from "@/lib/citations";
-import { StatusChip, type StatusTone } from "@/components/ui/status-chip";
+} from "../../lib/citations.ts";
+import { StatusChip, type StatusTone } from "./status-chip.tsx";
 
 // Usage on any job or panel:
 //   const refs = citationScope("hsqc", ["shiftx2", "ucbshift2", "bmrb"]);
