@@ -9,12 +9,12 @@ import {
   TICK_HALF,
   clamp,
   conservedStretches,
-  describeSource,
   formatCoverage,
   gradeColor,
   gradeInk,
   gradeLabel,
   gradeLegend,
+  jobSubtitle,
   rulerPositions,
   stripColumnWidth,
   stripRows,
@@ -61,7 +61,7 @@ export function ConservationPanel({
       <span className="research-section-icon"><Shield/></span>
       <div>
         <h3>Evolutionary conservation</h3>
-        <p>{job ? `${describeSource(job)} · ${job.stage || "ConSurf"}` : "ConSurf grades each residue 1–9, from most variable to most conserved."}</p>
+        <p>{job ? jobSubtitle(job) : "ConSurf grades each residue 1–9, from most variable to most conserved."}</p>
       </div>
       {jobs.length > 1 && <label className="research-run-picker">Run<select value={selectedId} onChange={(event) => onSelect(event.target.value)}>
         {jobs.map((item) => <option key={item.id} value={item.id}>{runLabel(item)}</option>)}

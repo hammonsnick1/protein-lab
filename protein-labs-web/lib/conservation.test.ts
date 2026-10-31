@@ -11,6 +11,7 @@ import {
   gradeInk,
   gradeLabel,
   gradeLegend,
+  jobSubtitle,
   preferredJob,
   rulerPositions,
   stripColumnWidth,
@@ -279,5 +280,40 @@ describe("ruler spacing", () => {
     assert.equal(clamp(400, TICK_HALF, 800), 400);
     // A drawing narrower than two labels still returns a usable number.
     assert.equal(clamp(5, TICK_HALF, 4), TICK_HALF);
+  });
+});
+
+describe("jobSubtitle", () => {
+  it("does not print an imported run's file name twice", () => {
+    // describeSource already names the file; the engine's stage repeats it.
+    const subtitle = jobSubtitle({
+      source: "consurf-server-import",
+      stage: "Imported from consurf_grades.txt",
+      pdbId: "",
+      chain: "",
+      metadata: { importedFile: "consurf_grades.txt" },
+    });
+    assert.equal(subtitle, "Imported · consurf_grades.txt");
+    assert.equal(subtitle.match(/consurf_grades\.txt/g)?.length, 1);
+  });
+
+  it("keeps the stage for a ConSurf-DB run, which says something new", () => {
+    assert.equal(
+      jobSubtitle({
+        source: "consurf-db",
+        stage: "Pre-calculated ConSurf-DB analysis of 6Q00 chain A",
+        pdbId: "1UBQ",
+        chain: "A",
+        metadata: { identicalPdbId: "6Q00", identicalChain: "A" },
+      }),
+      "ConSurf-DB · 1UBQ chain A via representative 6Q00 chain A · Pre-calculated ConSurf-DB analysis of 6Q00 chain A",
+    );
+  });
+
+  it("falls back to the source alone when there is no stage", () => {
+    assert.equal(
+      jobSubtitle({ source: "consurf-server", stage: "", pdbId: "", chain: "", metadata: {} }),
+      "ConSurf server submission",
+    );
   });
 });

@@ -67,11 +67,9 @@ _INTERVAL = re.compile(
     r"^\s*(?P<low>[-+]?\d+(?:\.\d+)?)\s*,\s*(?P<high>[-+]?\d+(?:\.\d+)?)"
     r"(?:\s*,?\s*(?P<low_grade>\d+)\s*,\s*(?P<high_grade>\d+))?"
 )
-# Burial, function, MSA fraction, then whatever variety text remains.
-_TAIL = re.compile(
-    r"^\s*(?:(?P<burial>[beBE])\b\s*)?(?:(?P<function>[fsFS])\b\s*)?"
-    r"(?:(?P<aligned>\d+)\s*/\s*(?P<total>\d+))?\s*(?P<variety>.*)$"
-)
+# The MSA fraction anywhere in the tail, whatever separates the columns. The
+# guards keep it off a number that is part of something longer.
+_MSA_FRACTION = re.compile(r"(?<![\d./])(?P<aligned>\d+)\s*/\s*(?P<total>\d+)(?![\d./])")
 _LAYER = re.compile(
     r"from\s+([-+]?\d+(?:\.\d+)?)\s+to\s+([-+]?\d+(?:\.\d+)?)\s+the\s+grade\s+is\s+(\d+)",
     re.IGNORECASE,
@@ -198,16 +196,7 @@ def _parse_row(line: str) -> dict[str, Any] | None:
             low_grade = int(interval.group("low_grade"))
             high_grade = int(interval.group("high_grade"))
         rest = rest[interval.end():]
-    tail = _TAIL.match(rest)
-    burial = function = ""
-    aligned = total = None
-    variety_text = ""
-    if tail is not None:
-        burial = (tail.group("burial") or "").lower()
-        function = (tail.group("function") or "").lower()
-        if tail.group("aligned"):
-            aligned, total = int(tail.group("aligned")), int(tail.group("total"))
-        variety_text = tail.group("variety").strip().rstrip("*").strip()
+    burial, function, aligned, total, variety_text = _parse_tail(rest)
 
     atom = match.group("atom").strip()
     pdb_residue_number, pdb_chain, atom_residue = _atom_label(atom)
@@ -235,6 +224,55 @@ def _parse_row(line: str) -> dict[str, Any] | None:
         "pdbChain": pdb_chain,
         "modelled": bool(pdb_residue_number),
     }
+
+
+def _parse_tail(rest: str) -> tuple[str, str, int | None, int | None, str]:
+    """Read the burial, function, MSA and variety columns that follow the interval.
+
+    These columns are separated by tabs in the files ConSurf writes, but a tab
+    survives an editor that expands it or a table copied out of the web page
+    only as whitespace, so nothing here may depend on tabs being present.
+
+    The MSA fraction is the anchor. Wherever it appears, what precedes it holds
+    only flags and what follows it is the whole variety, which settles the
+    layout for either separator. Without it the remaining tokens are read left
+    to right: a leading `b`/`e` or `f`/`s` is a flag only while another token
+    follows, so the last token is always the variety. That keeps a variety such
+    as `E,D` whole on a row whose `B/E` column is blank, where matching the
+    flattened text would charge its leading `E` to `burialState`.
+
+    One case stays genuinely ambiguous: a row with no MSA fraction whose only
+    remaining token is a single letter. It is read as the variety, because the
+    variety column is always present in these files while the flags are not.
+    """
+    fraction = _MSA_FRACTION.search(rest)
+    if fraction is not None:
+        head = rest[:fraction.start()]
+        variety_text = rest[fraction.end():]
+        aligned = int(fraction.group("aligned"))
+        total = int(fraction.group("total"))
+    else:
+        head, variety_text = _flags_and_variety(rest)
+        aligned = total = None
+
+    burial = function = ""
+    for token in head.split():
+        letter = token.lower()
+        if not burial and letter in {"b", "e"}:
+            burial = letter
+        elif not function and letter in {"f", "s"}:
+            function = letter
+    return burial, function, aligned, total, variety_text.strip().rstrip("*").strip()
+
+
+def _flags_and_variety(rest: str) -> tuple[str, str]:
+    """Split a tail with no MSA fraction into its leading flags and the variety."""
+    tokens = rest.split()
+    index = 0
+    # A flag letter is only a flag while something follows it to be the variety.
+    while index < len(tokens) - 1 and tokens[index].lower() in {"b", "e", "f", "s"}:
+        index += 1
+    return " ".join(tokens[:index]), " ".join(tokens[index:])
 
 
 def _atom_label(atom: str) -> tuple[str, str, str]:

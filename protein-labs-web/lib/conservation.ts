@@ -271,6 +271,16 @@ export function describeSource(job: { source: string; metadata: ConservationMeta
   return "ConSurf server submission";
 }
 
+/** The one-line provenance under the section heading. */
+export function jobSubtitle(job: { source: string; stage: string; metadata: ConservationMetadata; pdbId: string; chain: string }) {
+  const source = describeSource(job);
+  // An imported run's stage only repeats the file name `describeSource`
+  // already shows, so it is dropped rather than printed twice.
+  if (job.source === "consurf-server-import") return source;
+  const stage = (job.stage ?? "").trim();
+  return stage ? `${source} · ${stage}` : source;
+}
+
 export function formatCoverage(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return `${(value * 100).toFixed(1)}%`;
