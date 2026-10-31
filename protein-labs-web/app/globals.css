@@ -2835,38 +2835,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .workflow-screen {
   height: calc(100vh - 68px);
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   position: relative;
   overflow: hidden;
-}
-.next-step-banner {
-  margin: 18px 24px 8px;
-  border: 1px solid color-mix(in srgb, var(--primary) 42%, var(--border));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--primary) 9%, var(--card));
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 13px 16px;
-}
-.next-step-banner > svg {
-  color: var(--primary);
-  width: 24px;
-}
-.next-step-banner > span {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.next-step-banner b {
-  font-size: 12px;
-  color: var(--primary);
-  letter-spacing: 0.05em;
-}
-.next-step-banner small {
-  color: var(--muted-foreground);
-  margin-top: 4px;
 }
 .workflow-toolbar {
   display: flex;
@@ -3267,30 +3238,6 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .tree-context-menu svg {
   width: 15px;
 }
-.workflow-message {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  z-index: 30;
-  background: var(--popover);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
-  padding: 10px 12px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 12px;
-}
-.workflow-message button {
-  border: 0;
-  background: none;
-  color: inherit;
-}
-.workflow-message svg {
-  width: 14px;
-}
 .notebook-workspace {
   min-height: calc(100vh - 68px);
   display: grid;
@@ -3610,13 +3557,6 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   }
   .hologram-base {
     width: 260px;
-  }
-  .next-step-banner {
-    margin: 10px;
-  }
-  .next-step-banner small,
-  .next-step-banner .inline-flex:nth-last-child(1) {
-    display: none;
   }
   .workflow-toolbar {
     padding-inline: 12px;
@@ -9638,56 +9578,124 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .job-return-tab strong { font-size: 12px; }
 .job-return-tab small { color: var(--muted-foreground); font-size: 12px; margin-top: 3px; }
 
-.job-next-tab {
-  position: fixed;
-  z-index: 55;
-  right: 20px;
-  bottom: 20px;
-  width: min(410px, calc(100vw - 30px));
-  min-height: 104px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 13px;
-  border: 1px solid color-mix(in srgb, var(--primary) 55%, var(--border));
-  border-radius: 15px 15px 4px 15px;
-  background: color-mix(in srgb, var(--card) 96%, transparent);
-  color: var(--foreground);
-  box-shadow: 0 22px 58px rgba(0,0,0,.24), 0 0 0 1px color-mix(in srgb, var(--primary) 7%, transparent) inset;
-  backdrop-filter: blur(18px);
-  padding: 15px;
-  text-align: left;
-  cursor: pointer;
-  animation: job-next-in .24s cubic-bezier(.2,.8,.2,1);
-}
-@keyframes job-next-in { from { transform: translateY(18px); opacity: 0; } }
-.job-next-tab:hover {
-  transform: translateY(-3px);
-  background: color-mix(in srgb, var(--primary) 9%, var(--card));
-  box-shadow: 0 28px 65px rgba(0,0,0,.28);
-}
-.job-next-status {
-  align-self: start;
+/* Previous / Next job corner tabs. The job fills at least the window under the
+   top bar, and the tabs sit in an opaque strip that sticks to the bottom of the
+   window, so job content scrolls out of view above it instead of under a tab. */
+.job-workspace {
   display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 62px);
+}
+.job-surface { width: 100%; flex: 1 0 auto; }
+.job-nav {
+  position: sticky;
+  bottom: 0;
+  z-index: 44;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 42px;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+.job-nav-trailing {
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+.job-nav-corner { position: relative; display: flex; }
+.job-nav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--speed-fast) ease, background var(--speed-fast) ease, color var(--speed-fast) ease;
+}
+.job-nav-corner.previous .job-nav-tab { border-left: 0; border-radius: 0 10px 0 0; padding-left: 10px; }
+.job-nav-corner.next .job-nav-tab { border-right: 0; border-radius: 10px 0 0 0; padding-right: 10px; }
+.job-nav-tab svg { width: 15px; height: 15px; color: var(--primary); }
+.job-nav-tab:hover {
+  border-color: color-mix(in srgb, var(--primary) 58%, var(--border));
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
+.job-nav-tab:focus-visible,
+.job-nav-skip:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.job-nav-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 1;
+  width: max-content;
+  max-width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 8px 22px rgba(0,0,0,.16);
+  padding: 6px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--speed-fast) ease, visibility var(--speed-fast);
+}
+.job-nav-corner.previous .job-nav-tooltip { left: 8px; }
+.job-nav-corner.next .job-nav-tooltip { right: 8px; }
+.job-nav-tab:is(:hover, :focus-visible) + .job-nav-tooltip { opacity: 1; visibility: visible; }
+.job-nav-skip {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted-foreground);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.job-nav-skip svg { width: 14px; height: 14px; }
+.job-nav-skip:hover:not(:disabled) { background: var(--muted); color: var(--foreground); }
+.job-nav-skip:disabled { cursor: default; opacity: .6; }
+.job-nav-status {
+  align-self: center;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  border-radius: 999px;
-  background: color-mix(in srgb, #32b788 16%, var(--card));
-  color: #28a379;
-  padding: 5px 7px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
   font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .05em;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.job-next-status svg { width: 11px; height: 11px; }
-.job-next-copy { display: flex; flex-direction: column; min-width: 0; }
-.job-next-copy small { color: var(--primary); font-size: 12px; font-weight: 850; letter-spacing: .1em; }
-.job-next-copy strong { margin-top: 3px; font-size: 14px; }
-.job-next-copy em { margin-top: 4px; color: var(--muted-foreground); font-size: 12px; font-style: normal; line-height: 1.35; }
-.job-next-sparkle { width: 16px; color: var(--primary); align-self: start; }
-.job-next-arrow { width: 20px; color: var(--primary); }
-.job-next-tab > svg:last-child { width: 20px; color: var(--primary); }
+.job-nav-status:empty { display: none; }
+.job-nav-status.error { color: var(--destructive); }
+.job-nav-status svg { flex: none; width: 13px; height: 13px; color: var(--primary); }
+.job-nav-status.error svg { color: inherit; }
+.job-nav-status:not(:empty) { animation: job-nav-status-in .2s ease-out; }
+@keyframes job-nav-status-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .job-nav-status:not(:empty) { animation: none; }
+  .job-nav-tab,
+  .job-nav-tooltip { transition: none; }
+}
 
 /* Lysis, subtractive cleanup, and SEC planning jobs. */
 .stage-choice-job {
@@ -10064,7 +10072,6 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   .workflow-card-view > section > div { grid-template-columns: repeat(2, 1fr); }
   .job-workspace .job-header { padding-left: 14px; padding-top: 64px; }
   .job-return-tab { position: absolute; top: 70px; min-width: 164px; }
-  .job-next-tab { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
   .stage-choice-grid,
   .stage-buffer-grid,
   .stage-review,
@@ -11132,7 +11139,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .dashboard-tree-overview-card { min-height: 275px; padding: 15px; overflow: hidden; }
 .dashboard-project-overview-card > .dashboard-card-header > div { display: flex; gap: 6px; }
 .dashboard-stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; }
-.workflow-screen.workflow-card-only { height: calc(100vh - 62px); grid-template-rows: auto auto 1fr; }
+.workflow-screen.workflow-card-only { height: calc(100vh - 62px); grid-template-rows: auto 1fr; }
 .single-project-workflow .workflow-card-section > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1200px) {
   .dashboard-project-tree-overview { grid-template-columns: 1fr; }

@@ -1,7 +1,7 @@
 "use client";
 
-import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, MousePointerClick, Play, Scale, Search, ShieldCheck, Sparkles, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
+import { PointerEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, MousePointerClick, Play, Scale, Search, ShieldCheck, SkipForward, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -18,7 +18,8 @@ import { ReferenceMatchJob } from "@/components/protein-labs/reference-match-job
 import { StructureJob } from "@/components/protein-labs/structure-viewer-job";
 import { TransformationExpressionJob } from "@/components/protein-labs/transformation-expression-job";
 import { ExpressionJob } from "@/components/protein-labs/expression-system-job";
-import { isComplete, workflowJobs } from "@/lib/workflow";
+import { buildSkipConfig, definitionFor, jobsFor, type WorkflowJobDefinition } from "@/lib/workflow";
+import { canSkipJob, jobNeighbours } from "@/lib/job-navigation";
 import { aminoAcid, residueFamily, sideChainClassLabels } from "@/lib/amino-acids";
 import { mostAbundantResidues } from "@/lib/residue-composition";
 import { ResidueClassLegend, ResidueDetailDialog } from "@/components/protein-labs/residue-detail";
@@ -45,28 +46,25 @@ const labels: Record<string, [string, string, typeof Dna]> = {
 
 type JobProps = { bundle: ProteinBundle; onChanged: () => Promise<void> };
 
-export function JobWorkspace({ jobId, bundle, returnTo, onBack, onOpenJob, onReports, onRoadmap, onChanged }: { jobId: string; bundle: ProteinBundle; returnTo: "planning" | "roadmap"; onBack: () => void; onOpenJob: (jobId: string) => void; onReports: () => void; onRoadmap: () => void; onChanged: () => Promise<void> }) {
+export function JobWorkspace({ jobId, bundle, returnTo, onBack, onOpenJob, onStep, onReports, onRoadmap, onChanged }: { jobId: string; bundle: ProteinBundle; returnTo: "planning" | "roadmap"; onBack: () => void; onOpenJob: (jobId: string) => void; onStep: (jobId: string, direction: "forward" | "back") => void; onReports: () => void; onRoadmap: () => void; onChanged: () => Promise<void> }) {
   const [title, description, Icon] = labels[jobId] ?? labels.sequence;
   const [online, setOnline] = useState<boolean | null>(null);
-  const [savedInSession, setSavedInSession] = useState(false);
+  const [saved, setSaved] = useState(0);
   const [workflowLayout, setWorkflowLayout] = useState<"tree" | "cards">("tree");
   useEffect(() => { proteinLabsApi.health().then(() => setOnline(true)).catch(() => setOnline(false)); }, []);
   useEffect(() => {
     const savedLayout = localStorage.getItem("protein-labs-workflow-layout");
     if (savedLayout === "cards") queueMicrotask(() => setWorkflowLayout("cards"));
   }, []);
+  // The "Saved" indicator shows briefly after each save, then clears itself.
+  useEffect(() => {
+    if (!saved) return;
+    const timer = window.setTimeout(() => setSaved(0), 2600);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
   async function handleChanged() {
     await onChanged();
-    setSavedInSession(true);
-  }
-  const planningJobs = workflowJobs.filter((definition) => definition.stage === "understand" || definition.stage === "plan");
-  const recommended = planningJobs.find((definition) => !isComplete(bundle, definition)) ?? planningJobs.at(-1)!;
-  const planningComplete = planningJobs.every((definition) => isComplete(bundle, definition));
-  const returnToRoadmap = returnTo === "roadmap" || planningComplete;
-  function continueWorkflow() {
-    setSavedInSession(false);
-    if (returnToRoadmap) onRoadmap();
-    else onOpenJob(recommended.id);
+    setSaved((count) => count + 1);
   }
   const changed = handleChanged;
   return <main className="job-workspace">
@@ -75,12 +73,47 @@ export function JobWorkspace({ jobId, bundle, returnTo, onBack, onOpenJob, onRep
     </button>
     <header className="job-header"><div className="job-title-row"><span className="job-hero-icon"><Icon /></span><div><span className="eyebrow">{bundle.protein.name} · CURRENT JOB</span><h1>{title}</h1><p>{description}</p></div></div><div className="job-header-actions"><span className={`engine-state ${online ? "online" : online === false ? "offline" : "checking"}`}><span />{online ? "Local engine connected" : online === false ? "Local engine unavailable" : "Checking engine"}</span><Button variant="outline" onClick={onRoadmap}><FlaskConical/> Roadmap</Button><Button variant="outline" onClick={onReports}><BookOpen /> Report</Button></div></header>
     <section className="job-surface">{jobId === "sequence" && <SequenceJob bundle={bundle} onChanged={changed} />}{jobId === "properties" && <PropertiesJob bundle={bundle} onChanged={changed} />}{jobId === "research" && <SequenceResearchJob bundle={bundle} onChanged={changed} />}{jobId === "reference-match" && <ReferenceMatchJob bundle={bundle} onChanged={changed} />}{jobId === "structure" && <StructureJob bundle={bundle} onChanged={changed} onOpenJob={onOpenJob} />}{jobId === "readiness" && <ProteinReadinessJob bundle={bundle} onChanged={changed} onReports={onReports} onOpenJob={onOpenJob} />}{jobId === "expression-system" && <ExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "expression-vector" && <ExpressionVectorJob bundle={bundle} onChanged={changed} />}{(["purification-lysis","purification-subtractive","purification-sec"] as string[]).includes(jobId) && <PurificationStageJob bundle={bundle} onChanged={changed} mode={jobId as "purification-lysis"|"purification-subtractive"|"purification-sec"} />}{(["purification-affinity","purification-workflow"] as string[]).includes(jobId) && <PurificationPlannerJob bundle={bundle} onChanged={changed} section={jobId} />}{jobId === "transformation-expression" && <TransformationExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "chromatogram" && <ChromatogramStudioJob bundle={bundle} onChanged={changed} />}{jobId === "gel" && <GelAnalysisJob bundle={bundle} onChanged={changed} />}</section>
-    {savedInSession && <button className="job-next-tab" onClick={continueWorkflow}>
-      <span className="job-next-status"><Check/> Saved</span>
-      <span className="job-next-copy"><small>{returnToRoadmap ? "CONTINUE THE PURIFICATION" : "RECOMMENDED NEXT PLANNING JOB"}</small><strong>{returnToRoadmap ? "Return to purification roadmap" : recommended.label}</strong><em>{returnToRoadmap ? "The saved result and planning choices are reflected in the roadmap." : recommended.description}</em></span>
-      {returnToRoadmap ? <FlaskConical/> : <><Sparkles className="job-next-sparkle"/><ChevronRight className="job-next-arrow"/></>}
-    </button>}
+    <JobNavigation bundle={bundle} jobId={jobId} saved={saved > 0} onStep={onStep} onChanged={onChanged}/>
   </main>;
+}
+
+/** Previous and Next job tabs in the bottom corners of an open job. They sit
+ *  in their own strip under the job, so they never cover its content. */
+function JobNavigation({ bundle, jobId, saved, onStep, onChanged }: { bundle: ProteinBundle; jobId: string; saved: boolean; onStep: (jobId: string, direction: "forward" | "back") => void; onChanged: () => Promise<void> }) {
+  const { previous, next } = jobNeighbours(jobId);
+  const [skipping, setSkipping] = useState(false);
+  const [failure, setFailure] = useState("");
+  const current = definitionFor(jobId);
+  async function skip(definition: WorkflowJobDefinition, then: WorkflowJobDefinition) {
+    setSkipping(true); setFailure("");
+    try {
+      const existing = jobsFor(bundle, definition)[0];
+      const job = existing ?? await proteinLabsApi.createJob(bundle.protein.id, definition.label, definition.appType);
+      await proteinLabsApi.updateJob(bundle.protein.id, job.id, `Skipped — ${definition.label}`, "complete", buildSkipConfig(job.config));
+      await onChanged();
+      onStep(then.id, "forward");
+    } catch (reason) { setFailure(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setSkipping(false); }
+  }
+  return <nav className="job-nav" aria-label="Workflow jobs">
+    {previous && <JobNavTab direction="back" target={previous} onStep={onStep}/>}
+    <span className="job-nav-trailing">
+      <span className={`job-nav-status ${failure ? "error" : ""}`} role="status">{failure ? <><CircleAlert/> {failure}</> : saved ? <><Check/> Saved</> : null}</span>
+      {next && canSkipJob(bundle, jobId) && <button type="button" className="job-nav-skip" disabled={skipping} onClick={() => void skip(current, next)} aria-label={`Skip ${current.label} and open the next job`}>{skipping ? <LoaderCircle className="spin"/> : <SkipForward/>} Skip</button>}
+      {next && <JobNavTab direction="forward" target={next} onStep={onStep}/>}
+    </span>
+  </nav>;
+}
+
+function JobNavTab({ direction, target, onStep }: { direction: "forward" | "back"; target: WorkflowJobDefinition; onStep: (jobId: string, direction: "forward" | "back") => void }) {
+  const tooltip = useId();
+  const label = direction === "back" ? "Previous job" : "Next job";
+  return <span className={`job-nav-corner ${direction === "back" ? "previous" : "next"}`}>
+    <button type="button" className="job-nav-tab" onClick={() => onStep(target.id, direction)} aria-describedby={tooltip}>
+      {direction === "back" && <ChevronLeft aria-hidden="true"/>}{label}{direction === "forward" && <ChevronRight aria-hidden="true"/>}
+    </button>
+    <span className="job-nav-tooltip" role="tooltip" id={tooltip}>{target.label}</span>
+  </span>;
 }
 
 function Panel({ title, hint, children, className = "" }: { title: string; hint?: string; children: React.ReactNode; className?: string }) { return <section className={`lab-panel ${className}`}><div className="panel-heading"><div><h2>{title}</h2>{hint && <p>{hint}</p>}</div></div>{children}</section>; }
