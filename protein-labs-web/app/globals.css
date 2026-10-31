@@ -6049,6 +6049,32 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .composition-table tr.is-clickable { cursor: pointer; }
 .composition-table tr.is-clickable:hover > * { background: color-mix(in srgb, var(--aa) 8%, transparent); }
 .composition-table tr:has(.composition-residue:focus-visible) > * { background: color-mix(in srgb, var(--aa) 10%, transparent); }
+/* Most abundant residue(s): accent tint, an ink rule on the leading edge and a
+   "Most abundant" badge stacked over the bar. The bar cell trades its vertical
+   padding for the badge, so the row keeps the height of its neighbours. */
+.composition-table tr.is-most-abundant { --top-row: color-mix(in srgb, var(--accent) 40%, transparent); }
+.app-shell.visual-mono-dark .composition-table tr.is-most-abundant,
+.app-shell.visual-mono-light .composition-table tr.is-most-abundant { --top-row: var(--accent); }
+.composition-table tr.is-most-abundant > *,
+.composition-table tr.is-most-abundant.is-clickable:hover > * { background: var(--top-row); }
+.composition-table tr.is-most-abundant > th { box-shadow: inset 3px 0 0 var(--accent-foreground); }
+.composition-table tr.is-most-abundant th span,
+.composition-table tr.is-most-abundant .num { color: var(--foreground); font-weight: 700; }
+.composition-table tr.is-most-abundant .composition-bar-cell { padding-block: 3px; }
+.composition-top-badge {
+  display: block;
+  width: max-content;
+  margin: 0 0 2px auto;
+  border: 1px solid color-mix(in srgb, var(--accent-foreground) 30%, transparent);
+  border-radius: 99px;
+  padding: 0 6px;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+}
 .composition-residue {
   display: inline-flex;
   align-items: baseline;
