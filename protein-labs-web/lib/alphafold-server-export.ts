@@ -19,6 +19,7 @@
 // tests run under Node's built-in type stripping.
 import type { JsonObject, ProteinBundle } from "./protein-labs-api.ts";
 import { readOligomericState, subunitCount } from "./oligomeric-state.ts";
+import { recogniseMolecule } from "./alphafold-server-job.ts";
 import type { AlphaFoldJobRequest, ExportWarning, GlycanRequest, ProteinChainRequest, PtmRequest, SmallMoleculeRequest } from "./alphafold-server-job.ts";
 
 /** A partner chain the scientist adds in the export dialog. */
@@ -144,7 +145,9 @@ export function splitCofactorText(value: string): string[] {
   return value
     .split(/[;\n]|\band\b|\s\+\s|(?<![0-9]),(?!\s*[0-9])/gi)
     .map((part) => part.trim())
-    .filter((part) => part.length > 0 && !/^(none|n\/a|no|unknown|not reviewed)$/i.test(part));
+        // Bare "NA" is "not applicable" far more often than it is sodium, and the
+    // charge is what tells them apart: `Na+` and `sodium` still get through.
+    .filter((part) => part.length > 0 && !/^(none|n\/a|na|no|unknown|not reviewed)$/i.test(part));
 }
 
 /** The reference record the project chose, preferring the live match over the snapshot. */
@@ -254,19 +257,42 @@ export function alphaFoldRequestFor(bundle: ProteinBundle, partners: PartnerChai
 
   const cofactors: SmallMoleculeRequest[] = [];
   const seen = new Set<string>();
+  // Dedupe on the entity AlphaFold Server will actually model, not on how the
+  // cofactor was written down. The readiness check pre-fills its Cofactor
+  // details from this same reference as `name · CHEBI:id`, so one heme reaches
+  // us as both "heme b" and "heme b · CHEBI:60344"; keyed on the raw text those
+  // are two cofactors, and the builder would merge them into `count: 2` and
+  // model a monomer with two hemes. Anything unrecognised has no code to key
+  // on, so it falls back to its text and still earns its own warning.
   const addCofactor = (name: string, source: string) => {
-    const key = name.trim().toLowerCase();
-    if (!key || seen.has(key)) return;
+    const cleaned = name.trim();
+    if (!cleaned) return;
+    const match = recogniseMolecule(cleaned);
+    const key = match ? `${match.kind}:${match.code}` : `text:${cleaned.toLowerCase()}`;
+    if (seen.has(key)) return;
     seen.add(key);
-    cofactors.push({ code: name.trim(), copies: 1, source });
+    cofactors.push({ code: cleaned, copies: 1, source });
   };
   for (const cofactor of evidence.cofactors) {
     const name = String(cofactor.name ?? "").trim();
     if (name) addCofactor(name, `${name} (${evidence.accession || "reference"})`);
   }
   const readiness = jobConfig(bundle, "protein-readiness");
-  for (const name of splitCofactorText(String(readiness.cofactorDetails ?? ""))) {
-    addCofactor(name, `${name} (readiness check)`);
+  const cofactorAnswer = String(readiness.cofactorRequired ?? "");
+  if (cofactorAnswer === "No") {
+    // The scientist's own answer beats the homolog's annotation, but dropping a
+    // haemoglobin's heme on the strength of one radio button would be worse
+    // than carrying it, so the reference's cofactors stay and say so.
+    if (cofactors.length) {
+      notes.push({
+        category: "approximation", severity: "adjusted", subject: "Readiness check",
+        message: `The readiness check answers "no" to requiring a cofactor, so its own notes were not read. ${cofactors.length === 1 ? "The cofactor" : `The ${cofactors.length} cofactors`} below still ${cofactors.length === 1 ? "comes" : "come"} from ${evidence.accession || "the reference"} — remove ${cofactors.length === 1 ? "it" : "them"} from the job if this construct really binds nothing.`,
+      });
+    }
+  } else {
+    for (const name of splitCofactorText(String(readiness.cofactorDetails ?? ""))) {
+      addCofactor(name, `${name} (readiness check)`);
+    }
   }
 
   const ptmAnswer = String(readiness.postTranslationalModification ?? "");

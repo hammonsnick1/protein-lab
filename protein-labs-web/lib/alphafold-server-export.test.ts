@@ -103,6 +103,38 @@ describe("cofactors from earlier jobs", () => {
     ]);
   });
 
+  it("does not count a cofactor twice when the readiness check pre-filled it from the same reference", () => {
+    // The readiness job pre-fills Cofactor details from the chosen reference as
+    // `name · CHEBI:id`, so the same cofactor arrives under two spellings. It
+    // must stay one copy: a monomer with one heme is not a monomer with two.
+    const result = buildAlphaFoldJob(alphaFoldRequestFor(bundle([
+      monomer,
+      reference([], [{ name: "heme b", chebiId: "CHEBI:60344" }, { name: "Zn(2+)", chebiId: "CHEBI:29105" }]),
+      job("protein-readiness", { cofactorRequired: "Yes", cofactorDetails: "heme b · CHEBI:60344; Zn(2+) · CHEBI:29105" }),
+    ])));
+    assert.deepEqual(result.jobs[0].sequences.slice(1), [
+      { ligand: { ligand: "CCD_HEM", count: 1 } },
+      { ion: { ion: "ZN", count: 1 } },
+    ]);
+  });
+
+  it("dedupes on the cofactor AlphaFold Server will model, not on how it was written", () => {
+    const request = alphaFoldRequestFor(bundle([
+      monomer,
+      reference([], [{ name: "Mg(2+)" }]),
+      job("protein-readiness", { cofactorRequired: "Yes", cofactorDetails: "magnesium; MG; Mg2+" }),
+    ]));
+    assert.equal(request.cofactors?.length, 1);
+  });
+
+  it("keeps two cofactors it cannot recognise apart", () => {
+    const request = alphaFoldRequestFor(bundle([
+      monomer,
+      job("protein-readiness", { cofactorRequired: "Yes", cofactorDetails: "molybdopterin; biotin; molybdopterin" }),
+    ]));
+    assert.deepEqual(request.cofactors?.map((entry) => entry.code), ["molybdopterin", "biotin"]);
+  });
+
   it("does not record the same cofactor twice from two jobs", () => {
     const request = alphaFoldRequestFor(bundle([
       monomer,
@@ -116,6 +148,41 @@ describe("cofactors from earlier jobs", () => {
     assert.deepEqual(splitCofactorText("heme, Zn2+ and FAD"), ["heme", "Zn2+", "FAD"]);
     assert.deepEqual(splitCofactorText("none"), []);
     assert.deepEqual(splitCofactorText(""), []);
+  });
+
+  it("reads a bare NA as \"not applicable\", but still accepts sodium", () => {
+    // Researchers type NA for not-applicable; exporting a silent sodium ion
+    // off the back of that would be a fabricated entity in the job.
+    assert.deepEqual(splitCofactorText("NA"), []);
+    assert.deepEqual(splitCofactorText("heme; NA"), ["heme"]);
+    assert.deepEqual(splitCofactorText("Na+"), ["Na+"]);
+    assert.deepEqual(splitCofactorText("sodium"), ["sodium"]);
+    const result = buildAlphaFoldJob(alphaFoldRequestFor(bundle([
+      monomer, job("protein-readiness", { cofactorRequired: "Yes", cofactorDetails: "NA" }),
+    ])));
+    assert.equal(result.jobs[0].sequences.length, 1);
+    assert.deepEqual(result.warnings, []);
+  });
+
+  it("does not read the readiness notes when the answer is no, and says the reference's still apply", () => {
+    const request = alphaFoldRequestFor(bundle([
+      monomer,
+      reference([], [{ name: "heme b" }]),
+      job("protein-readiness", { cofactorRequired: "No", cofactorDetails: "ATP" }),
+    ]));
+    assert.deepEqual(request.cofactors?.map((entry) => entry.code), ["heme b"]);
+    const note = (request.notes ?? []).find((entry) => entry.subject === "Readiness check");
+    assert.ok(note);
+    assert.match(note.message, /answers "no" to requiring a cofactor/);
+    assert.match(note.message, /still comes from P68871/);
+  });
+
+  it("stays quiet about a no answer when the reference named no cofactors either", () => {
+    const request = alphaFoldRequestFor(bundle([
+      monomer, job("protein-readiness", { cofactorRequired: "No" }),
+    ]));
+    assert.deepEqual(request.cofactors, []);
+    assert.equal((request.notes ?? []).filter((entry) => entry.subject === "Readiness check").length, 0);
   });
 
   it("does not split a chemical name on its own punctuation", () => {

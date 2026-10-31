@@ -93,7 +93,8 @@ export function AlphaFoldServerExport({ bundle }: { bundle: ProteinBundle }) {
           <section className="af-export-group">
             <header><Dna aria-hidden="true"/><strong>Chains</strong><span>{chains.length}</span></header>
             {chains.length ? <ul>
-              {chains.map((chain) => <li key={`${chain.kind}-${chain.label}`}>
+              {/* Keyed by position: two partner chains may share a name. */}
+              {chains.map((chain, index) => <li key={`${chain.kind}-${index}`}>
                 <div className="af-export-row">
                   <span className="af-export-name">{chain.label}</span>
                   <small>{chainKinds[chain.kind]} · {chain.length.toLocaleString("en-US")} {chain.kind === "protein" ? "residues" : "bases"} · {chain.count} {chain.count === 1 ? "copy" : "copies"} · {chain.tokens.toLocaleString("en-US")} {chain.tokens === 1 ? "token" : "tokens"}</small>
