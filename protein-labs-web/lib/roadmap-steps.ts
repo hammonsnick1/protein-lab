@@ -65,3 +65,48 @@ export function mergeSavedSteps(base: RoadmapStep[], raw: unknown): RoadmapStep[
   return [...restored, ...base.filter((value) => !restoredIds.has(value.id))];
 }
 export function object(value: unknown): JsonObject { return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}; }
+
+/**
+ * Moves the item at `from` so it lands at insertion point `insertion`, counted
+ * in the list before the move (0 is before the first item, length after the
+ * last). Dropping an item on either side of itself leaves the order unchanged.
+ */
+export function moveStep<T>(items: T[], from: number, insertion: number): T[] {
+  if (from < 0 || from >= items.length) return items;
+  const target = Math.max(0, Math.min(insertion, items.length)), next = [...items], [moved] = next.splice(from, 1);
+  next.splice(from < target ? target - 1 : target, 0, moved);
+  return next;
+}
+
+/** A buffer recipe shown on a roadmap column; empty `ingredients` means not saved yet. */
+export type StepBuffer = { id: string; label: string; pH: string; ingredients: BufferIngredient[] };
+const stepBufferIds: Record<string, string[]> = { lysis: ["lysis"], affinity: ["binding", "wash", "elution"], cleavage: ["cleavage"], subtractive: ["cleavage"], sec: ["storage"] };
+const stepBufferLabels: Record<string, string> = { lysis: "Lysis", binding: "Binding", wash: "Wash", elution: "Elution", cleavage: "Cleavage / cleanup", storage: "SEC running / storage" };
+// Where each buffer lives on its own job's config, for projects saved before
+// the shared purification-buffer record held it.
+function ownJobBuffer(bundle: ProteinBundle, id: string): JsonObject {
+  if (["binding", "wash", "elution"].includes(id)) return object(object(config(bundle, "purification-affinity").buffers)[id]);
+  const appType = ({ lysis: "purification-lysis", cleavage: "purification-subtractive", storage: "purification-sec" } as Record<string, string | undefined>)[id];
+  if (!appType) return {};
+  const job = config(bundle, appType);
+  return { pH: job.bufferPH ?? null, components: job.bufferComponents ?? null };
+}
+
+/**
+ * The buffers used at a planned step, read from the shared purification-buffer
+ * record (with the owning job's own buffer as a fallback for older projects).
+ * Custom steps, steps without a buffer and a retained-tag cleavage step
+ * return an empty list.
+ */
+export function stepBuffers(bundle: ProteinBundle, stepId: string): StepBuffer[] {
+  // A plan that keeps the tag has no cleavage reaction to make a buffer for.
+  if (stepId === "cleavage" && String(config(bundle, "purification-cleavage").proteaseId ?? "") === "retain") return [];
+  const shared = object(config(bundle, "purification-buffer").steps);
+  return (stepBufferIds[stepId] ?? []).map((id) => {
+    const record = object(shared[id]), source = bufferIngredients(record.components).some((item) => item.name) ? record : ownJobBuffer(bundle, id);
+    return { id, label: stepBufferLabels[id], pH: first(source.pH), ingredients: bufferIngredients(source.components).filter((item) => item.name) };
+  });
+}
+export function bufferIngredients(value: unknown): BufferIngredient[] { return Array.isArray(value) ? value.filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((raw) => { const item = raw as JsonObject; return { name: String(item.name ?? ""), concentration: String(item.concentration ?? ""), unit: String(item.unit ?? ""), role: String(item.role ?? "") }; }) : []; }
+/** "50 mM Tris-HCl" — one ingredient as it is written on a bench recipe. */
+export function ingredientLabel(item: BufferIngredient) { return [item.concentration, item.unit, item.name].map((value) => value.trim()).filter(Boolean).join(" "); }
