@@ -1,28 +1,33 @@
 // Aggregates for the dashboard's statistics column. Everything here is counted
 // from records the engine already returns (projects and their saved workflow
 // jobs); nothing is estimated. Pure functions so `node --test` can cover them.
-import type { ProjectJob, ProteinRecord } from "./protein-labs-api.ts";
+import type { ProteinRecord } from "./protein-labs-api.ts";
 
 export type StatRow = { key: string; label: string; value: number };
 export type WeekRow = StatRow & { start: Date; end: Date };
 
-const statusOrder: { key: ProjectJob["status"]; label: string }[] = [
-  { key: "complete", label: "Complete" },
-  { key: "in_progress", label: "In progress" },
-  { key: "ready", label: "Not started" },
+/** One workflow card of one project, in the state that card is in. The charts
+ *  count cards, not saved job records: every record a project saves is written
+ *  "complete", so counting records drew a workflow with nothing left to do. */
+export type StepRow = { stage: string; complete: boolean; started: boolean };
+
+const statusOrder: { key: string; label: string; of: (step: StepRow) => boolean }[] = [
+  { key: "complete", label: "Complete", of: (step) => step.complete },
+  { key: "in_progress", label: "In progress", of: (step) => !step.complete && step.started },
+  { key: "ready", label: "Not started", of: (step) => !step.complete && !step.started },
 ];
 
-export function jobStatusRows(jobs: ProjectJob[]): StatRow[] {
-  return statusOrder.map(({ key, label }) => ({ key, label, value: jobs.filter((job) => job.status === key).length }));
+export function stepStateRows(steps: StepRow[]): StatRow[] {
+  return statusOrder.map(({ key, label, of }) => ({ key, label, value: steps.filter(of).length }));
 }
 
-/** Completed jobs per roadmap stage, in roadmap order. Jobs whose type is not
- *  on the roadmap are left out rather than guessed into a stage. */
-export function completedByStage(jobs: ProjectJob[], stages: { id: string; label: string }[], stageOf: (appType: string) => string | undefined): StatRow[] {
+/** Completed steps per roadmap stage, in roadmap order. Steps outside the
+ *  listed stages are left out rather than guessed into one. */
+export function completedByStage(steps: StepRow[], stages: { id: string; label: string }[]): StatRow[] {
   return stages.map((stage) => ({
     key: stage.id,
     label: stage.label,
-    value: jobs.filter((job) => job.status === "complete" && stageOf(job.appType) === stage.id).length,
+    value: steps.filter((step) => step.complete && step.stage === stage.id).length,
   }));
 }
 

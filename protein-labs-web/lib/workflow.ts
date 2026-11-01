@@ -54,6 +54,15 @@ export const workflowJobs: WorkflowJobDefinition[] = [
   { id: "hsqc", appType: "hsqc-prediction", label: "Predict the ¹H–¹⁵N HSQC spectrum", description: "See where each backbone N–H peak should fall, which predictor placed it, and click between peaks and the 3D structure.", stage: "nmr", color: "#d36f9c", requiredKey: "predictedAt" },
 ];
 
+/** The stages the workflow screen draws cards for. The purify and analysis
+ *  jobs are opened from the purification roadmap once there is bench data to
+ *  record, so a project is not measured against them. */
+export const cardStages: WorkflowJobDefinition["stage"][] = ["understand", "plan", "crystallize", "nmr"];
+
+/** The steps a project is asked to finish: one per card on the workflow
+ *  screen, which is what the progress counters count. */
+export const workflowCards = workflowJobs.filter((definition) => cardStages.includes(definition.stage));
+
 /** Jobs that were folded into others. Saved links (roadmaps, old bookmarks)
  *  may still name them, so they open the job that now holds their content. */
 export const jobAliases: Record<string, string> = {
@@ -66,8 +75,15 @@ export function resolveJobId(value: string) {
 }
 
 export function definitionFor(value: string) {
+  return cardFor(value) ?? workflowJobs[0];
+}
+
+/** The workflow card a saved job record belongs to, or null when the record
+ *  has no card of its own — the roadmap saves a `purification-roadmap` record
+ *  that is not a step the researcher can open and finish. */
+export function cardFor(value: string) {
   const id = resolveJobId(value);
-  return workflowJobs.find((job) => job.id === id || job.appType === id) ?? workflowJobs[0];
+  return workflowJobs.find((job) => job.id === id || job.appType === id) ?? null;
 }
 
 export function savedByUser(job: ProjectJob) {
@@ -108,6 +124,57 @@ export function workflowState(bundle: ProteinBundle, definition: WorkflowJobDefi
   if (nextRecommended(bundle).appType === definition.appType) return "recommended";
   if (jobsFor(bundle, definition).length) return "started";
   return "available";
+}
+
+/** How far through the workflow a project actually is.
+ *
+ *  The denominator is the number of workflow cards, never the number of saved
+ *  job records: counting saved jobs over saved jobs made every project read
+ *  "15 of 15 · 100 %" as soon as its first step was saved, while the workflow
+ *  screen still showed open cards. `started` stays false until the researcher
+ *  has saved a step of their own, so an untouched branch project can show an
+ *  empty state instead of "0/0 jobs · 0 %". */
+export type WorkflowProgress = {
+  /** Cards that are complete or deliberately skipped. */
+  complete: number;
+  /** Cards the workflow screen draws for this project. */
+  total: number;
+  remaining: number;
+  /** Rounded for display: never 0 % for finished work, never 100 % while a card is open. */
+  percent: number;
+  /** True once any workflow step has been saved by the researcher. */
+  started: boolean;
+  /** The first card that is not complete; null once every card is done. */
+  next: WorkflowJobDefinition | null;
+};
+
+export function workflowProgress(bundle: ProteinBundle): WorkflowProgress {
+  const cards = workflowCards.map((definition) => ({ definition, complete: isComplete(bundle, definition) }));
+  const complete = cards.filter((card) => card.complete).length;
+  return {
+    complete,
+    total: cards.length,
+    remaining: cards.length - complete,
+    percent: progressPercent(complete, cards.length),
+    started: bundle.projectJobs.some(savedByUser),
+    next: cards.find((card) => !card.complete)?.definition ?? null,
+  };
+}
+
+/** The same counts added up over several projects, for the dashboard totals. */
+export function workflowProgressTotals(bundles: ProteinBundle[]) {
+  const each = bundles.map(workflowProgress);
+  const complete = each.reduce((sum, progress) => sum + progress.complete, 0);
+  const total = each.reduce((sum, progress) => sum + progress.total, 0);
+  return { complete, total, remaining: total - complete, percent: progressPercent(complete, total), projects: each.length };
+}
+
+/** Rounds a ratio to a percentage that cannot overstate progress: it reads
+ *  100 % only when everything is complete, and 0 % only when nothing is. */
+export function progressPercent(complete: number, total: number) {
+  if (!total || complete <= 0) return 0;
+  if (complete >= total) return 100;
+  return Math.min(99, Math.max(1, Math.round((complete / total) * 100)));
 }
 
 export function buildSkipConfig(existing: JsonObject = {}) {
