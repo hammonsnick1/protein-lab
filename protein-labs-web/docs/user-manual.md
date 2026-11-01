@@ -67,7 +67,7 @@ The menu bar is always available after you start the workspace. Click a menu nam
 | --- | --- |
 | **File** | New project, open a project, save or export its record, share a summary, and choose the project directory |
 | **Edit** | Refresh the workspace and open the current project’s report |
-| **Settings** | The app's appearance |
+| **Settings** | Your profile, AlphaFold Server access, collaborators, and the app's appearance |
 | **Tools** | Project gallery, project trees, the vector and protein library, and the current project's workflow, roadmap and report |
 | **Help** | This manual, keyboard and mouse controls, and **About Protein Lab**, which shows the app version |
 
@@ -911,6 +911,16 @@ To make a lineage:
 5. Drag a non-root project node onto a valid parent to re-parent it. Select a project node to open that project.
 
 > **Tip:** Protein Lab prevents a project from being linked in a loop. If a bad imported relationship is detected, the workspace identifies it so you can remove the link.
+
+## Workspace settings
+
+**Settings** → **Profile…**, **AlphaFold Server access…** or **Collaborators…** opens the workspace settings dialog on that section.
+
+- **Profile** — the name Protein Lab greets you with, and an optional Google account label.
+- **AlphaFold access** — link the Google account your system browser is signed in with, then copy a project's sequence as FASTA and open AlphaFold Server. Protein Lab never stores your password or authentication token.
+- **Collaborators** — the people you prepare project handoffs for. Protein Lab works on its own, so add someone only when you need to send them a project; once you have, the dashboard shows a **Team members** tile for preparing the handoff.
+
+All three are kept on this computer and are never sent anywhere.
 
 ## Appearance
 
