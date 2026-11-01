@@ -79,6 +79,48 @@ weights. The public repository was examined on 2026-10-31 and has no license
 file, so it is unavailable pending an explicit usable license from its authors.
 Source: https://github.com/KJ-Liao/Shoebill
 
+## UCBShift 2.0 / CSpred (optional external NMR predictor)
+
+Protein Labs does not distribute, install, or bundle CSpred or UCBShift 2.0.
+The external-command adapter is available only to an operator who has separately
+obtained the predictor and verified that the intended deployment is within the
+upstream license's educational, research, and not-for-profit grant. The source
+license is non-commercial and has no SPDX identifier; it is not suitable for
+general commercial redistribution without permission from UC Berkeley's Office
+of Technology Licensing.
+
+Source and license: https://github.com/THGLab/CSpred/blob/master/LICENSE.txt
+
+Copyright © 2020 The Regents of the University of California. Permission to
+use, copy, modify, and distribute the software and documentation for
+educational, research, and not-for-profit purposes, without fee and without a
+signed licensing agreement, is granted provided the required notices are
+retained. The software is provided "AS IS" without warranty.
+
+## LEGOLAS (optional external NMR predictor)
+
+Protein Labs does not distribute LEGOLAS. When an operator installs it for the
+HSQC adapter, the adapter consumes its documented CSV output. LEGOLAS source is
+MIT licensed, Copyright (c) 2024 Roitberg Group:
+https://github.com/roitberg-group/legolas
+
+Permission is hereby granted, free of charge, to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, subject to
+including the copyright notice and this permission notice in all copies or
+substantial portions. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND.
+
+## SHIFTX2 (optional external NMR predictor)
+
+Protein Labs does not distribute, install, or bundle SHIFTX2. The upstream
+download page provides standalone Linux/macOS archives (latest listed Linux
+release: 1.13, 2018) but does not publish a license or redistribution grant on
+that page. Therefore the adapter may only consume an operator-supplied command;
+no automatic installation or redistribution is offered. The operator must
+obtain permission or verify applicable terms before enabling it.
+
+Source: http://www.shiftx2.ca/download.html (checked 2026-10-31)
+
 ## OpenCloning
 
 Protein Labs' Expression Planning vector builder adapts sequence/source model
