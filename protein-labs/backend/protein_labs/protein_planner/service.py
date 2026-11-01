@@ -1128,6 +1128,7 @@ class ProteinPlanner:
             "transformation-expression": "Transformation and expression",
             "chromatogram-studio": "Chromatogram analysis",
             "gel-analysis": "Gel purity analysis",
+            "crystallization": "Crystallization assessment",
         }
         if app_type not in labels:
             raise ValueError("Select a valid Protein Labs application")
