@@ -23,6 +23,7 @@ import { loadProjectTrees, type StorageMode } from "@/lib/project-tree-store";
 import { runViewTransition, type NavDirection } from "@/lib/view-transition";
 import { desktopBridge, folderOf, type ProjectDirectoryState } from "@/lib/desktop-bridge";
 import { createLibraryOpener, libraryStorage, type LibraryTab } from "@/lib/library-hub";
+import { startWorkspaceClock } from "@/lib/workspace-time";
 
 type View = "home" | "projects" | "dashboard" | "workflow" | "project-trees" | "library" | "workbench" | "manual" | "roadmap" | "reports" | "job";
 // Baked in by desktop/vite.config.ts from package.json.
@@ -122,6 +123,9 @@ export default function Home() {
     const timer = window.setTimeout(() => setSplashReady(true), 1150);
     return () => window.clearTimeout(timer);
   }, []);
+  // The shell counts time in the workspace. Counting it in the dashboard
+  // stopped the clock the moment a job was opened.
+  useEffect(() => { if (started) return startWorkspaceClock(); }, [started]);
   // Ctrl+Shift+L opens the library on its Vectors tab, Ctrl+Shift+P on Proteins,
   // and F1 the manual from anywhere.
   useEffect(() => {

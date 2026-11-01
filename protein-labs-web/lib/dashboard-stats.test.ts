@@ -2,11 +2,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-import { completedByStage, jobStatusRows, niceMax, perWeek, projectsOverTime, weekStart } from "./dashboard-stats.ts";
-import type { ProjectJob, ProteinRecord } from "./protein-labs-api.ts";
+import { completedByStage, niceMax, perWeek, projectsOverTime, stepStateRows, weekStart, type StepRow } from "./dashboard-stats.ts";
+import type { ProteinRecord } from "./protein-labs-api.ts";
 
-function job(status: ProjectJob["status"], appType: string, createdAt = "2026-10-14T10:00:00"): ProjectJob {
-  return { id: `${appType}-${status}-${createdAt}`, proteinId: "p", name: appType, appType, status, config: {}, createdAt, updatedAt: createdAt };
+function step(stage: string, state: "complete" | "started" | "open"): StepRow {
+  return { stage, complete: state === "complete", started: state === "started" };
 }
 function protein(createdAt?: string): ProteinRecord {
   return { id: createdAt ?? "undated", name: "P", sequence: "MK", organism: "", geneName: "", description: "", expressionSystem: "", notes: "", tags: [], externalIds: {}, createdAt };
@@ -16,15 +16,16 @@ function protein(createdAt?: string): ProteinRecord {
 const now = new Date(2026, 9, 17, 12);
 
 describe("dashboard stats", () => {
-  it("counts jobs by status in a fixed order", () => {
-    const rows = jobStatusRows([job("complete", "a"), job("complete", "b"), job("ready", "c")]);
-    assert.deepEqual(rows.map((row) => [row.key, row.value]), [["complete", 2], ["in_progress", 0], ["ready", 1]]);
+  it("counts workflow steps by state in a fixed order", () => {
+    // Steps the researcher has not reached are counted, which is what makes
+    // "Not started" meaningful; saved records were all "complete".
+    const rows = stepStateRows([step("plan", "complete"), step("plan", "complete"), step("plan", "started"), step("purify", "open")]);
+    assert.deepEqual(rows.map((row) => [row.key, row.value]), [["complete", 2], ["in_progress", 1], ["ready", 1]]);
   });
 
-  it("counts only completed jobs on the roadmap, per stage", () => {
+  it("counts only completed steps on the roadmap, per stage", () => {
     const stages = [{ id: "plan", label: "Plan" }, { id: "analysis", label: "Analysis" }];
-    const stageOf = (appType: string) => ({ "purification-sec": "plan", "gel-analysis": "analysis" } as Record<string, string>)[appType];
-    const rows = completedByStage([job("complete", "gel-analysis"), job("in_progress", "gel-analysis"), job("complete", "purification-sec"), job("complete", "unknown")], stages, stageOf);
+    const rows = completedByStage([step("analysis", "complete"), step("analysis", "started"), step("plan", "complete"), step("crystallize", "complete")], stages);
     assert.deepEqual(rows.map((row) => row.value), [1, 1]);
   });
 

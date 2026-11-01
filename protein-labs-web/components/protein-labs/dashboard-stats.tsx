@@ -3,12 +3,11 @@
 import { useMemo, useState } from "react";
 import { BarChart3, ChartColumn, Table2 } from "lucide-react";
 import type { ProteinBundle, ProteinRecord } from "@/lib/protein-labs-api";
-import { completedByStage, jobStatusRows, niceMax, perWeek, projectsOverTime, type StatRow, type WeekRow } from "@/lib/dashboard-stats";
-import { workflowJobs, workflowSections } from "@/lib/workflow";
+import { completedByStage, niceMax, perWeek, projectsOverTime, stepStateRows, type StatRow, type StepRow, type WeekRow } from "@/lib/dashboard-stats";
+import { cardStages, workflowCards, workflowProgressTotals, workflowSections, workflowState } from "@/lib/workflow";
 
 const WEEKS = 8;
 const stageLabels: Record<string, string> = { understand: "Understand", plan: "Plan", purify: "Purify", analysis: "Analyse", crystallize: "Crystallize", nmr: "NMR" };
-const stageOf = (appType: string) => workflowJobs.find((job) => job.appType === appType)?.stage;
 
 export type BundlesState = "loading" | "ready" | "error";
 
@@ -22,10 +21,20 @@ export function DashboardStats({ proteins, bundles, state, hours, children }: { 
   const [view, setView] = useState<"chart" | "table">("chart");
   const now = useMemo(() => new Date(), []);
   const jobs = useMemo(() => bundles.flatMap((bundle) => bundle.projectJobs), [bundles]);
-  const complete = jobs.filter((job) => job.status === "complete").length;
+  // Steps complete out of the steps these projects' workflows contain. Counting
+  // saved records over saved records read "15 of 15" with cards still open.
+  const stepTotals = useMemo(() => workflowProgressTotals(bundles), [bundles]);
   const purified = bundles.filter((bundle) => bundle.projectJobs.some((job) => job.status === "complete" && ["purification-workflow", "chromatogram-studio", "gel-analysis"].includes(job.appType))).length;
-  const status = useMemo(() => jobStatusRows(jobs), [jobs]);
-  const stages = useMemo(() => completedByStage(jobs, workflowSections.map((section) => ({ id: section.id, label: stageLabels[section.id] ?? section.label })), stageOf), [jobs]);
+  // Every workflow card of every project, in the state the workflow screen
+  // shows it in, so the charts and the counter above them agree.
+  const steps = useMemo<StepRow[]>(() => bundles.flatMap((bundle) => workflowCards.map((definition) => {
+    const state = workflowState(bundle, definition);
+    return { stage: definition.stage, complete: state === "completed" || state === "skipped", started: state === "started" };
+  })), [bundles]);
+  const status = useMemo(() => stepStateRows(steps), [steps]);
+  // Only the stages that have cards: the roadmap covers the bench stages, and
+  // a row that can never move is not a statistic.
+  const stages = useMemo(() => completedByStage(steps, workflowSections.filter((section) => cardStages.includes(section.id)).map((section) => ({ id: section.id, label: stageLabels[section.id] ?? section.label }))), [steps]);
   const started = useMemo(() => perWeek(jobs.map((job) => job.createdAt), now, WEEKS), [jobs, now]);
   const projects = useMemo(() => projectsOverTime(proteins, now, WEEKS), [proteins, now]);
   const waiting = state === "loading" && proteins.length > 0;
@@ -35,7 +44,7 @@ export function DashboardStats({ proteins, bundles, state, hours, children }: { 
     {children}
     <section className="dashboard-card dashboard-stats-card" aria-busy={waiting}>
       <header className="dashboard-card-header">
-        <span><BarChart3/><span><strong>Lab statistics</strong><small>Counted from your saved projects and jobs</small></span></span>
+        <span><BarChart3/><span><strong>Lab statistics</strong><small>Counted from your projects and their workflow steps</small></span></span>
         <div className="stats-view-switch" role="group" aria-label="Show statistics as">
           <button aria-pressed={view === "chart"} onClick={() => setView("chart")} title="Show as charts"><ChartColumn/><span className="sr-only">Charts</span></button>
           <button aria-pressed={view === "table"} onClick={() => setView("table")} title="Show as tables"><Table2/><span className="sr-only">Tables</span></button>
@@ -45,17 +54,17 @@ export function DashboardStats({ proteins, bundles, state, hours, children }: { 
         <div className="stats-kpis">
           <Kpi value={proteins.length} label="Projects"/>
           <Kpi value={waiting ? "…" : purified} label="Proteins purified"/>
-          <Kpi value={waiting ? "…" : complete} label="Jobs complete" detail={waiting ? undefined : `of ${jobs.length} saved`}/>
+          <Kpi value={waiting ? "…" : stepTotals.complete} label="Steps complete" detail={waiting ? undefined : `of ${stepTotals.total} in ${stepTotals.projects} project${stepTotals.projects === 1 ? "" : "s"}`}/>
           <Kpi value={formatHours(hours)} label="Hours in Protein Lab"/>
         </div>
         {state === "error" && <p className="stats-message" role="status">The engine did not return every project&apos;s jobs, so job charts are incomplete. Restart the engine and reopen the dashboard.</p>}
         {!proteins.length && state !== "error" && <p className="stats-message">Create a project and save workflow steps; these charts fill in from that work.</p>}
         <div className={`stats-charts ${waiting ? "is-waiting" : ""}`}>
-          <StatFigure title="Workflow jobs by status" note={noJobs ? "No jobs saved yet" : undefined} view={view} rows={status} unit="jobs">
-            <BarList rows={status} unit="jobs"/>
+          <StatFigure title="Workflow steps by state" note={noJobs ? "No step saved yet" : undefined} view={view} rows={status} unit="steps">
+            <BarList rows={status} unit="steps"/>
           </StatFigure>
-          <StatFigure title="Completed jobs by roadmap stage" view={view} rows={stages} unit="jobs">
-            <BarList rows={stages} unit="jobs"/>
+          <StatFigure title="Completed steps by roadmap stage" view={view} rows={stages} unit="steps">
+            <BarList rows={stages} unit="steps"/>
           </StatFigure>
           <StatFigure title={`Jobs started per week, last ${WEEKS} weeks`} view={view} rows={started} unit="jobs" weekly>
             <WeekColumns rows={started} unit="jobs started"/>

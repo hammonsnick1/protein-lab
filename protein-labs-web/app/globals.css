@@ -11795,6 +11795,10 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .project-tile-ring circle { fill: none; stroke: color-mix(in srgb, var(--tile-accent) 18%, transparent); stroke-width: 4; }
 .project-tile-ring circle + circle { stroke: var(--tile-accent); stroke-linecap: round; animation: ring-fill 1.2s cubic-bezier(.22,1,.36,1) calc(var(--stagger, 0) * 55ms + 300ms) both; }
 .project-tile-ring b { font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; }
+/* A project with no saved step has no percentage to draw: the ring stays an
+   empty track with a dash, and the footer says "Not started". */
+.project-tile-ring.is-empty circle { stroke: color-mix(in srgb, var(--foreground) 12%, transparent); stroke-dasharray: 2 3; }
+.project-tile-ring.is-empty b { color: var(--muted-foreground); }
 @keyframes ring-fill { from { stroke-dasharray: 0 100; } }
 .project-tile > strong { overflow: hidden; font-size: 15px; font-weight: 720; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
 .project-tile > small { overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
@@ -11813,6 +11817,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 @keyframes barcode-grow { from { transform: scaleY(0); opacity: 0; } }
 .project-tile-foot { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; }
 .project-tile-foot em { border-radius: 99px; background: color-mix(in srgb, var(--tile-accent) 14%, transparent); color: color-mix(in srgb, var(--tile-accent) 70%, var(--foreground)); padding: 3px 8px; font-style: normal; font-weight: 650; white-space: nowrap; }
+.project-tile-foot em.quiet { background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--muted-foreground); }
 .project-tile-foot em.linked { display: inline-flex; align-items: center; gap: 3px; background: color-mix(in srgb, #ef765f 13%, transparent); color: color-mix(in srgb, #ef765f 75%, var(--foreground)); }
 .project-tile-foot em.linked svg { width: 11px; }
 .project-tile-foot time { margin-left: auto; color: var(--muted-foreground); white-space: nowrap; }
@@ -13074,7 +13079,12 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   padding: 3px 8px;
   color: var(--muted-foreground);
 }
-.current-job-status.status-complete { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); color: var(--primary); }
+/* The badge carries the workflow card's own state. The word is the signal;
+   colour only reinforces it, so the pill still reads in greyscale. */
+.current-job-status.state-completed { border-color: color-mix(in srgb, #27a67e 55%, var(--border)); color: color-mix(in srgb, #27a67e 85%, var(--foreground)); }
+.current-job-status.state-recommended { border-color: color-mix(in srgb, var(--primary) 55%, var(--border)); color: var(--primary); }
+.current-job-status.state-started { border-color: color-mix(in srgb, #f2b84b 60%, var(--border)); color: color-mix(in srgb, #f2b84b 80%, var(--foreground)); }
+.current-job-status.state-skipped { border-style: dashed; }
 .current-job-progress { display: flex; flex-direction: column; gap: 5px; }
 .current-job-progress i {
   display: block;

@@ -13,6 +13,8 @@ import { FlipTile, TileHeadline } from "@/components/protein-labs/dashboard-flip
 import type { ProteinBundle, ProteinRecord } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
 import type { ProjectTree } from "@/lib/project-tree-types";
+import { cardFor, workflowProgress, workflowProgressTotals, workflowState, type WorkflowProgress, type WorkflowState } from "@/lib/workflow";
+import { onWorkspaceSeconds, readWorkspaceSeconds } from "@/lib/workspace-time";
 import { projectTreeStats } from "@/lib/project-trees";
 import { LIBRARY_TILE, libraryCount, summarizePlaces, type LibraryStorage, type LibraryTab } from "@/lib/library-hub";
 import { librarySearchParams, type FacetCounts } from "@/lib/protein-library";
@@ -118,26 +120,38 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   const roots = proteins;
   const treeStats = projectTreeStats(trees);
   const activeProjectId = selectedProject || roots[0]?.id || "";
-  const completedJobs = bundles.flatMap((bundle) => bundle.projectJobs).filter((job) => job.status === "complete").length;
-  const totalJobs = bundles.reduce((sum, bundle) => sum + bundle.projectJobs.length, 0);
+  // Progress is counted against the workflow definition — the cards a project
+  // actually has to finish — so the tiles cannot read 100 % while the workflow
+  // screen still shows open cards.
+  const progressByProject = useMemo(() => new Map(bundles.map((bundle) => [bundle.protein.id, workflowProgress(bundle)])), [bundles]);
+  const stepTotals = useMemo(() => workflowProgressTotals(bundles), [bundles]);
   const projectIdsInTrees = new Set(trees.flatMap((tree) => [tree.rootProjectId, ...tree.branches.flatMap((link) => [link.fromProjectId, link.toProjectId])]));
   const upcoming = events.filter((event) => event.date >= dateKey(now)).sort((a, b) => a.date.localeCompare(b.date));
   const workspaceHours = useWorkspaceHours();
-  // The job touched most recently across every project, with its project's
-  // progress, so the dashboard opens on whatever work is actually in flight.
+  // The workflow step touched most recently across every project, with that
+  // project's progress, so the dashboard opens on whatever work is actually in
+  // flight. Records that have no card of their own — the roadmap writes one on
+  // every visit — are left out, and the badge is the step's workflow state
+  // rather than the saved record's status, which is "complete" after one save.
   const currentJob = useMemo(() => {
-    const entries = bundles.flatMap((bundle) => bundle.projectJobs.map((job) => ({ bundle, job })));
+    const entries = bundles.flatMap((bundle) => bundle.projectJobs.flatMap((job) => {
+      const definition = cardFor(job.appType);
+      return definition ? [{ bundle, job, definition }] : [];
+    }));
     if (!entries.length) return null;
     const latest = entries.reduce((best, entry) => (entry.job.updatedAt > best.job.updatedAt ? entry : best), entries[0]);
-    const jobs = latest.bundle.projectJobs;
-    const complete = jobs.filter((job) => job.status === "complete").length;
+    const progress = workflowProgress(latest.bundle);
+    // One row per card, newest first, so a card saved twice is listed once.
+    const recent = [...new Map(entries.filter((entry) => entry.bundle === latest.bundle)
+      .sort((a, b) => b.job.updatedAt.localeCompare(a.job.updatedAt))
+      .map((entry) => [entry.definition.id, entry])).values()].slice(0, 4);
     return {
       project: latest.bundle.protein,
       job: latest.job,
-      complete,
-      total: jobs.length,
-      progress: jobs.length ? complete / jobs.length : 0,
-      recent: [...jobs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4),
+      definition: latest.definition,
+      state: workflowState(latest.bundle, latest.definition),
+      progress,
+      recent: recent.map((entry) => ({ id: entry.definition.id, label: entry.definition.label, state: workflowState(entry.bundle, entry.definition) })),
     };
   }, [bundles]);
   const latestProjects = useMemo(() => [...proteins].sort((a, b) => (b.updatedAt ?? b.createdAt ?? "").localeCompare(a.updatedAt ?? a.createdAt ?? "")), [proteins]);
@@ -212,7 +226,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
         onTogglePicker={() => setPicker((value) => !value)}
         onChoose={chooseMascot}
         onHide={() => showMascot(false)}
-        cheers={companionCheers(roots.length, completedJobs, totalJobs, upcoming.length)}
+        cheers={companionCheers(roots.length, stepTotals.complete, stepTotals.total, upcoming.length)}
       />}
     </DashboardStats>
     <div className="dashboard-content-column">
@@ -233,14 +247,14 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           the flipped tile takes the spare height and its back scrolls. */}
       <div className="dashboard-board-column">
         <FlipTile className="dashboard-project-overview-card" icon={FolderKanban} art="projects" title="Projects" subtitle="Local protein projects"
-          backSubtitle={`${roots.length} project${roots.length === 1 ? "" : "s"} · ${completedJobs}/${totalJobs} workflow jobs complete`}
+          backSubtitle={`${roots.length} project${roots.length === 1 ? "" : "s"} · ${bundlesState === "ready" ? `${stepTotals.complete}/${stepTotals.total} workflow steps complete` : stepsDetail(stepTotals, bundlesState)}`}
           actions={<Button variant="outline" size="sm" onClick={onProjects}>Gallery <ArrowRight/></Button>}
           front={<>
-            <TileHeadline value={roots.length} label={`protein project${roots.length === 1 ? "" : "s"}`} detail={roots.length ? `${completedJobs} of ${totalJobs} workflow jobs complete` : "Start from an amino-acid sequence"}/>
+            <TileHeadline value={roots.length} label={`protein project${roots.length === 1 ? "" : "s"}`} detail={roots.length ? stepsDetail(stepTotals, bundlesState) : "Start from an amino-acid sequence"}/>
             {latestProjects[0] && <span className="tile-latest"><small>Last updated</small><b>{projectEmoji(latestProjects[0])} {latestProjects[0].name}</b><time>{formatRelative(latestProjects[0].updatedAt ?? latestProjects[0].createdAt)}</time></span>}
           </>}
           back={<div className="project-tile-grid">
-            {roots.map((protein, index) => { const projectBundle = bundles.find((value) => value.protein.id === protein.id); return <ProjectTile key={protein.id} protein={protein} index={index} complete={projectBundle?.projectJobs.filter((job) => job.status === "complete").length ?? 0} total={projectBundle?.projectJobs.length ?? 0} linked={projectIdsInTrees.has(protein.id)} onOpen={() => onOpenProject(protein.id)}/>; })}
+            {roots.map((protein, index) => <ProjectTile key={protein.id} protein={protein} index={index} progress={progressByProject.get(protein.id) ?? null} state={bundlesState} linked={projectIdsInTrees.has(protein.id)} onOpen={() => onOpenProject(protein.id)}/>)}
             {!roots.length && <button className="project-tile project-tile-new" onClick={onCreate}><span><Plus/></span><strong>Create your first project</strong><small>Start from an amino-acid sequence</small></button>}
           </div>}
         />
@@ -273,26 +287,14 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
         <FlipTile className="dashboard-current-job-card" icon={Activity} art="job" title="Current job" subtitle={currentJob ? `Last worked on ${relativeTime(currentJob.job.updatedAt, now)}` : "Nothing in progress yet"}
           actions={currentJob && <Button variant="outline" size="sm" onClick={() => onOpenProject(currentJob.project.id)}>Resume <ArrowRight/></Button>}
           front={currentJob ? <span className="tile-job">
-            <span className="current-job-head">
-              <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
-              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small><em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em></span>
-            </span>
-            <span className="current-job-progress">
-              <i style={{ "--value": `${Math.round(currentJob.progress * 100)}%` } as React.CSSProperties}/>
-              <small>{currentJob.complete} of {currentJob.total} workflow jobs complete in this project</small>
-            </span>
+            <CurrentJobHead job={currentJob}/>
+            <CurrentJobProgress progress={currentJob.progress}/>
           </span> : <TileHeadline value="—" label="No job opened yet" detail="Save a workflow step in a project and it appears here"/>}
           back={currentJob ? <button className="current-job-body" onClick={() => onOpenProject(currentJob.project.id)}>
-            <span className="current-job-head">
-              <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
-              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small><em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em></span>
-            </span>
-            <span className="current-job-progress">
-              <i style={{ "--value": `${Math.round(currentJob.progress * 100)}%` } as React.CSSProperties}/>
-              <small>{currentJob.complete} of {currentJob.total} workflow jobs complete in this project</small>
-            </span>
+            <CurrentJobHead job={currentJob}/>
+            <CurrentJobProgress progress={currentJob.progress}/>
             <span className="current-job-steps">
-              {currentJob.recent.map((job) => <span key={job.id} className={job.status === "complete" ? "done" : ""}><i/>{job.name}</span>)}
+              {currentJob.recent.map((step) => <span key={step.id} className={step.state === "completed" || step.state === "skipped" ? "done" : ""}><i/>{step.label}</span>)}
             </span>
           </button> : <div className="current-job-empty"><FlaskConical/><span><strong>No job has been opened yet</strong><small>Open a project and save a workflow step; the most recent one appears here.</small></span><Button size="sm" onClick={onCreate}><Plus/> New project</Button></div>}
         />
@@ -524,28 +526,56 @@ function LibrarySummary({ shelves, storage, onOpen, onReveal, onChange }: {
 
 // Time the workspace has actually been open and visible, accumulated locally.
 // Nothing else in Protein Lab records duration, so this is measured rather
-// than inferred from saved jobs.
+// than inferred from saved jobs. The app shell owns the ticker, so the hours
+// keep counting while the researcher is inside a job.
 function useWorkspaceHours() {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
-    const key = "protein-labs-workspace-seconds";
-    let total = 0;
-    try { total = Number(window.localStorage.getItem(key)) || 0; } catch { total = 0; }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSeconds(total);
-    const timer = window.setInterval(() => {
-      if (document.hidden) return;
-      total += 30;
-      setSeconds(total);
-      try { window.localStorage.setItem(key, String(total)); } catch { /* Counting must not break the dashboard. */ }
-    }, 30_000);
-    return () => window.clearInterval(timer);
+    setSeconds(readWorkspaceSeconds());
+    return onWorkspaceSeconds(setSeconds);
   }, []);
   return seconds / 3600;
 }
 
-function jobStatusLabel(status: string) {
-  return status === "complete" ? "Complete" : status === "in_progress" ? "In progress" : "Ready";
+/** The workflow card's own state, in the same words the workflow screen uses.
+ *  The saved record's status said "Complete" after a single save even when the
+ *  card still needed work. */
+const workflowStateLabels: Record<WorkflowState, string> = {
+  completed: "Complete",
+  skipped: "Skipped",
+  started: "In progress",
+  recommended: "Next up",
+  available: "Not started",
+};
+
+type CurrentJob = {
+  project: ProteinRecord;
+  definition: { id: string; label: string };
+  state: WorkflowState;
+  progress: WorkflowProgress;
+};
+
+function CurrentJobHead({ job }: { job: CurrentJob }) {
+  return <span className="current-job-head">
+    <span className="dashboard-project-avatar">{projectEmoji(job.project)}</span>
+    <span><strong>{job.definition.label}</strong><small>{job.project.name}</small><em className={`current-job-status state-${job.state}`}>{workflowStateLabels[job.state]}</em></span>
+  </span>;
+}
+
+function CurrentJobProgress({ progress }: { progress: WorkflowProgress }) {
+  return <span className="current-job-progress">
+    <i style={{ "--value": `${progress.percent}%` } as React.CSSProperties}/>
+    <small>{progress.complete} of {progress.total} workflow steps complete in this project{progress.remaining ? `, ${progress.remaining} still open` : ""}</small>
+  </span>;
+}
+
+/** The Projects tile detail line: counts once the jobs are in, and says so
+ *  while they are not. */
+function stepsDetail(totals: { complete: number; total: number }, state: BundlesState) {
+  if (state === "loading") return "Counting workflow steps…";
+  if (state === "error") return "Some projects did not load, so steps are not counted";
+  return `${totals.complete} of ${totals.total} workflow steps complete`;
 }
 
 function relativeTime(value: string, now: Date) {
@@ -569,19 +599,27 @@ function LiveClock() {
 const tileAccents = ["#36c7a5", "#58a6ff", "#a78bfa", "#ef765f", "#f2b84b", "#ed68d7"];
 const residueClasses: [RegExp, string][] = [[/[AVLIMFWC]/, "#f2b84b"], [/[KRH]/, "#58a6ff"], [/[DE]/, "#ef765f"], [/[STNQY]/, "#36c7a5"], [/[GP]/, "#a78bfa"]];
 
-function ProjectTile({ protein, index, complete, total, linked, onOpen }: { protein: ProteinRecord; index: number; complete: number; total: number; linked: boolean; onOpen: () => void }) {
+/** A project tile. `progress` is null until the project's jobs have loaded; a
+ *  project with no saved step reads "Not started" rather than "0/0 · 0 %",
+ *  which is what every freshly branched project used to show. */
+function ProjectTile({ protein, index, progress, state, linked, onOpen }: { protein: ProteinRecord; index: number; progress: WorkflowProgress | null; state: BundlesState; linked: boolean; onOpen: () => void }) {
   const accent = tileAccents[hashString(protein.id) % tileAccents.length];
-  const progress = total ? complete / total : 0;
   const barcode = useMemo(() => sampleResidues(protein.sequence, 64), [protein.sequence]);
+  const counted = progress && progress.started;
+  const ring = !progress ? "…" : counted ? `${progress.percent}%` : "—";
+  const foot = !progress ? (state === "error" ? "Steps unavailable" : "Counting steps") : counted ? `${progress.complete}/${progress.total} steps` : "Not started";
+  const title = !progress
+    ? (state === "error" ? "This project's workflow steps could not be loaded" : "Counting this project's workflow steps")
+    : counted ? `${progress.complete} of ${progress.total} workflow steps complete` : `No workflow step saved yet, out of ${progress.total}`;
   return <button className="project-tile" style={{ "--tile-accent": accent, "--stagger": index } as React.CSSProperties} onClick={onOpen}>
     <span className="project-tile-top">
       <span className="dashboard-project-avatar">{projectEmoji(protein)}</span>
-      <span className="project-tile-ring" title={`${complete} of ${total} jobs complete`}><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16" pathLength="100"/><circle cx="20" cy="20" r="16" pathLength="100" style={{ strokeDasharray: `${Math.max(progress * 100, .001)} 100` }}/></svg><b>{Math.round(progress * 100)}%</b></span>
+      <span className={`project-tile-ring ${counted ? "" : "is-empty"}`} title={title}><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16" pathLength="100"/><circle cx="20" cy="20" r="16" pathLength="100" style={{ strokeDasharray: counted ? `${Math.max(progress.percent, .001)} 100` : "0 100" }}/></svg><b>{ring}</b></span>
     </span>
     <strong>{protein.name}</strong>
     <small>{protein.sequence.length} aa · {protein.organism || "Organism not entered"}</small>
     <span className="project-tile-barcode" aria-hidden="true">{barcode.map((color, residue) => <i key={residue} style={{ background: color }}/>)}</span>
-    <span className="project-tile-foot"><em>{complete}/{total} jobs</em>{linked && <em className="linked"><GitBranch/> In a tree</em>}<time>{formatRelative(protein.updatedAt ?? protein.createdAt)}</time><ArrowRight/></span>
+    <span className="project-tile-foot"><em className={counted ? "" : "quiet"}>{foot}</em>{linked && <em className="linked"><GitBranch/> In a tree</em>}<time>{formatRelative(protein.updatedAt ?? protein.createdAt)}</time><ArrowRight/></span>
   </button>;
 }
 
@@ -614,8 +652,8 @@ function TreePreview({ tree, names }: { tree?: ProjectTree; names?: ProteinRecor
 
 function companionCheers(projects: number, completed: number, total: number, upcoming: number) {
   const lines: string[] = [];
-  if (completed) lines.push(`${completed} workflow job${completed === 1 ? "" : "s"} complete. That’s real progress!`);
-  if (total > completed) lines.push(`${total - completed} job${total - completed === 1 ? "" : "s"} waiting. Want to pick one up?`);
+  if (completed) lines.push(`${completed} workflow step${completed === 1 ? "" : "s"} complete. That’s real progress!`);
+  if (total > completed) lines.push(`${total - completed} step${total - completed === 1 ? "" : "s"} waiting. Want to pick one up?`);
   if (projects) lines.push(`${projects} protein project${projects === 1 ? "" : "s"} in the lab. I’m keeping an eye on them.`);
   if (upcoming) lines.push(`You have ${upcoming} timeline item${upcoming === 1 ? "" : "s"} coming up. We’ve got this.`);
   return lines;
