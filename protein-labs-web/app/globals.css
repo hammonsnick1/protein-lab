@@ -13056,9 +13056,13 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   min-width: 0;
   flex: 1;
 }
-.current-job-head strong { font-size: 14px; }
-.current-job-head small { font-size: 12px; color: var(--muted-foreground); }
+.current-job-head strong { font-size: 14px; overflow-wrap: anywhere; }
+.current-job-head small { font-size: 12px; color: var(--muted-foreground); overflow-wrap: anywhere; }
+/* The pill sits under the names, inside their column: beside them it took
+   most of a narrow face and the title ran underneath it. */
 .current-job-status {
+  align-self: flex-start;
+  margin-top: 6px;
   font-size: 12px;
   font-style: normal;
   font-weight: 700;
@@ -15266,7 +15270,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   top: 0;
   transform: translateY(-50%);
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -15306,9 +15310,10 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   pointer-events: none;
 }
 .stats-line-end { position: absolute; right: 0; margin-bottom: 9px; font-size: 12px; font-weight: 650; pointer-events: none; }
-/* Hit areas centred on each week, so the pointer only needs the nearest one. */
-.stats-hit { position: absolute; top: 0; bottom: 0; left: var(--edge, 0); right: var(--edge, 0); }
-.stats-week-axis { margin: 0 6px 0 26px; font-size: 11px; color: var(--muted-foreground); }
+/* Hit areas centred on each week, so the pointer only needs the nearest one;
+   the end weeks get half-width cells so the layer stays inside the plot. */
+.stats-hit { position: absolute; inset: 0; }
+.stats-week-axis { margin: 0 6px 0 26px; font-size: 12px; color: var(--muted-foreground); }
 .stats-week-axis span { display: flex; justify-content: center; white-space: nowrap; }
 .stats-week-axis span:first-child { justify-content: flex-start; }
 .stats-week-axis span:last-child { justify-content: flex-end; }

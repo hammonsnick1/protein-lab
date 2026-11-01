@@ -12,8 +12,6 @@ const STYLESHEETS = ["app/globals.css", "app/vector-library.css", "app/protein-l
 
 const EXEMPT: Record<string, string> = {
   // Chart axis ticks may stay at 11px.
-  ".stats-gridline em": "dashboard chart axis tick",
-  ".stats-week-axis": "dashboard chart axis tick",
   ".vmap-ruler text": "vector map ruler tick (SVG)",
   // SVG figure text placed in fixed geometry; a larger size makes labels collide.
   ".vmap-bar-label": "linear map feature label sized to its bar (SVG)",
