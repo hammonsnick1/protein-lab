@@ -26,7 +26,7 @@ const panelComponents: Partial<Record<CrystallizePanelId, ComponentType<Crystall
   propensity: PropensityPanel,
   "space-groups": SpaceGroupPanel,
   lattice: CrystalLatticePanel,
-  guidance: ({ facts }) => <CrystallizationGuidance facts={facts}/>,
+  guidance: ({ facts, saved, save }) => <CrystallizationGuidance facts={facts} saved={saved} save={save}/>,
 };
 
 /**
