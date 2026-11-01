@@ -38,8 +38,17 @@ describe("bufferComponentLibrary", () => {
 
   it("records the key cautions", () => {
     assert.match(findLibraryComponent("EDTA")!.cautions.join(" "), /Ni²⁺.*IMAC/);
-    assert.match(findLibraryComponent("DTT")!.cautions.join(" "), /Reduces Ni²⁺/);
+    assert.match(findLibraryComponent("DTT")!.cautions.join(" "), /higher concentration it reduces the Ni²⁺ on IMAC resin.*1–5 mM TCEP/);
+    assert.match(findLibraryComponent("β-mercaptoethanol")!.cautions.join(" "), /higher concentration it can reduce the Ni²⁺ on IMAC resin; 1–5 mM TCEP is the preferred reductant/);
     assert.match(findLibraryComponent("Imidazole")!.cautions.join(" "), /280 nm/);
+  });
+
+  it("recommends 1–5 mM TCEP for IMAC and does not warn against it", () => {
+    const tcep = findLibraryComponent("TCEP")!;
+    assert.deepEqual([tcep.typical.low, tcep.typical.high, tcep.typical.unit, tcep.defaultConcentration], [1, 5, "mM", 1]);
+    assert.match(tcep.purposes[0].why, /does not reduce the Ni²⁺ on Ni-NTA or other IMAC resins.*1–5 mM TCEP is the preferred reductant/);
+    assert.equal(tcep.alert, undefined);
+    assert.doesNotMatch(tcep.cautions.join(" "), /IMAC|Ni²⁺|nickel/);
   });
 
   it("puts a row alert only on the components that can ruin a purification", () => {

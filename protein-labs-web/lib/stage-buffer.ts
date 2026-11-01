@@ -40,10 +40,26 @@ function find(step:BufferStep,kind:keyof ReturnType<typeof kinds>){return step.c
 export function stepPH(step:BufferStep){const value=Number(String(step.pH).trim());return String(step.pH).trim()&&Number.isFinite(value)?value:null}
 export function stepFormula(step:BufferStep){return step.components.filter(item=>item.name.trim()).map(amount).join(", ")||"No components"}
 
+/**
+ * DTT above 1 mM or β-mercaptoethanol above 20 mM: the levels Ni-NTA is
+ * usually quoted to tolerate, beyond which they reduce the immobilized Ni²⁺.
+ * TCEP does not, so it is never listed.
+ */
+export function strongThiolReductants(components:BufferComponent[]):string[] {
+  return components.filter(item=>{
+    const entry=findLibraryComponent(item.name); const name=item.name.toLowerCase();
+    const id=entry?.id??(/\bdtt\b|dithiothreitol/.test(name)?"dtt":/mercaptoethanol|\bb-?me\b|β-me/.test(name)?"bme":"");
+    const value=Number(item.concentration); const unit=item.unit.trim().toLowerCase();
+    const mM=unit==="m"?value*1000:unit==="µm"||unit==="um"?value/1000:unit==="mm"?value:Number.NaN;
+    return Number.isFinite(mM)&&((id==="dtt"&&mM>1)||(id==="bme"&&mM>20));
+  }).map(amount);
+}
+
 /** Checks on the edited reverse-affinity buffer: no chelator before IMAC, no biotin before Strep recapture. */
 export function cleanupBufferChecks(tag:string, step:BufferStep):Compatibility[] {
   const checks:Compatibility[]=[];
   if(/his|polyhistidine|hat/i.test(tag)){const chelators=find(step,"chelator");checks.push(chelators.length?err("Cleanup buffer contains an IMAC-incompatible chelator",`${chelators.map(amount).join(", ")} can strip nickel or cobalt. Remove it before IMAC cleanup.`):ok("Cleanup buffer is chelator-free","No EDTA, EGTA or citrate in the edited buffer."))}
+  if(/his|polyhistidine|hat/i.test(tag)){const strong=strongThiolReductants(step.components);if(strong.length)checks.push(warn("Thiol reductant can reduce the IMAC metal",`${strong.join(", ")} can reduce the Ni²⁺ on the resin at this concentration. Use 1–5 mM TCEP for the reverse-IMAC pass.`))}
   if(/strep/i.test(tag)){const competitors=find(step,"strepCompetitor");if(competitors.length)checks.push(err("Competing ligand blocks Strep recapture",`${competitors.map(amount).join(", ")} occupies Strep-Tactin. Remove it before the subtractive binding step.`))}
   return checks;
 }

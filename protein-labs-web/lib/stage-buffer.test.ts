@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 
 import type { BufferStep } from "./purification-catalog.ts";
 import { cleanupBuffers, secBuffers } from "./purification-stage-catalog.ts";
-import { cleanupBufferChecks, loadStageBufferStep, presetBufferStep, secBufferChecks } from "./stage-buffer.ts";
+import { cleanupBufferChecks, loadStageBufferStep, presetBufferStep, secBufferChecks, strongThiolReductants } from "./stage-buffer.ts";
 
 const preset = (id: string) => [...cleanupBuffers, ...secBuffers].find((item) => item.id === id)!;
 const titles = (checks: { title: string }[]) => checks.map((item) => item.title);
@@ -25,6 +25,18 @@ describe("cleanup checks read the edited buffer", () => {
     assert.equal(errors(cleanupBufferChecks("His6", egta)).length, 1);
     const cocktail: BufferStep = { ...step, components: [...step.components, { name: "EDTA-free protease inhibitor", concentration: 1, unit: "×", role: "Protease inhibitor" }] };
     assert.deepEqual(errors(cleanupBufferChecks("His6", cocktail)), []);
+  });
+
+  it("keeps TCEP in the reverse-IMAC preset and warns only on DTT or β-ME above what Ni-NTA tolerates", () => {
+    const step = presetBufferStep(preset("cleanup-imac"), "Cleavage");
+    assert.ok(step.components.some((item) => item.name === "TCEP" && item.concentration === 1));
+    assert.deepEqual(cleanupBufferChecks("His6", step).filter((item) => /reductant/i.test(item.title)), []);
+    const dtt: BufferStep = { ...step, components: [...step.components, { name: "DTT", concentration: 5, unit: "mM", role: "Redox control" }] };
+    assert.deepEqual(cleanupBufferChecks("His6", dtt).filter((item) => /reductant/i.test(item.title)).map((item) => [item.level, item.detail]), [["warning", "5 mM DTT can reduce the Ni²⁺ on the resin at this concentration. Use 1–5 mM TCEP for the reverse-IMAC pass."]]);
+    assert.deepEqual(strongThiolReductants([{ name: "DTT", concentration: 1, unit: "mM", role: "" }, { name: "TCEP", concentration: 5, unit: "mM", role: "" }, { name: "2-mercaptoethanol", concentration: 10, unit: "mM", role: "" }]), []);
+    assert.deepEqual(strongThiolReductants([{ name: "β-ME", concentration: 0.05, unit: "M", role: "" }, { name: "dithiothreitol", concentration: 2, unit: "mM", role: "" }]), ["0.05 M β-ME", "2 mM dithiothreitol"]);
+    // Glutathione resin has no metal to reduce, so DTT is not flagged there.
+    assert.deepEqual(cleanupBufferChecks("GST", dtt).filter((item) => /reductant/i.test(item.title)), []);
   });
 
   it("flags biotin or desthiobiotin added before Strep recapture", () => {

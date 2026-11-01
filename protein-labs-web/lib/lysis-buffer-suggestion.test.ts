@@ -57,7 +57,8 @@ describe("suggestLysisBuffer", () => {
     assert.equal(component(his, "NaCl")?.concentration, 300);
     const imidazole = Number(component(his, "Imidazole")?.concentration);
     assert.ok(imidazole >= 10 && imidazole <= 20);
-    assert.ok(names(his).includes("TCEP"));
+    assert.equal(component(his, "TCEP")?.concentration, 1);
+    assert.match(reason(his, "TCEP"), /1–5 mM suits IMAC.*does not reduce the Ni²⁺.*higher concentration can reduce Ni²⁺/);
     assert.ok(!names(his).includes("DTT"));
     assert.ok(!names(his).some((name) => /edta/i.test(name) && !/edta-free/i.test(name)));
     assert.ok(names(his).includes("EDTA-free protease inhibitor"));

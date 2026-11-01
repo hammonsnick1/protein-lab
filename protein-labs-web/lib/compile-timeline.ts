@@ -81,7 +81,8 @@ const fixRules: [RegExp, string | ((title: string) => string)][] = [
   [/protein c capture/i, "Add calcium chloride to the lysis, binding and wash buffers."],
   [/protease inhibitor blocks/i, "Leave PMSF, AEBSF and aprotinin out of the cleavage buffer, or exchange them out before adding the protease."],
   [/cysteine-protease inhibitor/i, "Leave E-64 and iodoacetamide out of the cleavage buffer, or exchange them out before adding the protease."],
-  [/tev reducing/i, "Add DTT or TCEP to the cleavage buffer."],
+  [/tev reducing/i, "Add 1–5 mM TCEP to the cleavage buffer; it keeps TEV active and does not reduce the Ni²⁺ in the reverse-IMAC pass that follows."],
+  [/reductant can reduce the imac metal/i, "Swap DTT or β-mercaptoethanol for 1–5 mM TCEP in the lysis, binding, wash and elution buffers."],
   [/close to predicted pi/i, "Move the listed buffers at least 0.5 pH unit away from the pI, or raise their salt to limit aggregation."],
   [/reducing agent with a cysteine-rich/i, "Decide whether the disulfides must survive; if so, leave DTT, TCEP and β-mercaptoethanol out of those buffers."],
 ];

@@ -474,6 +474,8 @@ Affinity capture, Subtractive cleanup, SEC polishing and Cell lysis use the same
 
 The composer marks a concentration that is outside the typical range. It also shows cautions for known problems. For example, EDTA removes Ni²⁺ and Co²⁺ from IMAC resins.
 
+> **Note:** Use 1–5 mM TCEP as the reducing agent with Ni-NTA and other IMAC resins. TCEP does not reduce the nickel or remove it from the resin. DTT or β-mercaptoethanol at higher concentration can reduce Ni²⁺, so the IMAC presets, the lysis suggestion and the reverse-IMAC buffer use TCEP. Compile workflow warns about DTT above 1 mM or β-mercaptoethanol above 20 mM in an IMAC buffer.
+
 ### Choose expression system
 
 1. Open **Choose expression system**.
