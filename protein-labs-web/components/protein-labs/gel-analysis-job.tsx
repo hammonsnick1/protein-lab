@@ -16,8 +16,8 @@ import {
   WandSparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
-import { ensureProjectJob, fileToBase64, proteinLabsApi } from "@/lib/protein-labs-api";
+import type { JsonObject, ProjectJob, ProteinBundle } from "@/lib/protein-labs-api";
+import { fileToBase64, proteinLabsApi } from "@/lib/protein-labs-api";
 import type {
   GelAnalyzeRequest,
   GelBand,
@@ -69,10 +69,91 @@ type Tone = "info" | "error";
 //   3. Changing a detection or ladder input marks the result out of date and
 //      asks for re-detection rather than extrapolating from the old fit.
 export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; onChanged: () => Promise<void> }) {
-  const saved = useMemo(
-    () => readGelJobConfig(bundle.projectJobs.find((job) => job.appType === "gel-analysis")?.config ?? {}),
-    [bundle.projectJobs],
+  // One saved job per gel image. A purification produces several gels, so a
+  // new image never overwrites an earlier gel's lanes and bands.
+  const gels = useMemo(() => gelJobs(bundle.projectJobs), [bundle.projectJobs]);
+  const [chosen, setChosen] = useState<string | null>(() => gels.at(-1)?.id ?? null);
+  const job = chosen ? gels.find((item) => item.id === chosen) ?? null : null;
+  // Bumped only when the scientist switches gels. Saving a new gel keeps the
+  // workspace mounted so the imported file stays available for re-detection.
+  const [session, setSession] = useState(0);
+
+  function open(jobId: string | null) {
+    setChosen(jobId);
+    setSession((value) => value + 1);
+  }
+
+  async function saved(jobId: string) {
+    setChosen(jobId);
+    await onChanged();
+  }
+
+  return (
+    <div className="gel-studio">
+      <div className="gel-picker">
+        <label>
+          Gel
+          <select
+            value={job?.id ?? ""}
+            onChange={(event) => open(event.target.value || null)}
+            aria-describedby="gel-picker-count"
+          >
+            {gels.map((item, index) => (
+              <option key={item.id} value={item.id}>{gelJobLabel(item, index)}</option>
+            ))}
+            <option value="">{gels.length ? "New gel (not saved yet)" : "First gel (not saved yet)"}</option>
+          </select>
+        </label>
+        <Button variant="outline" size="sm" disabled={!job} onClick={() => open(null)}>
+          <Plus /> New gel
+        </Button>
+        <span id="gel-picker-count">
+          {gels.length === 0
+            ? "No gels saved for this protein yet."
+            : `${gels.length} gel${gels.length === 1 ? "" : "s"} saved. Each image is kept as its own analysis.`}
+        </span>
+      </div>
+      <GelImageWorkspace
+        key={session}
+        bundle={bundle}
+        job={job}
+        gelNumber={job ? gels.indexOf(job) + 1 : gels.length + 1}
+        onSaved={saved}
+        onDetach={() => setChosen(null)}
+      />
+    </div>
   );
+}
+
+function gelJobs(jobs: ProjectJob[]) {
+  return jobs
+    .filter((item) => item.appType === "gel-analysis")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+function gelJobLabel(job: ProjectJob, index: number) {
+  const config = readGelJobConfig(job.config);
+  const date = new Date(job.updatedAt);
+  const when = Number.isNaN(date.getTime())
+    ? ""
+    : ` · saved ${date.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+  return `Gel ${index + 1} · ${config.filename || job.name}${when}`;
+}
+
+function GelImageWorkspace({
+  bundle,
+  job,
+  gelNumber,
+  onSaved,
+  onDetach,
+}: {
+  bundle: ProteinBundle;
+  job: ProjectJob | null;
+  gelNumber: number;
+  onSaved: (jobId: string) => Promise<void>;
+  onDetach: () => void;
+}) {
+  const saved = useMemo(() => readGelJobConfig(job?.config ?? {}), [job?.config]);
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState(saved.previewBase64 ? `data:image/png;base64,${saved.previewBase64}` : "");
@@ -159,6 +240,13 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
     setAnalyzed(null);
     setSelectedLane("");
     setSelectedBand("");
+    // Re-importing a saved gel's own image re-measures that gel. Any other
+    // image is a different gel and is saved alongside it, never over it.
+    if (job && value.name !== saved.filename) {
+      onDetach();
+      report(`${value.name} will be saved as a new gel; Gel ${gelNumber} keeps ${saved.filename}. Detect lanes and bands to measure it.`);
+      return;
+    }
     report(`${value.name} is ready. Detect lanes and bands to measure it.`);
   }
 
@@ -351,9 +439,10 @@ export function GelAnalysisJob({ bundle, onChanged }: { bundle: ProteinBundle; o
         savedAt: new Date().toISOString(),
         savedByUser: true,
       };
-      const latest = await proteinLabsApi.getProtein(bundle.protein.id);
-      await ensureProjectJob(bundle.protein.id, latest.projectJobs, "gel-analysis", `${gelType} analysis`, config);
-      await onChanged();
+      const name = `${gelType} · ${filename || "gel image"}`;
+      const target = job ?? (await proteinLabsApi.createJob(bundle.protein.id, name, "gel-analysis"));
+      await proteinLabsApi.updateJob(bundle.protein.id, target.id, name, "complete", config);
+      await onSaved(target.id);
       report(
         "Saved the engine's densities, refusals, uncertainties, ladder calibration and method metadata with the annotations.",
       );
