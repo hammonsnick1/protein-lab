@@ -5,6 +5,7 @@
 @import "./protein-library.css";
 @import "./vector-workbench.css";
 @import "./compile-timeline.css";
+@import "./space-groups.css";
 
 /* Graphic novel is the default appearance, so its tokens also sit on :root:
    dialogs portal into <body>, outside .app-shell, and read them from here. */
@@ -16374,7 +16375,11 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .crystallize-tabs button small { font-size: 12px; }
 .crystallize-tabs button[aria-selected="true"] { border-bottom-color: var(--primary); }
 .crystallize-tabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 6px 6px 0 0; }
-.crystallize-propensity {
+/* One definition of the tab-body card stack. Every panel registered in
+   `panelComponents` stacks its cards on this rule, so the tabs keep the same
+   rhythm (space-group-explorer.tsx's `.sg-explorer` is the other one). */
+.crystallize-propensity,
+.sg-explorer {
   display: grid;
   gap: 13px;
 }
@@ -16387,10 +16392,13 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .crystallize-recommendation,
 .crystallize-explainer,
 .crystallize-section {
+  /* Exported so a panel can line a gutter up with the card's own edge
+     padding rather than restating the number. */
+  --crystallize-pad-x: 18px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--card);
-  padding: 16px 18px;
+  padding: 16px var(--crystallize-pad-x);
   min-width: 0;
 }
 .crystallize-score {

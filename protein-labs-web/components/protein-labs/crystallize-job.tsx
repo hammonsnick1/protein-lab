@@ -13,6 +13,8 @@ import {
   type Assessment, type FactInfluence, type InfluenceEffect, type Predictor, type ScoreView, type SpaceGroupSuggestion,
 } from "@/lib/crystallization";
 import { CrystallizationGuidance } from "@/components/protein-labs/crystallization-guidance";
+import { SpaceGroupExplorer } from "@/components/protein-labs/space-group-explorer";
+import { masclSuggestions } from "@/lib/space-group-evidence";
 import { CRYSTALLIZE_PANELS, panelState, selectedSpaceGroup, withPanelState, type CrystallizePanelId, type CrystallizePanelProps } from "@/lib/crystallize-panels";
 
 const JOB_LABEL = "Crystallize your protein";
@@ -21,8 +23,26 @@ const JOB_LABEL = "Crystallize your protein";
 // space-group, lattice and practical-guidance panels register here.
 const panelComponents: Partial<Record<CrystallizePanelId, ComponentType<CrystallizePanelProps>>> = {
   propensity: PropensityPanel,
+  "space-groups": SpaceGroupPanel,
   guidance: ({ facts }) => <CrystallizationGuidance facts={facts}/>,
 };
+
+/**
+ * The space-group selector in this job's slot. It reads the homologues' own
+ * crystal forms from `facts` and takes predictions through `suggestions`;
+ * `selectSpaceGroup` shares the chosen group with the lattice builder.
+ */
+function SpaceGroupPanel({ bundle, facts, suggestedSpaceGroups, selectedSpaceGroup: chosen, selectSpaceGroup }: CrystallizePanelProps) {
+  // A fresh array each render would defeat the explorer's own memos.
+  const suggestions = useMemo(() => masclSuggestions(suggestedSpaceGroups), [suggestedSpaceGroups]);
+  return <SpaceGroupExplorer
+    facts={facts}
+    proteinName={bundle.protein.name}
+    suggestions={suggestions}
+    initialSymbol={chosen ?? undefined}
+    onSelect={(group) => void selectSpaceGroup(group.hm)}
+  />;
+}
 
 // Every source this job cites, in first-use order down the page.
 const REFERENCES: CitationId[] = ["shoebill2026", "mall2025plm", "mascl2025", "ita2016", "pdb2000", "uniprot2023", "caffrey2015", "dale2003", "consurf2023", "alphafold2021", "jancarik1991"];

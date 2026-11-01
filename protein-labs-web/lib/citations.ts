@@ -94,6 +94,17 @@ const entries = [
     license: { name: "© 1997–1999 Birkbeck College", reuse: "none", url: "http://img.chem.ucl.ac.uk/sgp/mainmenu.htm", usage: "Visual model only; the app draws its own diagrams." },
   },
   {
+    id: "gemmi", kind: "software", name: "gemmi", authors: "Wojdyr M", year: "2022",
+    title: "GEMMI: A library for structural biology",
+    source: "J Open Source Softw 7:4200", doi: "10.21105/joss.04200", url: "https://github.com/project-gemmi/gemmi",
+    license: { name: "MPL-2.0", reuse: "permissive", url: "https://github.com/project-gemmi/gemmi/blob/master/LICENSE.txt", usage: "Space-group table (symbols, settings, operators) generated from gemmi 0.7.5; notice kept." },
+  },
+  {
+    id: "wukovitz1995", kind: "article", name: "Why protein crystals favour some space groups", authors: "Wukovitz SW, Yeates TO", year: "1995",
+    title: "Why protein crystals favour some space-groups over others",
+    source: "Nat Struct Biol 2:1062–1067", doi: "10.1038/nsb1295-1062",
+  },
+  {
     id: "ita2016", kind: "book", name: "International Tables, Vol. A", authors: "Aroyo MI (ed.)", year: "2016",
     title: "International Tables for Crystallography, Volume A: Space-group symmetry",
     source: "International Union of Crystallography", doi: "10.1107/97809553602060000114",
