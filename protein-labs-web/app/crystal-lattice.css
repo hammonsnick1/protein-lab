@@ -1,0 +1,313 @@
+/* Crystallize job · "Lattice and packing" panel (components/protein-labs/crystal-lattice-panel.tsx).
+   Cards reuse `.crystallize-section`, `.crystallize-explainer` and the
+   `.sg-mode` toggle; this file only lays out what is new. */
+.lattice-panel {
+  display: grid;
+  gap: 13px;
+}
+
+/* 1 · Choose a structure */
+.lattice-source-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
+  gap: 18px;
+}
+.lattice-source-grid h4 {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lattice-structures,
+.lattice-examples > div {
+  display: grid;
+  gap: 6px;
+}
+.lattice-structures { max-height: 252px; overflow: auto; padding-right: 2px; }
+.lattice-examples > div { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.lattice-structures button,
+.lattice-examples button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--speed-fast) var(--ease-out), background var(--speed-fast) var(--ease-out);
+}
+.lattice-structures button:hover,
+.lattice-examples button:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.lattice-structures button.active,
+.lattice-examples button.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.lattice-structures button:focus-visible,
+.lattice-examples button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.lattice-structures strong { font-size: 13px; }
+.lattice-structures small,
+.lattice-examples small {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+.lattice-structures small { text-overflow: ellipsis; white-space: nowrap; }
+.lattice-examples small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lattice-example-head {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.lattice-example-head b { font-size: 12px; font-weight: 650; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.lattice-example-note { font-size: 13px; line-height: 1.55; }
+.lattice-example-note svg { color: var(--primary); }
+
+.lattice-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.lattice-problem > svg { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--muted-foreground); }
+.lattice-problem[role="alert"] > svg { color: #e56565; }
+.lattice-problem > span { display: flex; flex-direction: column; gap: 2px; flex: 1 1 220px; font-size: 13px; }
+.lattice-problem small { font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
+.lattice-panel .crystallize-empty { display: flex; align-items: center; gap: 6px; }
+.lattice-panel .crystallize-empty svg { width: 14px; height: 14px; flex: none; }
+
+/* 2 · Unit cell */
+.lattice-cell-body { display: grid; gap: 12px; }
+.lattice-mode { max-width: 420px; }
+.lattice-mode button:disabled { opacity: .5; cursor: not-allowed; }
+.lattice-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.lattice-banner strong { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; letter-spacing: .02em; }
+.lattice-banner strong svg { width: 16px; height: 16px; }
+.lattice-banner.experimental {
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 6%, var(--card));
+}
+/* Striped edge as well as colour, so the warning survives greyscale printing. */
+.lattice-banner.hypothetical {
+  border: 2px dashed color-mix(in srgb, #df9a36 70%, var(--border));
+  background: color-mix(in srgb, #df9a36 10%, var(--card));
+}
+.lattice-banner.hypothetical strong { color: color-mix(in srgb, #df9a36 55%, var(--foreground)); }
+.lattice-cell-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 2px 0 0;
+}
+.lattice-cell-values > div { display: flex; align-items: baseline; gap: 5px; }
+.lattice-cell-values dt { font-size: 12px; color: var(--muted-foreground); }
+.lattice-cell-values dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.lattice-hypothetical {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.6fr);
+  gap: 4px 18px;
+  align-items: start;
+}
+.lattice-group { margin-bottom: 0; }
+.lattice-group small { font-weight: 400; line-height: 1.45; }
+.lattice-cell-fields {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.lattice-cell-fields legend {
+  grid-column: 1 / -1;
+  padding: 0;
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted-foreground);
+}
+.lattice-cell-fields legend small { font-weight: 400; }
+.lattice-cell-fields label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.lattice-cell-fields input {
+  min-width: 0;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 7px 8px;
+  font: inherit;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.lattice-cell-fields input:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 15%, transparent); }
+.lattice-cell-fields label.locked { color: var(--muted-foreground); }
+.lattice-cell-fields label.locked input { background: var(--muted); border-style: dashed; }
+.lattice-cell-fields small { font-size: 12px; font-weight: 400; color: var(--muted-foreground); }
+.lattice-cell-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.lattice-cell-actions small { font-size: 12px; color: var(--muted-foreground); }
+.lattice-trim {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.lattice-trim input { margin-top: 3px; accent-color: var(--primary); }
+
+/* 3 · Viewer and 4 · packing */
+.lattice-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, 1fr);
+  gap: 13px;
+  align-items: start;
+}
+.lattice-viewer-panel,
+.lattice-packing {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 16px 18px;
+  min-width: 0;
+}
+.lattice-viewer-panel > header,
+.lattice-packing > header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.lattice-viewer-panel h3,
+.lattice-packing h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.lattice-viewer-panel > header small,
+.lattice-packing > header small { font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
+.lattice-display { max-width: 380px; }
+.lattice-molecule { height: clamp(440px, 60vh, 680px); }
+.lattice-molecule .structure-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+
+.lattice-counts {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.lattice-counts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  padding: 8px 9px;
+  min-width: 0;
+}
+.lattice-counts dt { font-size: 12px; line-height: 1.3; color: var(--muted-foreground); }
+.lattice-counts dd { margin: 0; font-size: 20px; font-weight: 760; font-variant-numeric: tabular-nums; }
+.lattice-counts > div.bad { border-color: color-mix(in srgb, #e56565 55%, var(--border)); border-width: 2px; }
+.lattice-counts > div.bad dd { color: #e56565; }
+.lattice-cutoff {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.lattice-cutoff b { color: var(--foreground); font-variant-numeric: tabular-nums; }
+.lattice-cutoff input { accent-color: var(--primary); }
+.lattice-table-wrap {
+  max-height: 330px;
+  overflow: auto;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.lattice-contacts thead th { position: sticky; top: 0; z-index: 1; background: var(--card); padding-top: 8px; }
+.lattice-contacts tbody tr { cursor: pointer; }
+.lattice-contacts tbody tr:hover { background: color-mix(in srgb, var(--primary) 4%, transparent); }
+.lattice-contacts tbody tr.selected { background: color-mix(in srgb, var(--primary) 10%, transparent); box-shadow: inset 3px 0 0 var(--primary); }
+.lattice-contacts tbody th button {
+  min-width: 28px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.lattice-contacts tbody th button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.lattice-contacts td small { display: block; margin-top: 2px; color: var(--muted-foreground); }
+.lattice-contacts code { font-size: 12px; }
+.lattice-contacts td.bad { color: #e56565; font-weight: 700; }
+.lattice-detail {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.lattice-detail h4 { margin: 0 0 4px; font-size: 13px; }
+.lattice-detail p { margin: 0 0 4px; }
+.lattice-detail p.bad b { color: #e56565; }
+.lattice-save-error { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: #e56565; }
+.lattice-save-error svg { width: 14px; height: 14px; }
+
+@media (max-width: 1440px) {
+  .lattice-stage { grid-template-columns: minmax(0, 1fr); }
+  .lattice-hypothetical { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1100px) {
+  .lattice-source-grid { grid-template-columns: minmax(0, 1fr); }
+  .lattice-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lattice-cell-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

@@ -6,6 +6,7 @@
 @import "./vector-workbench.css";
 @import "./compile-timeline.css";
 @import "./space-groups.css";
+@import "./crystal-lattice.css";
 
 /* Graphic novel is the default appearance, so its tokens also sit on :root:
    dialogs portal into <body>, outside .app-shell, and read them from here. */

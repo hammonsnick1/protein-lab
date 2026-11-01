@@ -14,6 +14,7 @@ import {
 } from "@/lib/crystallization";
 import { CrystallizationGuidance } from "@/components/protein-labs/crystallization-guidance";
 import { SpaceGroupExplorer } from "@/components/protein-labs/space-group-explorer";
+import { CrystalLatticePanel } from "@/components/protein-labs/crystal-lattice-panel";
 import { masclSuggestions } from "@/lib/space-group-evidence";
 import { CRYSTALLIZE_PANELS, panelState, selectedSpaceGroup, withPanelState, type CrystallizePanelId, type CrystallizePanelProps } from "@/lib/crystallize-panels";
 
@@ -24,6 +25,7 @@ const JOB_LABEL = "Crystallize your protein";
 const panelComponents: Partial<Record<CrystallizePanelId, ComponentType<CrystallizePanelProps>>> = {
   propensity: PropensityPanel,
   "space-groups": SpaceGroupPanel,
+  lattice: CrystalLatticePanel,
   guidance: ({ facts }) => <CrystallizationGuidance facts={facts}/>,
 };
 
