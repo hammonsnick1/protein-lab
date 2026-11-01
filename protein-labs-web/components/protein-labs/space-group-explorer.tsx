@@ -254,7 +254,7 @@ function axisLabel(axis: readonly number[]): string {
 }
 
 /** The Hermann–Mauguin symbol with real subscripts and overbars. */
-function HmSymbol({ group }: { group: SpaceGroup }) {
+export function HmSymbol({ group }: { group: SpaceGroup }) {
   return <span className="sg-hm">{symbolTokens(group).map((token, index) => <span key={index} className={token.bar ? "barred" : undefined}>
     {token.text}{token.subscript && <sub>{token.subscript}</sub>}
   </span>)}</span>;
