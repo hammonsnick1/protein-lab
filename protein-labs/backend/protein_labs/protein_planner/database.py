@@ -925,7 +925,9 @@ class Database:
                 "analyzedAt": protparam["analyzed_at"],
             },
             "blastJobs": [self._blast(row) for row in blast],
-            "uniprotMatches": [self._uniprot(row) for row in uniprot],
+            "uniprotMatches": _rank_uniprot_matches(
+                [self._uniprot(row, protein["sequence"]) for row in uniprot]
+            ),
             "pdbMatches": [self._pdb(row) for row in pdb],
             "alphaFoldModels": [self._alphafold(row) for row in alphafold],
             # Summaries only: the grade profile is fetched per run so a project
@@ -2680,16 +2682,25 @@ class Database:
         }
 
     @staticmethod
-    def _uniprot(row: sqlite3.Row) -> dict[str, Any]:
-        return {
+    def _uniprot(row: sqlite3.Row, query_sequence: str = "") -> dict[str, Any]:
+        record = json.loads(row["record_json"])
+        match = {
             "accession": row["accession"],
             "source": row["source"],
             "identity": row["identity"],
             "queryCoverage": row["query_coverage"],
             "evalue": row["evalue"],
-            "record": json.loads(row["record_json"]),
+            "record": record,
             "fetchedAt": row["fetched_at"],
         }
+        # Matches saved by accession or keyword search before HOM-390 carry no
+        # metrics. Both sequences are stored, so align them here rather than
+        # leaving a null the browser could read as 0 % identity.
+        if match["identity"] is None and match["queryCoverage"] is None:
+            metrics = local_sequence_metrics(query_sequence, record)
+            if metrics is not None:
+                match |= metrics
+        return match
 
     @staticmethod
     def _pdb(row: sqlite3.Row) -> dict[str, Any]:
@@ -2750,3 +2761,31 @@ class Database:
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
+
+
+def local_sequence_metrics(
+    query_sequence: str, record: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Identity and query coverage of a construct against a UniProt record.
+
+    Returns None when either sequence is missing, so callers keep the value
+    "not calculated" instead of inventing one.
+    """
+    target = str((record.get("sequence") or {}).get("value") or "")
+    if not query_sequence or not target:
+        return None
+    # Imported lazily: integrations pulls in Biopython, which the database
+    # layer otherwise does not need.
+    from .integrations import global_sequence_metrics
+
+    return global_sequence_metrics(query_sequence, target) | {
+        "metricsSource": "local global alignment"
+    }
+
+
+def _rank_uniprot_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Highest identity first; matches without a value stay last."""
+    return sorted(
+        matches,
+        key=lambda match: (match["identity"] is None, -(match["identity"] or 0.0)),
+    )
