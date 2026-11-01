@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { AlphaFoldServerExport } from "@/components/protein-labs/alphafold-server-export";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
+import { matchMetric, metricLabel } from "@/lib/match-metrics";
 
 export function ReferenceMatchJob({ bundle, onChanged }: { bundle: ProteinBundle; onChanged: () => Promise<void> }) {
   const saved = bundle.projectJobs.find((job) => job.appType === "reference-match")?.config ?? {};
@@ -31,8 +32,8 @@ export function ReferenceMatchJob({ bundle, onChanged }: { bundle: ProteinBundle
         selectedAccession: accession,
         selectedProteinName: text(record.proteinName ?? record.uniProtkbId ?? record.name),
         selectedOrganism: text(object(record.organism).scientificName),
-        identity: numberOrNull(selected.identity),
-        queryCoverage: numberOrNull(selected.queryCoverage),
+        identity: matchMetric(selected.identity),
+        queryCoverage: matchMetric(selected.queryCoverage),
         reviewed: record.reviewed === true,
         evidenceSnapshot: {
           postTranslationalModifications: ptms,
@@ -66,7 +67,7 @@ export function ReferenceMatchJob({ bundle, onChanged }: { bundle: ProteinBundle
           const item = recordFor(match); const accession = accessionFor(match); const isSelected = accession === selectedAccession;
           const itemPtms = objects(item.postTranslationalModifications); const itemCofactors = objects(item.cofactors);
           return <button key={`${accession}-${index}`} className={isSelected ? "selected" : ""} onClick={() => setSelectedAccession(accession)}>
-            <span className="reference-rank">{index + 1}</span><span><strong>{accession} · {text(item.proteinName ?? item.uniProtkbId ?? item.name, "Unnamed protein")}</strong><small>{text(object(item.organism).scientificName, "Unknown organism")} · {item.reviewed === true ? "Reviewed Swiss-Prot" : "Unreviewed TrEMBL"}</small><span className="reference-metrics"><b>{percent(match.identity)} identity</b><b>{percent(match.queryCoverage)} coverage</b><b>{itemPtms.length} PTM/maturation</b><b>{itemCofactors.length} cofactors</b></span></span>{isSelected && <BadgeCheck/>}
+            <span className="reference-rank">{index + 1}</span><span><strong>{accession} · {text(item.proteinName ?? item.uniProtkbId ?? item.name, "Unnamed protein")}</strong><small>{text(object(item.organism).scientificName, "Unknown organism")} · {item.reviewed === true ? "Reviewed Swiss-Prot" : "Unreviewed TrEMBL"}</small><span className="reference-metrics"><b>{metricLabel(match.identity, "identity")}</b><b>{metricLabel(match.queryCoverage, "coverage")}</b><b>{itemPtms.length} PTM/maturation</b><b>{itemCofactors.length} cofactors</b></span></span>{isSelected && <BadgeCheck/>}
           </button>;
         })}
       </section>
@@ -90,8 +91,6 @@ function compareMatches(a: JsonObject, b: JsonObject) { const score = (value: Js
 function object(value: unknown): JsonObject { return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}; }
 function objects(value: unknown): JsonObject[] { return Array.isArray(value) ? value.filter((item): item is JsonObject => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : []; }
 function text(value: unknown, fallback = "—") { return value === null || value === undefined || value === "" ? fallback : String(value); }
-function numberOrNull(value: unknown) { const number = Number(value); return Number.isFinite(number) ? number : null; }
-function percent(value: unknown) { const number = Number(value); return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : "—"; }
 function regionText(value: JsonObject) { const location = object(value.location); const start = value.start ?? location.start ?? "?"; const end = value.end ?? location.end ?? "?"; return `${text(value.type, "Feature")}: ${text(value.description, "Annotated region")} (${text(start)}–${text(end)})`; }
 function cofactorText(value: JsonObject) { return [value.name, value.chebiId].filter(Boolean).map(String).join(" · ") || "Annotated cofactor"; }
 function locationText(value: JsonObject) { return [value.location, value.topology].filter(Boolean).map(String).join(" · ") || "Annotated cellular location"; }
