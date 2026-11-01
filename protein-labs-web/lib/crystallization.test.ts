@@ -189,8 +189,9 @@ describe("saved crystallization job", () => {
   it("is a workflow job in its own section, after the bench work", () => {
     const definition = definitionFor("crystallize");
     assert.equal(definition.appType, "crystallization");
-    assert.equal(workflowJobs.at(-1)?.id, "crystallize");
-    assert.equal(workflowSections.at(-1)?.id, definition.stage);
+    const index = (stage: string) => workflowSections.findIndex((section) => section.id === stage);
+    assert.deepEqual(workflowJobs.filter((job) => job.stage === definition.stage).map((job) => job.id), ["crystallize"]);
+    assert.ok(index(definition.stage) > index("purify") && index(definition.stage) > index("analysis"));
     assert.deepEqual(CRYSTALLIZE_PANELS.map((panel) => panel.id), ["propensity", "space-groups", "lattice", "guidance"]);
   });
 });
