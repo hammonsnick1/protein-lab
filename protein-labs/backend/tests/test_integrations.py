@@ -457,6 +457,25 @@ def test_rcsb_fetch_record_reports_1ca3_crystal_space_group_and_unit_cell():
     }
 
 
+def test_rcsb_fetch_record_omits_a_partial_unit_cell():
+    def transport(method, url, *, data, headers):
+        if "/entry/" in url:
+            return HttpResponse(200, json.dumps({
+                "cell": {
+                    "length_a": 42.7, "length_b": 41.7, "length_c": 73.0,
+                    "angle_alpha": 90.0, "angle_beta": 104.6,
+                    # ``angle_gamma`` is deliberately absent.
+                },
+            }), {})
+        if "/polymer_entity/" in url:
+            return HttpResponse(200, "{}", {})
+        return HttpResponse(200, "data_partial_cell\n", {})
+
+    record = RCSBClient(HttpClient(transport=transport)).fetch_record("1CA3", "1")
+
+    assert record["unitCell"] is None
+
+
 def test_rcsb_search_rejects_invalid_query_and_malformed_result_list():
     client = RCSBClient(HttpClient(transport=lambda *args, **kwargs: HttpResponse(200, '{"result_set": {}}', {})))
 
