@@ -16878,8 +16878,29 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .xtal-proscons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
 .xtal-proscons ul.pros li::marker { content: "+  "; color: #36ad89; font-weight: 700; }
 .xtal-proscons ul.cons li::marker { content: "−  "; color: #e56565; font-weight: 700; }
+/* Optimizing a hit (HOM-373) */
+.xtal-hit-form { display: grid; gap: 8px; }
+.xtal-hit-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; }
+.xtal-hit-fields .lab-field { margin-bottom: 8px; }
+.xtal-hit-fields .lab-field input, .xtal-hit-fields .lab-field select { padding: 7px 9px; font-weight: 500; }
+.xtal-hit-fields .lab-field.wide { grid-column: span 2; }
+.xtal-hit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.xtal-hit-actions small { color: var(--muted-foreground); }
+.xtal-plate { min-width: 560px; }
+.xtal-plate caption { caption-side: bottom; text-align: left; padding-top: 6px; color: var(--muted-foreground); font-size: 12px; }
+.xtal-plate th, .xtal-plate td { text-align: center; }
+.xtal-plate thead th:first-child, .xtal-plate tbody th { width: 1%; white-space: nowrap; text-align: left; }
+.xtal-well-id { display: block; font-size: 12px; font-weight: 700; color: var(--muted-foreground); letter-spacing: .04em; }
+.xtal-plate td.hit { background: color-mix(in srgb, var(--primary) 14%, var(--card)); outline: 2px solid color-mix(in srgb, var(--primary) 60%, var(--border)); outline-offset: -2px; }
+.xtal-hit-tag { display: block; font-size: 12px; letter-spacing: .06em; color: var(--primary); }
+.xtal-techniques { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
+.xtal-techniques > li { border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 9px; padding: 9px 12px; }
+.xtal-techniques > li.suggested { border-left-color: #36ad89; }
+.xtal-technique-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 4px; }
+.xtal-technique-head strong { font-size: 14px; }
 @media (max-width: 760px) {
   .xtal-phase, .xtal-proscons { grid-template-columns: 1fr; }
+  .xtal-hit-fields .lab-field.wide { grid-column: auto; }
 }
 /* SVG parts */
 .xg-zone.under { fill: color-mix(in srgb, var(--muted-foreground) 6%, transparent); }
@@ -17160,6 +17181,44 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .hsqc-peaks tbody th button:hover { text-decoration: underline; }
 .hsqc-peaks tbody th button:focus-visible { outline: 2px solid var(--ring); }
 .hsqc-peaks tr.selected { background: color-mix(in srgb, var(--accent) 24%, var(--card)); }
+.hsqc-prep-size {
+  display: flex;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 40%, var(--card));
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.hsqc-prep-size.trosy,
+.hsqc-prep-size.deuterate {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--card));
+}
+.hsqc-prep-size > svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.hsqc-prep-size strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.hsqc-prep-size p { margin: 0; font-size: 13px; line-height: 1.55; }
+.hsqc-prep-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px 20px;
+}
+.hsqc-prep h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.hsqc-prep-grid ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; list-style: disc; }
+.hsqc-prep-grid li { font-size: 13px; line-height: 1.55; }
+.hsqc-prep-amounts { margin-top: 16px; }
+.hsqc-prep-amounts table { width: 100%; max-width: 640px; border-collapse: collapse; font-size: 13px; }
+.hsqc-prep-amounts thead th { text-align: left; font-size: 12px; font-weight: 650; color: var(--muted-foreground); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.hsqc-prep-amounts td,
+.hsqc-prep-amounts tbody th { padding: 5px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent); text-align: left; font-weight: 400; }
+.hsqc-prep-amounts .num { text-align: right; font-variant-numeric: tabular-nums; }
+.hsqc-prep-amounts small { display: block; margin-top: 6px; color: var(--muted-foreground); font-size: 12px; }
 .hsqc-empty {
   display: flex;
   flex-direction: column;

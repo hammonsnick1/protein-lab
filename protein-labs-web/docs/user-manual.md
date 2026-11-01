@@ -440,7 +440,13 @@ The **Plan your purification** jobs choose the columns, buffers, host, vector an
 
 1. Open **Affinity capture**. Search the resins or filter them by category.
 2. Select a resin and click **Use this option**. The binding, wash and elution buffers change to the presets of that resin.
-3. Set the tag position and the linker. The construct preview shows the expressed fusion and the protein after tag cleavage.
+3. Set the tag position, the linker and the **Vector junction**. The construct preview shows the expressed fusion and the protein after tag cleavage.
+
+   An N-terminal poly-His tag starts from the house layout **M – His tag – DYDIPTT – ENLYFQ↓G (rTEV) – GA – protein of interest**. The DYDIPTT spacer sits between the His tag and the rTEV site, and the **GA** vector junction sits directly before the protein. Both are selectable: pick a different linker, or set the junction to **No junction residues**, when your backbone differs.
+
+   Changing the resin, the tag or the tag position moves the linker and the junction to the default for the new tag, so switching a His resin for GST or MBP drops the DYDIPTT spacer and the GA junction. A linker or junction you picked yourself is left alone. Reopening a saved job always shows the construct as you saved it.
+
+   The junction residues come from the backbone rather than the protease, so they stay on the protein after cleavage. With the house layout, rTEV leaves its own Gly plus the vector's Gly-Ala, so the purified protein begins **GGA**. The construct preview reports that scar, and the mass and pI of the cleaved product include it.
 4. Under **Binding, wash and elution buffers**, choose a **Starting preset**. Then edit each buffer in the buffer composer.
 5. Click **Save tag, resin and buffers**.
 
@@ -667,7 +673,7 @@ The job has four tabs. Use the mouse, or <kbd>←</kbd> <kbd>→</kbd> when a ta
 | **Propensity and advice** | How likely crystals are, and why |
 | **Space groups** | The symmetry the crystal could have |
 | **Lattice and packing** | How copies of the protein pack in a crystal |
-| **Practical guidance** | Screens, drops and buffers to start with |
+| **Practical guidance** | Screens, drops and buffers to start with, then how to optimize a hit |
 
 Every tab ends with a numbered reference list. A small number next to a statement, for example [1], points to its reference.
 
@@ -722,11 +728,12 @@ For an AlphaFold model, tick the option to leave out residues with low pLDDT con
 
 ### Practical guidance
 
-The **Practical guidance** tab helps you set up the first crystallization trials. Its advice is tailored from what earlier jobs recorded about the protein. It has three tabs.
+The **Practical guidance** tab helps you set up the first crystallization trials and improve the first crystals. Its advice is tailored from what earlier jobs recorded about the protein. It has four tabs.
 
 - **Screens and concentration.** **What this advice is based on** lists the size, membrane, disorder and ligand facts used. **Starting protein concentration** gives a starting value and a range in mg/mL. **Conditions that already worked for related structures** copies the crystal-growth records of PDB entries that Sequence research found. **Suggested commercial screens** lists screens in order of priority, each with the reasons for it.
 - **What goes in the drop.** A schematic phase diagram explains why a precipitant is needed. Cards explain the role of the precipitant, the buffer and pH, salt, additives and, for membrane proteins, detergent.
 - **Hanging vs sitting drop.** How vapour diffusion works, and the pros and cons of the two drop set-ups.
+- **Optimizing a hit.** Fine-grid plates built from the condition that gave crystals, then seeding, drop and protein changes to try next.
 
 ![The Practical guidance tab with the facts the advice is based on, the starting protein concentration, and crystallization conditions copied from related PDB entries](manual/crystallize-guidance.webp)
 *For carbonic anhydrase II, five related PDB entries already record a hanging-drop condition.*
@@ -734,6 +741,27 @@ The **Practical guidance** tab helps you set up the first crystallization trials
 > **Tip:** A condition that worked for a close relative is the strongest starting point. Set it up beside the commercial screens.
 
 > **Note:** If no earlier job says whether the protein is a membrane protein, the guidance asks you to answer it in the [Protein readiness check](#protein-readiness-check). The advice changes for membrane proteins.
+
+#### Optimizing a hit
+
+A hit is a screen condition that gave crystals, even small or poor ones. The best condition is usually close to it.
+
+1. Open **Practical guidance**, then **Optimizing a hit**. Until you enter your own hit, the form shows example values and says so.
+2. Enter the hit: **Precipitant**, **Concentration in the hit** and its **Unit** (% (w/v), % (v/v) or M), the **Stock you pipette from**, the **Buffer**, the **pH (optional)**, the **Protein (mg/mL)** and any **Other components (optional)**.
+3. Click **Generate plates**. The hit is saved with the job.
+4. Read the two 24-well plates (rows A–D, columns 1–6):
+   - **Plate 1: precipitant against pH.** The precipitant runs from 70 % to 120 % of the hit across the columns. The pH runs in 0.2-unit steps down the rows. Make one buffer stock for each row.
+   - **Plate 2: precipitant against protein concentration.** The same columns. The protein runs from half to 1.5 times the hit down the rows.
+
+   Each well shows the volume of precipitant stock to add to a 500 µL reservoir. **HIT** marks the well that repeats your hit (C4). The list under each plate says what is the same in every well.
+5. Read the cards under **Seeding**, **Drops and chemistry** and **The protein itself**. Each card says when to use a technique and gives the bench steps and the references. The cards cover microseeding, streak seeding, macroseeding, cross-seeding, random microseed matrix screening (rMMS), drop ratio and volume, temperature, sitting or hanging drop, oil over the reservoir (Al's oil), additive screens, Silver Bullets, detergents, protein concentration, ligand co-crystallization, in situ proteolysis and surface entropy reduction. **Suggested for this protein** marks a card that fits what earlier jobs recorded, for example in situ proteolysis when disordered regions are recorded.
+
+![The Optimizing a hit tab: the hit form and Plate 1, a 4 × 6 grid of precipitant against pH with the hit in well C4](manual/crystallize-optimize.webp)
+*Plate 1 for an example hit of 20 % (w/v) PEG 3,350 at pH 7.5.*
+
+> **Note:** If the hit has no pH, Plate 1 is not shown. Enter the buffer's pH to get it.
+
+> **Tip:** The step sizes are the app's own rule of thumb. If every drop on a plate precipitates, or every drop stays clear, enter a new hit at the edge of the plate and generate again.
 
 ## HSQC spectrum prediction
 
@@ -765,6 +793,21 @@ The engine tries UCBShift 2.0, LEGOLAS and SHIFTX2 in turn. If none of them is i
 > **Note:** A prediction is a guide for assigning a real spectrum. It does not replace one. A bound ligand can move the peaks of nearby residues in ways the predictor does not model; those peaks are flagged **Near a ligand**.
 
 > **Tip:** Above about 30 kDa, peaks broaden and special methods such as TROSY and deuteration are usually needed. The introduction at the top of the job explains this.
+
+### Preparing the NMR sample
+
+Below the peak list, **Preparing a protein NMR sample** gives short, cited advice for making a sample for the real experiment:
+
+- **Size of your protein.** The job works out the protein's mass from its sequence. It says whether an ordinary HSQC should work (below about 25 kDa), whether to use a TROSY-HSQC (about 25–40 kDa), or whether to deuterate the protein as well (above about 40 kDa). The mass is for one chain; for a dimer or larger complex, judge by the complex's mass.
+- **Tube and volume.** Standard 5 mm tubes (500–600 µL), Shigemi tubes (250–300 µL) and 3 mm tubes (160–200 µL), plus tube grade and cleaning.
+- **Concentration and labelling.** 0.1–1 mM protein for an HSQC, and ¹⁵N, ¹³C and ²H labelling in M9 minimal medium.
+- **Buffer and D₂O.** 5–10 % D₂O for the lock, pH 7 or below, deuterated or phosphate buffers, and low salt for cryoprobes.
+- **Additives and reference.** TCEP, DSS or TSP, sodium azide and protease inhibitors.
+- **Before it goes in the magnet.** Spinning or filtering out aggregates, filling the tube, and the measuring temperature.
+
+The **Protein needed** table shows how many milligrams of your protein each tube takes at 0.1 mM and at 1 mM.
+
+> **Note:** These are general starting points. Where your NMR facility's own sample rules differ, follow theirs.
 
 ## Vector and protein library
 

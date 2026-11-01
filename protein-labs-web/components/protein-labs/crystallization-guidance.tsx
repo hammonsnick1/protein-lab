@@ -12,6 +12,9 @@ import {
   type ComponentRole, type CrystallizationProfile, type DropMethodId, type Reason, type ScreenPriority, type ScreenSuggestion,
 } from "@/lib/crystallization-guidance";
 import { formatTypicalRange } from "@/lib/buffer-component-library";
+import { OPTIMIZATION_CITATIONS } from "@/lib/crystal-optimization";
+import type { JsonObject } from "@/lib/protein-labs-api";
+import { OptimizeTab } from "@/components/protein-labs/crystal-optimization";
 import type { ProteinFacts } from "@/lib/protein-facts";
 
 const PRIORITY_TONES: Record<ScreenPriority, StatusTone> = { first: "pass", next: "review", later: "attention" };
@@ -19,28 +22,30 @@ const PRIORITY_TONES: Record<ScreenPriority, StatusTone> = { first: "pass", next
 /**
  * The practical half of the Crystallize job: which screens to buy, how much
  * protein to put in, what every drop component is for and how vapour
- * diffusion drops are set up. Everything is tailored from `facts`, so the
+ * diffusion drops are set up, then how to optimize a hit. Everything is tailored from `facts`, so the
  * scientist never re-enters what earlier jobs already recorded. The Crystallize
  * job (HOM-309) mounts it as its `guidance` panel, passing the facts it
- * already computed.
+ * already computed, and its saved panel state (the hit condition).
  */
-export function CrystallizationGuidance({ facts }: { facts: ProteinFacts }) {
+export function CrystallizationGuidance({ facts, saved, save }: { facts: ProteinFacts; saved: JsonObject; save: (patch: JsonObject) => Promise<void> }) {
   const profile = useMemo(() => crystallizationProfile(facts), [facts]);
-  const refs = useMemo(() => citationScope("crystal-guidance", GUIDANCE_CITATIONS), []);
+  const refs = useMemo(() => citationScope("crystal-guidance", [...GUIDANCE_CITATIONS, ...OPTIMIZATION_CITATIONS]), []);
   return <section className="xtal-guide" aria-labelledby="xtal-guide-title">
     <header className="xtal-guide-head">
       <h3 id="xtal-guide-title"><FlaskConical aria-hidden="true"/>Setting up crystallization trials</h3>
-      <p>Where to start, what each ingredient of a crystallization drop does, and how the drops are set up. Advice is tailored from what earlier jobs recorded about this protein.</p>
+      <p>Where to start, what each ingredient of a crystallization drop does, how the drops are set up, and how to improve a hit. Advice is tailored from what earlier jobs recorded about this protein.</p>
     </header>
     <Tabs defaultValue="screens" className="xtal-guide-tabs">
       <TabsList aria-label="Crystallization guidance">
         <TabsTrigger value="screens">Screens and concentration</TabsTrigger>
         <TabsTrigger value="components">What goes in the drop</TabsTrigger>
         <TabsTrigger value="drops">Hanging vs sitting drop</TabsTrigger>
+        <TabsTrigger value="optimize">Optimizing a hit</TabsTrigger>
       </TabsList>
       <TabsContent value="screens"><ScreensTab profile={profile} refs={refs}/></TabsContent>
       <TabsContent value="components"><ComponentsTab profile={profile} refs={refs}/></TabsContent>
       <TabsContent value="drops"><DropsTab refs={refs}/></TabsContent>
+      <TabsContent value="optimize"><OptimizeTab profile={profile} refs={refs} saved={saved} save={save}/></TabsContent>
     </Tabs>
     <ReferenceList scope={refs} className="xtal-guide-refs"/>
   </section>;

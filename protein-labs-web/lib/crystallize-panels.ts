@@ -42,7 +42,7 @@ export const CRYSTALLIZE_PANELS: { id: CrystallizePanelId; label: string; summar
   { id: "propensity", label: "Propensity and advice", summary: "How likely crystals are, and why" },
   { id: "space-groups", label: "Space groups", summary: "Symmetry the crystal could have" },
   { id: "lattice", label: "Lattice and packing", summary: "How copies of the protein pack" },
-  { id: "guidance", label: "Practical guidance", summary: "Screens, drops and buffers to start with" },
+  { id: "guidance", label: "Practical guidance", summary: "Screens, drops and buffers, then optimizing a hit" },
 ];
 
 export function panelState(config: JsonObject | undefined, id: CrystallizePanelId): JsonObject {
