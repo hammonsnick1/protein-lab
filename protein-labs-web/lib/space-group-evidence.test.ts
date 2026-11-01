@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
-  masclSuggestions, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups, type SpaceGroupHit,
+  hasPrediction, masclSuggestions, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups, type SpaceGroupHit,
 } from "./space-group-evidence.ts";
 import type { SpaceGroupSuggestion } from "./crystallization.ts";
 
@@ -54,6 +54,35 @@ describe("space groups from saved evidence", () => {
     const highlights = spaceGroupHighlights([hit("1A42", "P 21 21 21")], [{ symbol: "P212121", source: "MASCL" }]);
     assert.equal(highlights.get(19)!.kind, "pdb");
     assert.deepEqual(highlights.get(19)!.pdbIds, ["1A42"]);
+  });
+
+  it("keeps the prediction on a group a homologue also used, rather than dropping it", () => {
+    const highlights = spaceGroupHighlights(
+      [hit("1ABC", "P 43 21 2", cell)],
+      masclSuggestions([{ spaceGroup: "P 43 21 2", origin: "mascl", probability: 0.41, homologueCount: 1 }]),
+    );
+    const both = highlights.get(96)!;
+    // The evidence leads: it is a fact about a real crystal.
+    assert.equal(both.kind, "pdb");
+    assert.deepEqual(both.pdbIds, ["1ABC"]);
+    assert.equal(both.unitCell, cell);
+    // …and the prediction survives, so the list can show both flags.
+    assert.deepEqual(both.predictor, { source: "MASCL", detail: "MASCL probability 0.41." });
+    assert.equal(hasPrediction(highlights), true);
+  });
+
+  it("sets predictor on a prediction-only group and leaves it off a homologue-only one", () => {
+    const predicted = spaceGroupHighlights([], [{ symbol: "P 43 21 2", source: "MASCL", detail: "Top-ranked." }]);
+    assert.deepEqual(predicted.get(96)!.predictor, { source: "MASCL", detail: "Top-ranked." });
+
+    const evidenceOnly = spaceGroupHighlights([hit("1A42", "P 21 21 21")]);
+    assert.equal(evidenceOnly.get(19)!.predictor, undefined);
+    assert.equal(hasPrediction(evidenceOnly), false);
+  });
+
+  it("reports no prediction when every suggested symbol is unresolvable", () => {
+    assert.equal(hasPrediction(spaceGroupHighlights([], [{ symbol: "not a group", source: "MASCL" }])), false);
+    assert.equal(hasPrediction(new Map()), false);
   });
 
   it("opens on the group most homologues used, or P212121 with no evidence", () => {

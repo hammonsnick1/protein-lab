@@ -35,6 +35,13 @@ export type SpaceGroupHighlight = {
   pdbIds: string[];
   /** A cell from the evidence, so distances can be shown in Ångström. */
   unitCell: UnitCell | null;
+  /**
+   * The prediction for this group, when one was made. Always set on a
+   * `kind: "predictor"` highlight, and kept on a `kind: "pdb"` one when a
+   * homologue turns out to have used the group a predictor also named — the
+   * evidence leads, but the prediction is not thrown away.
+   */
+  predictor?: { source: string; detail: string };
 };
 
 /** A predictor's suggestion, before it is matched to the table. */
@@ -66,7 +73,9 @@ export function masclSuggestions(suggestions: readonly SpaceGroupSuggestion[] = 
 
 /**
  * One highlight per group, keyed by ITA number. Real crystal forms win over
- * suggestions when both point at the same group, because they are evidence.
+ * suggestions when both point at the same group, because they are evidence —
+ * but the suggestion is carried along in `predictor` rather than dropped, so
+ * a group that was both predicted and used still shows both.
  */
 export function spaceGroupHighlights(
   hits: readonly SpaceGroupHit[] = [],
@@ -76,10 +85,13 @@ export function spaceGroupHighlights(
   for (const suggestion of suggestions) {
     const group = findSpaceGroup(suggestion.symbol);
     if (!group) continue;
-    highlights.set(group.n, {
-      number: group.n, symbol: group.short, kind: "predictor", source: suggestion.source,
+    const predictor = {
+      source: suggestion.source,
       detail: suggestion.detail ?? `${suggestion.source} suggests ${group.short}.`,
-      pdbIds: [], unitCell: null,
+    };
+    highlights.set(group.n, {
+      number: group.n, symbol: group.short, kind: "predictor", source: predictor.source,
+      detail: predictor.detail, pdbIds: [], unitCell: null, predictor,
     });
   }
   for (const hit of hits) {
@@ -93,9 +105,16 @@ export function spaceGroupHighlights(
       detail: `${pdbIds.length} saved homologue${pdbIds.length === 1 ? "" : "s"} crystallised in ${group.short}: ${pdbIds.join(", ")}.`,
       pdbIds,
       unitCell: existing?.unitCell ?? hit.unitCell,
+      // Survives the overwrite: this group was predicted as well as used.
+      predictor: existing?.predictor,
     });
   }
   return highlights;
+}
+
+/** True once some group in the list carries a real prediction. */
+export function hasPrediction(highlights: Map<number, SpaceGroupHighlight>): boolean {
+  return [...highlights.values()].some((highlight) => highlight.predictor);
 }
 
 /** Space-group names in the evidence that the table could not resolve. */

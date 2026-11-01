@@ -1,10 +1,12 @@
 /* Space-group explorer (components/protein-labs/space-group-explorer.tsx).
    A stack of the Crystallize job's `.crystallize-section` cards — intro,
-   selector, diagrams, operations, animation — at the same 13px gap as the
-   propensity tab, so both tabs read as one component set. The card itself
-   (border, radius, background, padding, title and hint sizes) is defined once
-   in `globals.css`; nothing here repeats those numbers. What is here is
-   specific to the selector and the diagrams.
+   selector, operations, animation — so this tab and the propensity tab read
+   as one component set. The card and the stack are defined once in
+   `globals.css` (border, radius, background, padding, title and hint sizes,
+   and the gap between cards); nothing here repeats those numbers, and a
+   gutter that has to line up with the card's edge reads
+   `--crystallize-pad-x`. What is here is specific to the selector and the
+   diagrams.
 
    Every change category carries a shape as well as a colour, so the diagrams
    still read in greyscale. The diagrams are drawn at 1:1, so SVG labels are
@@ -12,9 +14,9 @@
    860px the selector's two columns stack and the two figures sit one under the
    other rather than scaling down. */
 
+/* The card stack itself (`display: grid` and the gap) comes from the shared
+   `.crystallize-propensity, .sg-explorer` rule in globals.css. */
 .sg-explorer {
-  display: grid;
-  gap: 13px;
   --sg-rotation: var(--primary);
   --sg-screw: color-mix(in srgb, var(--primary) 55%, var(--accent));
   --sg-centring: var(--muted-foreground);
@@ -59,7 +61,7 @@
 
 .sg-picker {
   border-right: 1px solid var(--border);
-  padding-right: 18px;
+  padding-right: var(--crystallize-pad-x);
   display: grid;
   gap: 8px;
   position: sticky;
@@ -159,10 +161,14 @@
 }
 .sg-list-system h4 span { font-variant-numeric: tabular-nums; font-weight: 400; }
 .sg-list-system ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+/* A group can carry both an evidence badge and a prediction badge, which no
+   longer fits the column beside the symbol. The row wraps instead of pushing
+   a badge off the edge; the badges then sit together on their own line. */
 .sg-list-system button {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 3px 6px;
   width: 100%;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -217,7 +223,7 @@
 
 /* ── The chosen group ────────────────────────────────────────────────────── */
 
-.sg-detail { padding-left: 18px; display: grid; gap: 12px; min-width: 0; }
+.sg-detail { padding-left: var(--crystallize-pad-x); display: grid; gap: 12px; min-width: 0; }
 @media (max-width: 860px) {
   .sg-detail { padding: 14px 0 0; }
 }

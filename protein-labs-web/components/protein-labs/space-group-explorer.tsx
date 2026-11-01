@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Cite, ReferenceList } from "@/components/ui/citations";
 import { citationScope, type CitationId } from "@/lib/citations";
 import {
-  spaceGroupHighlights, startingGroup, unresolvedSpaceGroups,
+  hasPrediction, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups,
   type PredictorSuggestion, type SpaceGroupHighlight, type SpaceGroupHit,
 } from "@/lib/space-group-evidence";
 import {
@@ -54,6 +54,9 @@ export function SpaceGroupExplorer({
   const hits = useMemo(() => crystalForms(facts), [facts]);
   const highlights = useMemo(() => spaceGroupHighlights(hits, suggestions), [hits, suggestions]);
   const unresolved = useMemo(() => unresolvedSpaceGroups(hits), [hits]);
+  // Whether a prediction actually landed on a group in the table, not merely
+  // whether one was passed in: an unresolvable symbol flags nothing.
+  const predicted = useMemo(() => hasPrediction(highlights), [highlights]);
   const start = startingGroup(highlights, initialSymbol);
   const [teaching, setTeaching] = useState(() => findSpaceGroup(start)?.sohncke === false);
   const [query, setQuery] = useState("");
@@ -170,7 +173,7 @@ export function SpaceGroupExplorer({
         </div>
         <p className="sg-summary">{spaceGroupSummary(group)}<Cite scope={scope} id="gemmi"/></p>
 
-        <Evidence group={group} highlight={evidence} predictorNote={predictorNote} predicted={suggestions.length > 0} hits={hits} unresolved={unresolved} scope={scope}/>
+        <Evidence group={group} highlight={evidence} predictorNote={predictorNote} predicted={predicted} hits={hits} unresolved={unresolved} scope={scope}/>
 
         {/* The two plates stay beside the list: they are what reading the
             chosen group means, and they fill the column the list sets. */}
@@ -259,11 +262,21 @@ function HmSymbol({ group }: { group: SpaceGroup }) {
 
 // ── Highlights from earlier jobs ────────────────────────────────────────────
 
+/**
+ * A group can be both: used by a homologue and named by a predictor. The
+ * evidence badge comes first and the prediction follows it, so neither is
+ * hidden by the other.
+ */
 function HighlightFlag({ highlight }: { highlight: SpaceGroupHighlight }) {
-  return <span className={`sg-flag ${highlight.kind}`} title={highlight.detail}>
-    {highlight.kind === "pdb" ? <Database aria-hidden="true"/> : <Sparkles aria-hidden="true"/>}
-    {highlight.kind === "pdb" ? `${highlight.pdbIds.length} PDB` : highlight.source}
-  </span>;
+  const predicted = highlight.predictor;
+  return <>
+    {highlight.kind === "pdb" && <span className="sg-flag pdb" title={highlight.detail}>
+      <Database aria-hidden="true"/>{highlight.pdbIds.length} PDB
+    </span>}
+    {predicted && <span className="sg-flag predictor" title={predicted.detail}>
+      <Sparkles aria-hidden="true"/>{predicted.source}
+    </span>}
+  </>;
 }
 
 /**
@@ -315,8 +328,8 @@ function Evidence({ group, highlight, predictorNote, predicted = false, hits, un
         {highlight.unitCell && ` Cell ${formatCell(highlight.unitCell)}, used for the distances below.`}
       </span>
     </p>}
-    {highlight?.kind === "predictor" && <p className="found">
-      <Sparkles aria-hidden="true"/><span>{highlight.source} suggests {group.short}. {highlight.detail}</span>
+    {highlight?.predictor && <p className="found">
+      <Sparkles aria-hidden="true"/><span>{highlight.predictor.source} suggests {group.short}. {highlight.predictor.detail}</span>
     </p>}
     {!highlight && !missing && <p className="quiet">None of the saved PDB homologues used {group.short}. That is not an argument against it — it only says this group is not in your evidence.</p>}
     {missing && <p className="quiet">
