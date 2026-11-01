@@ -412,7 +412,7 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
             pdb_id = url.split("/polymer_entity/")[1].split("/")[0]
             return HttpResponse(200, json.dumps({"entity_poly": {"pdbx_seq_one_letter_code_can": entities[pdb_id]}, "rcsb_polymer_entity": {"pdbx_description": "Hemoglobin"}, "rcsb_polymer_entity_container_identifiers": {"auth_asym_ids": ["A", "C"]}}), {})
         if "/entry/" in url:
-            return HttpResponse(200, json.dumps({"struct": {"title": "Hemoglobin"}, "exptl": [{"method": "X-RAY DIFFRACTION"}], "rcsb_entry_info": {"resolution_combined": [1.74]}}), {})
+            return HttpResponse(200, json.dumps({"struct": {"title": "Hemoglobin"}, "exptl": [{"method": "X-RAY DIFFRACTION"}], "rcsb_entry_info": {"resolution_combined": [1.74]}, "symmetry": {"space_group_name_H_M": "P 21 21 21"}}), {})
         return HttpResponse(200, "data_test\n", {})
 
     records = RCSBClient(HttpClient(transport=transport)).search_sequence(HUMAN_HBA)
@@ -428,6 +428,8 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
     assert records[0]["entityId"] == "1" and records[0]["title"] == "Hemoglobin"
     assert records[0]["coverage"] == 1.0
     assert records[0]["method"] == "X-RAY DIFFRACTION" and records[0]["resolution"] == 1.74
+    assert records[0]["spaceGroup"] == "P 21 21 21"
+    assert records[0]["source"]["entryUrl"] == "https://www.rcsb.org/structure/2BBB"
 
 
 def test_rcsb_search_rejects_invalid_query_and_malformed_result_list():
