@@ -142,6 +142,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                     int((query.get("limit") or ["10"])[0]),
                 ))
                 return
+            match = re.fullmatch(r"/v1/pdb/entries/([^/]+)/mmcif", path)
+            if match:
+                self._send(200, self.planner.get_pdb_entry_mmcif(match.group(1)))
+                return
             if path == "/v1/protein-planner/construct-hosts":
                 self._send(200, self.planner.list_construct_hosts())
                 return
