@@ -63,7 +63,7 @@ export function CompileReview({ proteinName, checks, workflow, nothingSaved, bus
       <span className="compile-metrics">{levels.map(({ level, plural, Icon }) => <span className={level} key={level}><Icon aria-hidden="true"/><b>{count(level)}</b><small>{plural}</small></span>)}</span>
       <span className="compile-actions"><StatusChip tone={blocking ? "error" : "pass"} label={blocking ? "Draft" : "Ready for review"}/><Button variant="outline" onClick={onCopy}><Clipboard/> Copy report</Button><Button disabled={busy} onClick={onSave}>{busy ? <LoaderCircle className="spin"/> : <Check/>}{blocking ? "Save draft" : "Save workflow"}</Button></span>
     </header>
-    {nothingSaved && <div className="review-empty"><ClipboardList aria-hidden="true"/><span><strong>Nothing saved to compile yet</strong><small>Save Affinity capture, Subtractive cleanup, SEC polishing and Cell lysis first. Until then the steps below are generic placeholders.</small></span></div>}
+    {nothingSaved && <div className="review-empty"><ClipboardList aria-hidden="true"/><span><strong>Nothing saved to compile yet</strong><small>Save Affinity capture, Subtractive cleanup, Cell lysis and SEC polishing first. Until then the steps below are generic placeholders.</small></span></div>}
     <nav className="compile-rail" aria-label="Workflow overview">
       {timeline.steps.map((step, index) => {
         const Icon = kindIcons[step.kind];

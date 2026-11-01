@@ -7,6 +7,7 @@
 // Pure module: no runtime `@/` imports, so `node --test` can load it.
 import type { BufferComponent, BufferStep } from "@/lib/purification-catalog";
 import { findLibraryComponent, purposeById, resolvePurpose, type BufferPurposeId } from "./buffer-component-library.ts";
+import { tcepInPhosphate, tcepPhosphateCaveat } from "./reductant-need.ts";
 
 /** The capture chemistry that decides what the lysate may and may not contain. */
 export type CaptureChemistry = "imac"|"gst"|"strep"|"mbp"|"calcium"|"other"|"none";
@@ -20,6 +21,10 @@ export type LysisContext = {
   secComponents?: BufferComponent[];
   host: LysisHost;
   membrane: boolean;
+  /** The chosen lysis method id; lysozyme is added only for non-mechanical methods. */
+  method?: string;
+  /** Cysteines in the tagged construct; 0 leaves the reductant out, null (unknown) keeps it. */
+  cysteines?: number|null;
 };
 export type LysisReason = { component:string; text:string };
 export type LysisSuggestion = { chemistry:CaptureChemistry; step:BufferStep; reasons:LysisReason[] };
@@ -36,6 +41,13 @@ export function captureChemistry(columnId?:string,tag?:string):CaptureChemistry{
   return"other";
 }
 
+/**
+ * Methods that break E. coli without shear, so lysozyme does the work of
+ * opening the wall. With sonication, homogenization or bead beating it is
+ * optional and adds a 14.3 kDa band to every gel lane.
+ */
+export const lysozymeMethods=new Set(["enzymatic","freeze-thaw","detergent","osmotic"]);
+
 export const lysisHostLabels:Record<Exclude<LysisHost,"">,string>={bacteria:"E. coli",yeast:"yeast",insect:"insect cells",mammalian:"mammalian cells",cellfree:"cell-free reaction"};
 /** Normalizes the saved expression-system host into the four cell families, or "cellfree" when there are no cells to lyse. */
 export function lysisHost(value:unknown):LysisHost{const raw=String(value??"").toLowerCase();if(!raw)return"";if(/cell-?\s?free|in vitro/.test(raw))return"cellfree";if(raw.includes("yeast")||raw.includes("pichia")||raw.includes("cerevisiae"))return"yeast";if(raw.includes("insect")||raw.includes("sf9")||raw.includes("baculo"))return"insect";if(raw.includes("mamm")||raw.includes("hek")||raw.includes("cho"))return"mammalian";return"bacteria"}
@@ -51,6 +63,11 @@ export function suggestLysisBuffer(context:LysisContext):LysisSuggestion{
   const column=capture?.shortName||chemistryLabel[chemistry];
   const components:BufferComponent[]=[];const reasons:LysisReason[]=[];
   const add=(component:BufferComponent,text:string)=>{components.push(component);reasons.push({component:component.name,text})};
+  // A reductant only protects cysteines: leave it out when the construct has none.
+  const reductant=(name:string,concentration:number,text:string)=>{
+    if(context.cysteines===0){reasons.push({component:name,text:`No ${name}: the construct has no cysteines, so there is nothing for a reducing agent to protect.`});return}
+    add(row(name,concentration,"mM","reducing"),`${context.cysteines?`${context.cysteines} Cys in the construct. `:""}${text}`);
+  };
 
   // Base: the binding buffer's buffering agent and salt, so the cleared lysate loads without exchange.
   const binding=capture?.binding??null;
@@ -71,22 +88,22 @@ export function suggestLysisBuffer(context:LysisContext):LysisSuggestion{
     const saved=Number((binding?.components??[]).find(item=>purposeOf(item)==="competitor")?.concentration);
     const imidazole=Number.isFinite(saved)&&saved>=10&&saved<=20?saved:Number.isFinite(saved)&&saved>20?20:10;
     add(row("Imidazole",imidazole,"mM","competitor"),`${imidazole} mM imidazole stops host proteins with a few surface histidines from binding ${column}; 10–20 mM keeps the His tag bound.`);
-    add(row("TCEP",1,"mM","reducing"),"1 mM TCEP (1–5 mM suits IMAC): TCEP does not reduce the Ni²⁺ on the resin, so it is the preferred reductant here. DTT or β-mercaptoethanol at higher concentration can reduce Ni²⁺ and turn the resin brown.");
+    reductant("TCEP",1,"1 mM TCEP (1–5 mM suits IMAC): TCEP does not reduce the Ni²⁺ on the resin, so it is the preferred reductant here. DTT or β-mercaptoethanol at higher concentration can reduce Ni²⁺ and turn the resin brown.");
     reasons.push({component:"EDTA",text:"No EDTA: it strips Ni²⁺ and Co²⁺ from the IMAC resin."});
   }else if(chemistry==="gst"){
-    add(row("DTT",1,"mM","reducing"),"DTT is fine here: glutathione resin has no metal to reduce, and a reductant keeps GST in its binding-competent state.");
+    reductant("DTT",1,"DTT is fine here: glutathione resin has no metal to reduce, and a reductant keeps GST in its binding-competent state.");
     reasons.push({component:"Imidazole",text:"No imidazole: glutathione resin does not need a competitor to keep background low."});
   }else if(chemistry==="strep"){
-    add(row("TCEP",1,"mM","reducing"),"TCEP keeps cysteines reduced and does not affect Strep-Tactin binding.");
+    reductant("TCEP",1,"TCEP keeps cysteines reduced and does not affect Strep-Tactin binding.");
     reasons.push({component:"Biotin",text:"No biotin: free biotin blocks Strep-Tactin. If the culture medium or host supplies biotin, add avidin (optional) to mask it before loading."});
   }else if(chemistry==="mbp"){
-    add(row("TCEP",1,"mM","reducing"),"TCEP keeps cysteines reduced and does not affect amylose binding.");
+    reductant("TCEP",1,"TCEP keeps cysteines reduced and does not affect amylose binding.");
     reasons.push({component:"Maltose",text:"No maltose: it is the eluent and would stop the MBP fusion binding the amylose or dextrin resin."});
   }else if(chemistry==="calcium"){
     add(row("CaCl₂",2,"mM","metal-cofactor"),`${column} binds only in calcium, so the lysate carries 2 mM CaCl₂.`);
     reasons.push({component:"EDTA",text:"No EDTA or EGTA: chelating calcium is how this resin elutes."});
   }else{
-    add(row("TCEP",1,"mM","reducing"),"TCEP keeps cysteines reduced during lysis and is compatible with most affinity resins.");
+    reductant("TCEP",1,"TCEP keeps cysteines reduced during lysis and is compatible with most affinity resins.");
   }
 
   // Membrane proteins: extract with the detergent the SEC buffer keeps.
@@ -102,11 +119,16 @@ export function suggestLysisBuffer(context:LysisContext):LysisSuggestion{
   const cleanupImac=captureChemistry(context.cleanup?.columnId,context.cleanup?.tag)==="imac";
   const edtaFree=chemistry==="imac"||chemistry==="calcium"||cleanupImac;
   add(row(edtaFree?"EDTA-free protease inhibitor":"Protease inhibitor cocktail",1,"×","protease-inhibitor"),chemistry==="imac"?"EDTA-free protease inhibitor: blocks host proteases without stripping the IMAC resin.":chemistry==="calcium"?"EDTA-free protease inhibitor: EDTA would remove the calcium the resin needs.":cleanupImac?`EDTA-free protease inhibitor: Subtractive cleanup uses ${context.cleanup?.shortName||"IMAC"}, so keep chelators out upstream.`:"Protease inhibitor cocktail blocks host proteases released during lysis.");
-  if(context.host==="bacteria")add(row("Lysozyme",1,"mg/mL","lysis-enzyme"),"E. coli: lysozyme weakens the cell wall, so cells break with gentler sonication or homogenization.");
+  if(context.host==="bacteria"&&(!context.method||lysozymeMethods.has(context.method)))add(row("Lysozyme",1,"mg/mL","lysis-enzyme"),context.method?"E. coli: lysozyme digests the peptidoglycan wall, which this method relies on to open the cells.":"E. coli: lysozyme weakens the cell wall. It is optional if you break the cells mechanically.");
+  else if(context.host==="bacteria")reasons.push({component:"Lysozyme",text:"Optional with mechanical lysis: the method already breaks the E. coli wall, and lysozyme (14.3 kDa) adds a band that can hide a small target on the gel. Add 0.2–1 mg/mL only if a viscous or incomplete lysate needs it."});
   else if(context.host==="yeast")reasons.push({component:"Lysozyme",text:"Yeast: lysozyme does not digest yeast walls; break cells by bead beating or homogenization (or zymolyase)."});
   else if(context.host==="cellfree")reasons.push({component:"Lysozyme",text:"Cell-free reaction: there are no cells to break, so no lysis enzyme is needed. Clarify the reaction mix by centrifugation before loading."});
   else if(context.host)reasons.push({component:"Lysozyme",text:`${context.host==="insect"?"Insect":"Mammalian"} cells have no cell wall, so no lysis enzyme is needed.`});
   else reasons.push({component:"Lysozyme",text:"No expression host is saved yet; lysozyme is added for E. coli once that is chosen."});
+
+  // TCEP oxidizes in phosphate: say so when the base is a phosphate buffer.
+  const tcep=reasons.find(reason=>reason.component==="TCEP");
+  if(tcep&&tcepInPhosphate(components))tcep.text=`${tcep.text} ${tcepPhosphateCaveat}`;
 
   return{chemistry,step:{pH,purpose:`Lysis — suggested for ${column}`,components},reasons};
 }

@@ -35,16 +35,17 @@ export const workflowJobs: WorkflowJobDefinition[] = [
   { id: "reference-match", appType: "reference-match", label: "Choose reference match", description: "Select the closest biological reference so cofactors and PTMs come from one traceable UniProt record.", stage: "understand", color: "#f2c14e", requiredKey: "selectedAccession" },
   { id: "structure", appType: "alphafold", label: "Structure Viewer", description: "View the AlphaFold model or an experimental PDB entry and highlight regions of interest.", stage: "understand", color: "#37dce8" },
   { id: "readiness", appType: "protein-readiness", label: "Protein readiness check", description: "Review membrane, cysteine, location, A₂₈₀, disorder, and cofactor risks.", stage: "understand", color: "#45c6a7", requiredKey: "reviewStatus" },
-  // Purification is designed from the protein outwards: capture, cleanup and
-  // polishing first, then the host, vector and lysis that have to feed them.
-  // Tag cleavage is chosen in subtractive cleanup and each job sets its own
-  // buffers, so neither has a step of its own.
-  { id: "purification-affinity", appType: "purification-affinity", label: "Affinity capture", description: "Choose the affinity tag, linker and capture resin, and set the binding, wash and elution buffers.", stage: "plan", color: "#63b4ff", requiredKey: "columnId" },
-  { id: "purification-subtractive", appType: "purification-subtractive", label: "Subtractive cleanup", description: "Choose the tag-cleavage protease, then remove the released tag, uncleaved fusion and protease by reverse affinity.", stage: "plan", color: "#468fda", requiredKey: "columnId" },
-  { id: "purification-sec", appType: "purification-sec", label: "SEC polishing", description: "Match target size and injection volume to a size-exclusion column, and set the final storage buffer.", stage: "plan", color: "#756be8", requiredKey: "columnId" },
+  // Planning follows the bench: host, then the vector built for it, then
+  // capture, cleavage and cleanup, lysis and polishing, then the compiled plan.
+  // Each job can check against what the earlier ones saved. Tag cleavage is
+  // chosen in subtractive cleanup and each job sets its own buffers, so
+  // neither has a step of its own.
   { id: "expression-system", appType: "expression-system", label: "Choose expression system", description: "Compare bacterial, yeast, insect, and mammalian production hosts.", stage: "plan", color: "#e178d0", requiredKey: "strainId" },
   { id: "expression-vector", appType: "expression-planning", label: "Expression vector design", description: "Build, annotate, inspect, and document the expression plasmid.", stage: "plan", color: "#d98ae9" },
+  { id: "purification-affinity", appType: "purification-affinity", label: "Affinity capture", description: "Choose the affinity tag, linker and capture resin, and set the binding, wash and elution buffers.", stage: "plan", color: "#63b4ff", requiredKey: "columnId" },
+  { id: "purification-subtractive", appType: "purification-subtractive", label: "Subtractive cleanup", description: "Choose the tag-cleavage protease, then remove the released tag, uncleaved fusion and protease by reverse affinity.", stage: "plan", color: "#468fda", requiredKey: "columnId" },
   { id: "purification-lysis", appType: "purification-lysis", label: "Cell lysis", description: "Choose a host-compatible disruption method and lysis buffer, and review incompatibilities.", stage: "plan", color: "#2bb7a9", requiredKey: "methodId" },
+  { id: "purification-sec", appType: "purification-sec", label: "SEC polishing", description: "Match target size and injection volume to a size-exclusion column, and set the final storage buffer.", stage: "plan", color: "#756be8", requiredKey: "columnId" },
   { id: "purification-workflow", appType: "purification-workflow", label: "Compile workflow", description: "Cross-check the complete design and generate a bench plan.", stage: "plan", color: "#3d91e8", requiredKey: "reviewStatus" },
   { id: "transformation-expression", appType: "transformation-expression", label: "Transformation and Expression", description: "Record the starting material, host-specific medium, culture conditions, and expression notes.", stage: "purify", color: "#ef8f47", requiredKey: "mediaId" },
   { id: "chromatogram", appType: "chromatogram-studio", label: "Chromatogram Studio", description: "Analyze purification traces, SEC standards, peaks, and figures.", stage: "analysis", color: "#b47bf3" },
