@@ -18,6 +18,7 @@ import { MolScriptBuilder as MS } from "molstar/lib/mol-script/language/builder"
 import { Script } from "molstar/lib/mol-script/script";
 import { Overpaint } from "molstar/lib/mol-theme/overpaint";
 import { Color } from "molstar/lib/mol-util/color";
+import { Task } from "molstar/lib/mol-task";
 import type { ChainSequence } from "@/lib/conservation-coloring";
 import type { ResidueColoring } from "@/lib/structure-coloring";
 import type { InterfaceAtom } from "@/lib/structure-interface";
@@ -288,6 +289,16 @@ export class MolstarStage {
 
   resetCamera() { PluginCommands.Camera.Reset(this.plugin, { durationMs: motion(350) }); }
 
+  /** Puts the latest representations in the scene now and frames them, for a picture taken without a visible canvas. */
+  async frameForImage() {
+    await this.queue;
+    const canvas3d = this.plugin.canvas3d;
+    if (!canvas3d) throw new Error("The 3D view is not ready yet.");
+    canvas3d.commit(true);
+    await PluginCommands.Camera.Reset(this.plugin, { durationMs: 0 });
+    canvas3d.commit(true);
+  }
+
   zoom(factor: number) {
     const camera = this.plugin.canvas3d?.camera;
     if (!camera) return;
@@ -297,11 +308,13 @@ export class MolstarStage {
   }
 
   /** PNG of the current view on white at twice the on-screen size, cropped to the molecule. */
-  async imageDataUri() {
+  async imageDataUri({ autocrop = false } = {}) {
     const helper = this.plugin.helpers.viewportScreenshot;
     if (!helper) throw new Error("The 3D view is not ready yet.");
     const { width, height } = this.host.getBoundingClientRect();
     helper.behaviors.values.next({ ...helper.behaviors.values.value, transparent: false, axes: { name: "off", params: {} }, resolution: { name: "custom", params: { width: Math.max(1, Math.round(width * 2)), height: Math.max(1, Math.round(height * 2)) } } });
+    // Mol* measures the molecule's extent from a preview; without one, the picture keeps the empty margins.
+    if (autocrop) { helper.behaviors.cropParams.next({ auto: true, relativePadding: 0.04 }); await this.plugin.runTask(Task.create("Measure the molecule", (ctx) => helper.getPreview(ctx))); }
     return helper.getImageDataUri();
   }
 
