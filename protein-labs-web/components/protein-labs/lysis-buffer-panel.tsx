@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import { Check, CircleMinus, CirclePlus, ShieldAlert, Sparkles, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BufferComposer } from "@/components/protein-labs/buffer-composer";
-import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
-import { normalizeBufferSteps, type BufferComponent, type BufferStep } from "@/lib/purification-catalog";
+import type { ProteinBundle } from "@/lib/protein-labs-api";
+import type { BufferComponent, BufferStep } from "@/lib/purification-catalog";
+import { savedBufferSteps } from "@/lib/purification-buffers";
 import { lysisBuffers } from "@/lib/purification-stage-catalog";
 import { lysisHost, lysisHostLabels, suggestLysisBuffer, type LysisContext } from "@/lib/lysis-buffer-suggestion";
 
@@ -13,9 +14,9 @@ import { lysisHost, lysisHostLabels, suggestLysisBuffer, type LysisContext } fro
 export function lysisSuggestionContext(bundle:ProteinBundle,membrane:boolean):LysisContext&{hostName:string;secName:string}{
   const config=(type:string)=>bundle.projectJobs.find(job=>job.appType===type)?.config??{};
   const affinity=config("purification-affinity"),cleanup=config("purification-subtractive"),sec=config("purification-sec"),expression=config("expression-system");
-  const shared=normalizeBufferSteps(config("purification-buffer").steps);
-  const binding=normalizeBufferSteps(affinity.buffers)?.binding??shared?.binding??null;
-  const secComponents=Array.isArray(sec.bufferComponents)?(sec.bufferComponents as JsonObject[]).map(item=>({name:String(item.name??""),concentration:String(item.concentration??""),unit:String(item.unit??""),role:String(item.role??"")})):shared?.storage.components??[];
+  const shared=savedBufferSteps(bundle.projectJobs);
+  const binding=shared.binding??null;
+  const secComponents=shared.storage?.components??[];
   const host=lysisHost(expression.hostSystemId??expression.hostSystem);
   return{
     capture:affinity.columnId?{columnId:String(affinity.columnId),shortName:String(affinity.shortName??""),tag:String(affinity.tag??""),binding:binding?.components.length?binding:null}:null,
