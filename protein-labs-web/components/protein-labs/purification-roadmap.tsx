@@ -44,6 +44,7 @@ const yieldMethods = ["A280 / NanoDrop", "Bradford assay", "BCA assay", "UV–Vi
 const purityMethods = ["SDS-PAGE densitometry", "Native PAGE densitometry", "SEC peak area", "RP-HPLC peak area", "Capillary electrophoresis", "Mass spectrometry", "Other"];
 const bufferLabels: Record<string, string> = { lysis: "Lysis buffer", binding: "Binding buffer", wash: "Wash buffer", elution: "Elution buffer", cleavage: "Cleavage buffer", storage: "SEC / storage buffer" };
 const pendingKey = (proteinId: string) => `protein-labs-roadmap-analysis:${proteinId}`;
+const latestJob = (jobs: ProteinBundle["projectJobs"], appType: string) => jobs.filter((job) => job.appType === appType).reduce<ProteinBundle["projectJobs"][number] | undefined>((last, job) => !last || job.updatedAt > last.updatedAt ? job : last, undefined);
 
 export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkflow, onChanged }: { bundle: ProteinBundle; onOpenJob: (jobId: string) => void; onBackToWorkflow: () => void; onChanged: () => Promise<void> }) {
   const savedJob = bundle.projectJobs.find((job) => job.appType === "purification-roadmap");
@@ -72,8 +73,9 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
     try { pending = JSON.parse(raw) as PendingAnalysis; } catch { sessionStorage.removeItem(pendingKey(bundle.protein.id)); return; }
     if (pending.proteinId !== bundle.protein.id) return;
     const appType = pending.type === "chromatogram" ? "chromatogram-studio" : "gel-analysis";
-    const source = bundle.projectJobs.find((job) => job.appType === appType);
-    if (!source || source.updatedAt === pending.previousUpdatedAt) return;
+    // A protein can hold several gels; link the one saved after the step asked for it.
+    const source = latestJob(bundle.projectJobs, appType);
+    if (!source || source.updatedAt <= pending.previousUpdatedAt) return;
     const linked = componentFromAnalysis(pending.type, source);
     sessionStorage.removeItem(pendingKey(bundle.protein.id));
     queueMicrotask(() => {
@@ -94,7 +96,7 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
     setContext(null);
     if (type === "chromatogram" || type === "gel") {
       const appType = type === "chromatogram" ? "chromatogram-studio" : "gel-analysis";
-      const current = bundle.projectJobs.find((job) => job.appType === appType);
+      const current = latestJob(bundle.projectJobs, appType);
       sessionStorage.setItem(pendingKey(bundle.protein.id), JSON.stringify({ proteinId: bundle.protein.id, stepId, type, previousUpdatedAt: current?.updatedAt ?? "" } satisfies PendingAnalysis));
       onOpenJob(type === "chromatogram" ? "chromatogram" : "gel");
       return;

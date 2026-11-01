@@ -4616,6 +4616,66 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   min-height: 0;
   width: 100%;
 }
+.trace-selector .trace-step {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted-foreground);
+}
+.trace-selector .trace-step select {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.gel-studio {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.gel-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 75%, var(--background));
+}
+.gel-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted-foreground);
+}
+.gel-picker select {
+  min-width: 280px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0 8px;
+  font-size: 13px;
+}
+.gel-picker > span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.gel-studio > .gel-analysis-full {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
 .gel-analysis-full {
   position: relative;
   height: 100%;
