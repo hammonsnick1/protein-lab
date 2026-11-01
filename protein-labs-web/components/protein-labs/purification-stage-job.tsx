@@ -9,8 +9,8 @@ import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
 import { CleavageChooser } from "@/components/protein-labs/cleavage-chooser";
 import type { ConstructReport } from "@/components/protein-labs/construct-designer";
 import { constructSummary, planConfig } from "@/lib/construct-records";
-import { saveBufferSteps, stageBufferStep } from "@/lib/purification-buffers";
-import { affinityCategories, affinityColumns, bufferStepLabels, normalizeBufferSteps, proteases, type AffinityColumn, type BufferStep } from "@/lib/purification-catalog";
+import { saveBufferSteps, savedBufferSteps, stageBufferStep } from "@/lib/purification-buffers";
+import { affinityCategories, affinityColumns, bufferStepLabels, proteases, type AffinityColumn, type BufferStep } from "@/lib/purification-catalog";
 import { LysisMethodAnimation } from "@/components/protein-labs/lysis-method-animation";
 import { cleanupBuffers, lysisBuffers, lysisMethods, secBuffers, type LysisMethod, type StageBuffer } from "@/lib/purification-stage-catalog";
 import { cleanupBufferChecks, loadStageBufferStep, presetBufferStep, secBufferChecks, stepFormula, stepPH, type Compatibility } from "@/lib/stage-buffer";
@@ -38,19 +38,23 @@ export function PurificationStageJob({bundle,onChanged,mode}:{bundle:ProteinBund
   const defaultMass=Math.max(.1,Math.round(Number(plannedMassDa(bundle)??bundle.protparam?.result.molecularWeightDa??bundle.protein.sequence.length*110)/10)/100);
   const [secId,setSecId]=useState(String(saved.columnId??pickSec(defaultMass).id)); const [expectedMass,setExpectedMass]=useState(Number(saved.expectedMassKDa??defaultMass)); const [sampleVolume,setSampleVolume]=useState(Number(saved.sampleVolumeMl??.25));
   const initialBuffer=mode==="purification-lysis"?"lysis-native":mode==="purification-subtractive"?"cleanup-imac":"sec-hepes";
-  const [bufferId,setBufferId]=useState(String(saved.bufferId??initialBuffer)); const [search,setSearch]=useState(""); const [category,setCategory]=useState("All");
+  const bufferStepId=mode==="purification-lysis"?"lysis":mode==="purification-subtractive"?"cleavage":"storage";
+  // A saved job reopens with its buffer from the shared record; an unsaved one starts from a preset.
+  // Older lysis saves kept components without naming where they came from.
+  const [savedStep]=useState(()=>savedBufferSteps(bundle.projectJobs)[bufferStepId]);
+  const [bufferId,setBufferId]=useState(String(saved.bufferId??(mode==="purification-lysis"&&saved.methodId&&savedStep?"saved":initialBuffer))); const [search,setSearch]=useState(""); const [category,setCategory]=useState("All");
   // Subtractive cleanup and SEC polishing edit their buffer in the composer; a preset card only loads a starting point.
-  const composed=mode!=="purification-lysis"; const bufferStepId=mode==="purification-lysis"?"lysis":mode==="purification-subtractive"?"cleavage":"storage";
+  const composed=mode!=="purification-lysis";
   // Cleanup and SEC handle the cleaved product; a preset's reductant is left out when it has no cysteines.
   const cysteines=useMemo(()=>constructCysteines(stageConstruct(bundle),bundle.protein.sequence,composed),[bundle,composed]);
   const buffers=useMemo(()=>(mode==="purification-lysis"?lysisBuffers:mode==="purification-subtractive"?cleanupBuffers:secBuffers).map(preset=>({...preset,components:dropUnneededReductant(preset.components,cysteines)})),[mode,cysteines]);
-  const [bufferStep,setBufferStep]=useState<BufferStep>(()=>loadStageBufferStep(saved,buffers,initialBuffer,bufferStepLabels[bufferStepId])); const [composerLoads,setComposerLoads]=useState(0);
+  const [bufferStep,setBufferStep]=useState<BufferStep>(()=>saved.columnId&&savedStep?savedStep:loadStageBufferStep(saved,buffers,initialBuffer,bufferStepLabels[bufferStepId])); const [composerLoads,setComposerLoads]=useState(0);
   useEffect(()=>{proteinLabsApi.listVectors(bundle.protein.id).then(value=>setVectors(value.vectors)).catch(()=>setVectors([]));},[bundle.protein.id]);
   const method=lysisMethods.find(value=>value.id===methodId)??lysisMethods[0];
   const cleanup=affinityColumns.find(value=>value.id===cleanupId)??affinityColumns[0];
   const sec=secColumns.find(value=>value.id===secId)??secColumns[0];
   // Cell lysis composes its buffer: from the suggestion ("suggested") or a preset, then edited freely.
-  const [lysisStep,setLysisStep]=useState<BufferStep>(()=>{const savedStep=normalizeBufferSteps(config(bundle,"purification-buffer").steps)?.lysis;return saved.methodId&&savedStep?.components.length?savedStep:presetBufferStep(lysisBuffers.find(value=>value.id===bufferId)??lysisBuffers[0],bufferStepLabels.lysis)});
+  const [lysisStep,setLysisStep]=useState<BufferStep>(()=>saved.methodId&&savedStep?savedStep:presetBufferStep(lysisBuffers.find(value=>value.id===bufferId)??lysisBuffers[0],bufferStepLabels.lysis));
   const [lysisEdited,setLysisEdited]=useState(Boolean(saved.bufferEdited));
   // Methods are marked against a cell host only; a cell-free reaction has nothing to lyse, and the checks say so.
   const savedHost=lysisHost(config(bundle,"expression-system").hostSystemId??config(bundle,"expression-system").hostSystem); const host=savedHost==="cellfree"?"":savedHost;
@@ -114,7 +118,7 @@ function isMembrane(bundle:ProteinBundle){const value=String(config(bundle,"prot
 function bufferText(value:StageBuffer){return `${value.name} ${value.description} ${value.components.map(item=>`${item.name} ${item.concentration} ${item.unit}`).join(" ")}`.toLowerCase()}
 function contains(value:string,needles:string[]){return needles.some(item=>value.includes(item))}
 /** The composed lysis buffer as a stage buffer, for the checks, the plan summary and the saved job. */
-function lysisStageBuffer(step:BufferStep,source:string,edited:boolean):StageBuffer{const preset=lysisBuffers.find(value=>value.id===source);const pH=Number.parseFloat(step.pH);return{id:source,name:`${preset?.name??"Suggested lysis buffer"}${edited?" (edited)":""}`,pH,description:preset&&!edited?preset.description:preset?"Edited in the buffer composer.":"Suggested from the saved capture column, expression host and membrane flag.",bestFor:preset?.bestFor??"",pros:preset&&!edited?preset.pros:"",cons:preset&&!edited?preset.cons:"",components:step.components,color:preset?.color??"#16a34a"}}
+function lysisStageBuffer(step:BufferStep,source:string,edited:boolean):StageBuffer{const preset=lysisBuffers.find(value=>value.id===source);const pH=Number.parseFloat(step.pH);return{id:source,name:`${preset?.name??(source==="saved"?"Saved lysis buffer":"Suggested lysis buffer")}${edited?" (edited)":""}`,pH,description:preset&&!edited?preset.description:preset||edited?"Edited in the buffer composer.":source==="saved"?"The lysis buffer saved with this job.":"Suggested from the saved capture column, expression host and membrane flag.",bestFor:preset?.bestFor??"",pros:preset&&!edited?preset.pros:"",cons:preset&&!edited?preset.cons:"",components:step.components,color:preset?.color??"#16a34a"}}
 function formula(value:StageBuffer){return value.components.map(item=>`${item.concentration} ${item.unit} ${item.name}`).join(", ")}
 function searchValue(value:object){return Object.values(value).join(" ").toLowerCase()}
 function pickSec(mass:number){return secColumns.find(value=>value.id!=="custom"&&value.name.includes("10/300")&&value.minKDa!==null&&mass>=value.minKDa&&mass<=Number(value.maxKDa))??secColumns[2]}
