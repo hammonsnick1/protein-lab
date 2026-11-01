@@ -13,6 +13,7 @@
 // Only erasable TypeScript syntax is used, so the unit tests run under Node
 // without a bundler.
 import { findSpaceGroup, type SpaceGroup, type UnitCell } from "./space-groups.ts";
+import { formatProbability, type SpaceGroupSuggestion } from "./crystallization.ts";
 
 /** The part of a saved PDB hit this module needs (see `lib/protein-facts.ts`). */
 export type SpaceGroupHit = {
@@ -38,6 +39,30 @@ export type SpaceGroupHighlight = {
 
 /** A predictor's suggestion, before it is matched to the table. */
 export type PredictorSuggestion = { symbol: string; source: string; detail?: string };
+
+/**
+ * The predictor suggestions in the engine's assessment, for the selector.
+ *
+ * Only the `origin: "mascl"` entries: those are predictions. The engine's
+ * `origin: "homologue"` entries read the same `bundle.pdbMatches[].spaceGroup`
+ * the shared facts helper reads, and the facts version is the better source —
+ * it groups by PDB id and carries the entry's unit cell, where the engine
+ * counts one per matching entity record. So homologue groups arrive through
+ * `spaceGroupHighlights`' `hits` argument instead, as evidence rather than a
+ * suggestion. A group MASCL predicts that a homologue also used arrives here
+ * with `homologueCount > 0` and keeps both flags.
+ */
+export function masclSuggestions(suggestions: readonly SpaceGroupSuggestion[] = []): PredictorSuggestion[] {
+  return suggestions
+    .filter((entry) => entry.origin === "mascl")
+    .map((entry) => ({
+      symbol: entry.spaceGroup,
+      source: "MASCL",
+      detail: entry.probability === null
+        ? "Suggested by MASCL, which gave no probability."
+        : `MASCL probability ${formatProbability(entry.probability)}.`,
+    }));
+}
 
 /**
  * One highlight per group, keyed by ITA number. Real crystal forms win over

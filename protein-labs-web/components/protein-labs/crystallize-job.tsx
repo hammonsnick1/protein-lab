@@ -13,6 +13,8 @@ import {
   type Assessment, type FactInfluence, type InfluenceEffect, type Predictor, type ScoreView, type SpaceGroupSuggestion,
 } from "@/lib/crystallization";
 import { CrystallizationGuidance } from "@/components/protein-labs/crystallization-guidance";
+import { SpaceGroupExplorer } from "@/components/protein-labs/space-group-explorer";
+import { masclSuggestions } from "@/lib/space-group-evidence";
 import { CRYSTALLIZE_PANELS, panelState, selectedSpaceGroup, withPanelState, type CrystallizePanelId, type CrystallizePanelProps } from "@/lib/crystallize-panels";
 
 const JOB_LABEL = "Crystallize your protein";
@@ -21,6 +23,16 @@ const JOB_LABEL = "Crystallize your protein";
 // space-group, lattice and practical-guidance panels register here.
 const panelComponents: Partial<Record<CrystallizePanelId, ComponentType<CrystallizePanelProps>>> = {
   propensity: PropensityPanel,
+  // The selector reads the homologues' own crystal forms from `facts` and
+  // takes predictions through `suggestions`; `selectSpaceGroup` shares the
+  // chosen group with the lattice builder.
+  "space-groups": ({ bundle, facts, suggestedSpaceGroups, selectedSpaceGroup: chosen, selectSpaceGroup }) => <SpaceGroupExplorer
+    facts={facts}
+    proteinName={bundle.protein.name}
+    suggestions={masclSuggestions(suggestedSpaceGroups)}
+    initialSymbol={chosen ?? undefined}
+    onSelect={(group) => void selectSpaceGroup(group.hm)}
+  />,
   guidance: ({ facts }) => <CrystallizationGuidance facts={facts}/>,
 };
 

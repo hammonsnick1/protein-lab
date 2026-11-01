@@ -4,8 +4,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
-  spaceGroupHighlights, startingGroup, unresolvedSpaceGroups, type SpaceGroupHit,
+  masclSuggestions, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups, type SpaceGroupHit,
 } from "./space-group-evidence.ts";
+import type { SpaceGroupSuggestion } from "./crystallization.ts";
 
 const cell = { a: 38.2, b: 45.1, c: 62.7, alpha: 90, beta: 90, gamma: 90 };
 
@@ -61,5 +62,43 @@ describe("space groups from saved evidence", () => {
     assert.equal(startingGroup(new Map()), "P212121");
     assert.equal(startingGroup(many, "P 43 21 2"), "P43212", "an explicit choice wins");
     assert.equal(startingGroup(new Map(), "nonsense"), "P212121");
+  });
+});
+
+// The Crystallize job hands the engine's `assessment.spaceGroups` to the
+// selector through `masclSuggestions` (see `crystallize-job.tsx`).
+describe("engine suggestions mapped for the selector", () => {
+  const suggestion = (
+    spaceGroup: string, origin: SpaceGroupSuggestion["origin"], probability: number | null, homologueCount = 0,
+  ): SpaceGroupSuggestion => ({ spaceGroup, origin, probability, homologueCount });
+
+  it("keeps only the predictions, and says the probability in the job's own format", () => {
+    assert.deepEqual(masclSuggestions([suggestion("P 21 21 21", "mascl", 0.42)]), [
+      { symbol: "P 21 21 21", source: "MASCL", detail: "MASCL probability 0.42." },
+    ]);
+  });
+
+  it("drops the homologue reports, which arrive as evidence from the facts helper instead", () => {
+    const mapped = masclSuggestions([
+      suggestion("C 1 2 1", "homologue", null, 3),
+      suggestion("P 43 21 2", "mascl", 0.18),
+    ]);
+    assert.deepEqual(mapped.map((entry) => entry.symbol), ["P 43 21 2"]);
+  });
+
+  it("keeps a prediction that has no probability, and says so", () => {
+    const [mapped] = masclSuggestions([suggestion("P 31 2 1", "mascl", null, 2)]);
+    assert.equal(mapped.detail, "Suggested by MASCL, which gave no probability.");
+  });
+
+  it("maps nothing when the engine suggested nothing", () => {
+    assert.deepEqual(masclSuggestions([]), []);
+    assert.deepEqual(masclSuggestions(), []);
+  });
+
+  it("produces symbols the table resolves, so the suggestion really flags a group", () => {
+    const highlights = spaceGroupHighlights([], masclSuggestions([suggestion("P 21 21 21", "mascl", 0.42)]));
+    assert.equal(highlights.get(19)!.kind, "predictor");
+    assert.equal(highlights.get(19)!.detail, "MASCL probability 0.42.");
   });
 });
