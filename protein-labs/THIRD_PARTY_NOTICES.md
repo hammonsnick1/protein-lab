@@ -72,6 +72,13 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## Shoebill (not distributed)
+
+Protein Labs does not copy, redistribute, or execute Shoebill code or model
+weights. The public repository was examined on 2026-10-31 and has no license
+file, so it is unavailable pending an explicit usable license from its authors.
+Source: https://github.com/KJ-Liao/Shoebill
+
 ## OpenCloning
 
 Protein Labs' Expression Planning vector builder adapts sequence/source model

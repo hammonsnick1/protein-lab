@@ -650,6 +650,7 @@ class RCSBClient:
         experimental = entry.get("exptl") or []
         entry_info = entry.get("rcsb_entry_info") or {}
         struct = entry.get("struct") or {}
+        symmetry = entry.get("symmetry") or {}
         polymer = entity.get("rcsb_polymer_entity") or {}
         identifiers = entity.get("rcsb_polymer_entity_container_identifiers") or {}
         chain_ids = identifiers.get("auth_asym_ids") or identifiers.get("asym_ids") or []
@@ -695,6 +696,10 @@ class RCSBClient:
             "resolutionAngstrom": _resolutions(entry_info.get("resolution_combined")),
             "method": "; ".join(str(item.get("method")) for item in experimental if item.get("method")) or None,
             "resolution": min(_resolutions(entry_info.get("resolution_combined")), default=None),
+            # RCSB's Hermann–Mauguin label is entry-level metadata, not
+            # entity-level metadata. Retain it with the homologue so callers
+            # can distinguish a reported crystal form from a prediction.
+            "spaceGroup": str(symmetry.get("space_group_name_H_M") or "").strip() or None,
             "sourceOrganisms": _organism_names(sources),
             "crystallizationConditions": conditions["crystallizationConditions"],
             "purificationConditions": conditions["purificationConditions"],

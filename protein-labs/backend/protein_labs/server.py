@@ -290,6 +290,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             if match:
                 self._send(200, self.planner.get_conservation(*match.groups()))
                 return
+            match = re.fullmatch(r"/v1/protein-planner/proteins/([^/]+)/crystallization", path)
+            if match:
+                self._send(200, self.planner.crystallization_assessment(match.group(1)))
+                return
             self._send(404, {"error": "Endpoint not found"})
         except Exception as error:
             self._handle_error(error)
@@ -576,6 +580,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         str(body.get("msaPath") or ""),
                         str(body.get("jobId") or ""),
                     ))
+                elif action == "crystallization/assess":
+                    self._send(200, self.planner.crystallization_assessment(protein_id))
                 elif action == "jobs":
                     self._send(201, self.planner.create_project_job(protein_id, body))
                 elif action == "notebook":
@@ -770,7 +776,7 @@ class ApiHandler(BaseHTTPRequestHandler):
     @staticmethod
     def _protein_action(path: str) -> tuple[str, str] | None:
         match = re.fullmatch(
-            r"/v1/protein-planner/proteins/([^/]+)/(analyze|blast|research|pdb/search|uniprot/search|uniprot/fetch|uniprot/match|alphafold/db|alphafold/server-job|alphafold/import|conservation/consurf-job|conservation/consurf-db|conservation/import|jobs|notebook)",
+            r"/v1/protein-planner/proteins/([^/]+)/(analyze|blast|research|pdb/search|uniprot/search|uniprot/fetch|uniprot/match|alphafold/db|alphafold/server-job|alphafold/import|conservation/consurf-job|conservation/consurf-db|conservation/import|crystallization/assess|jobs|notebook)",
             path,
         )
         return (match.group(1), match.group(2)) if match else None
