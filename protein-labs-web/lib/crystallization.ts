@@ -15,7 +15,7 @@
 // Only erasable TypeScript syntax is used, so the unit tests run under Node
 // without a bundler.
 import type { JsonObject } from "./protein-labs-api.ts";
-import type { CitationId } from "./citations.ts";
+import { isCitationId, type CitationId } from "./citations.ts";
 import { FACT_GUIDE, type FactJob, type FactKey, type FactSource, type ProteinFacts } from "./protein-facts.ts";
 
 // ── Engine assessment ───────────────────────────────────────────────────────
@@ -71,8 +71,10 @@ export type Assessment = {
   uncertainty: { lower: number | null; upper: number | null; status: string; plainLanguage: string };
   predictors: Predictor[];
   spaceGroups: SpaceGroupSuggestion[];
-  explanations: { direction: AdviceDirection; summary: string; source: string }[];
+  /** Each point cites the registry ids the engine sent; unknown ids are dropped. */
+  explanations: { direction: AdviceDirection; summary: string; source: string; citations: CitationId[] }[];
   recommendation: string;
+  recommendationCitations: CitationId[];
 };
 
 /** The registry entry each known predictor is cited with. */
@@ -95,10 +97,20 @@ export function readAssessment(raw: unknown): Assessment {
     explanations: asObjects(body.explanations).flatMap((item) => {
       const summary = text(item.summary);
       const direction = text(item.direction);
-      return summary ? [{ direction: (["caution", "action", "support"].includes(direction) ? direction : "missing_evidence") as AdviceDirection, summary, source: text(item.source) }] : [];
+      return summary ? [{ direction: (["caution", "action", "support"].includes(direction) ? direction : "missing_evidence") as AdviceDirection, summary, source: text(item.source), citations: citationIds(item.citations) }] : [];
     }),
     recommendation: text(body.recommendation),
+    recommendationCitations: citationIds(body.recommendationCitations),
   };
+}
+
+/** Every registry id the engine cites in this assessment, in reading order: recommendation first, then each point. */
+export function assessmentCitations(assessment: Assessment | null): CitationId[] {
+  return assessment ? [...assessment.recommendationCitations, ...assessment.explanations.flatMap((item) => item.citations)] : [];
+}
+
+function citationIds(value: unknown): CitationId[] {
+  return [...new Set((Array.isArray(value) ? value : []).map(text).filter(isCitationId))];
 }
 
 function readPredictor(raw: JsonObject): Predictor {

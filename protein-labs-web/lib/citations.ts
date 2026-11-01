@@ -83,6 +83,11 @@ const entries = [
     source: "Nature 596:583–589", doi: "10.1038/s41586-021-03819-2",
   },
   {
+    id: "tunyasuvunakool2021", kind: "article", name: "pLDDT and disorder", authors: "Tunyasuvunakool K, Adler J, Wu Z, et al.", year: "2021",
+    title: "Highly accurate protein structure prediction for the human proteome",
+    source: "Nature 596:590–596", doi: "10.1038/s41586-021-03828-1",
+  },
+  {
     id: "consurf2023", kind: "software", name: "ConSurf", authors: "Yariv B, Yariv E, Kessel A, et al.", year: "2023",
     title: "Using evolutionary data to make sense of macromolecules with a “face-lifted” ConSurf",
     source: "Protein Sci 32:e4582", doi: "10.1002/pro.4582", url: "https://consurf.tau.ac.il",
@@ -410,6 +415,9 @@ export type CitationId = (typeof entries)[number]["id"];
 export const citations: Readonly<Record<CitationId, Citation>> = Object.fromEntries(entries.map((entry) => [entry.id, entry])) as Record<CitationId, Citation>;
 
 export function getCitation(id: CitationId): Citation { return citations[id]; }
+
+/** True for an id in the registry; ids that arrive from the engine are checked with this before they are cited. */
+export function isCitationId(value: string): value is CitationId { return Object.hasOwn(citations, value); }
 
 /** The link a reader follows: the DOI when there is one, otherwise the URL. */
 export function citationHref(citation: Citation): string | null {

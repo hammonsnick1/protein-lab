@@ -5,12 +5,13 @@
 // CRYSTALLIZATION_API.md) for the fixture in test_crystallization.py; job
 // configs carry exactly the keys their saving component writes.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 
 import type { JsonObject, ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
-import { citations } from "./citations.ts";
+import { citations, type CitationId } from "./citations.ts";
 import { proteinFacts } from "./protein-facts.ts";
-import { crystallizeConfig, factInfluences, PREDICTOR_CITATIONS, readAssessment, scoreView, spaceGroupSymbol } from "./crystallization.ts";
+import { assessmentCitations, crystallizeConfig, factInfluences, PREDICTOR_CITATIONS, readAssessment, scoreView, spaceGroupSymbol } from "./crystallization.ts";
 import { CRYSTALLIZE_PANELS, panelState, selectedSpaceGroup, withPanelState } from "./crystallize-panels.ts";
 import { definitionFor, workflowJobs, workflowSections } from "./workflow.ts";
 
@@ -26,12 +27,13 @@ const engineResponse: JsonObject = {
   ],
   spaceGroupSuggestions: [{ spaceGroup: "P 21 21 21", homologueCount: 1, source: "Saved PDB homologue crystal forms" }],
   explanations: [
-    { direction: "caution", summary: "A saved UniProt annotation has transmembrane region(s); membrane-protein crystallization usually needs specialized detergent, lipidic-cubic-phase, or related screening.", source: "Saved UniProtKB match" },
-    { direction: "caution", summary: "Saved disorder annotations cover 30% of the sequence; consider a construct boundary screen.", source: "Saved UniProtKB match" },
-    { direction: "action", summary: "Saved UniProt evidence lists heme; test the relevant ligand or cofactor condition alongside apo protein.", source: "Saved UniProtKB match" },
-    { direction: "support", summary: "1 saved PDB homologue record(s) include experimental crystal-form metadata.", source: "Saved PDB homologue search" },
+    { direction: "caution", summary: "A saved UniProt annotation has transmembrane region(s); membrane-protein crystallization usually needs specialized detergent, lipidic-cubic-phase, or related screening.", source: "Saved UniProtKB match", citations: ["uniprot2023", "caffrey2015"] },
+    { direction: "caution", summary: "Saved disorder annotations cover 30% of the sequence; consider a construct boundary screen.", source: "Saved UniProtKB match", citations: ["uniprot2023", "dale2003"] },
+    { direction: "action", summary: "Saved UniProt evidence lists heme; test the relevant ligand or cofactor condition alongside apo protein.", source: "Saved UniProtKB match", citations: ["uniprot2023", "hassell2007"] },
+    { direction: "support", summary: "1 saved PDB homologue entry records a crystal space group (P 21 21 21).", source: "Saved PDB homologue search", citations: ["pdb2000"] },
   ],
   recommendation: "Prioritize a membrane-protein crystallization workflow and record detergent/lipid conditions; do not interpret this as a success prediction.",
+  recommendationCitations: ["caffrey2015"],
 };
 
 /** The contract's shape once predictors run: a score with its range, features, and MASCL groups. */
@@ -108,6 +110,26 @@ describe("readAssessment", () => {
     const assessment = readAssessment("not json");
     assert.deepEqual([assessment.predictors, assessment.spaceGroups, assessment.explanations], [[], [], []]);
     assert.equal(scoreView(assessment).kind, "unavailable");
+  });
+
+  it("keeps the engine's citation ids, in reading order, and drops ones the registry lacks", () => {
+    const assessment = readAssessment({
+      ...engineResponse,
+      recommendationCitations: ["caffrey2015", "not-a-source", 7],
+      explanations: [{ direction: "support", summary: "A point.", citations: ["pdb2000", "pdb2000", "made-up2099"] }, { direction: "caution", summary: "Another.", citations: "dale2003" }],
+    });
+    assert.deepEqual(assessment.recommendationCitations, ["caffrey2015"]);
+    assert.deepEqual(assessment.explanations.map((item) => item.citations), [["pdb2000"], []]);
+    assert.deepEqual(assessmentCitations(readAssessment(engineResponse)), ["caffrey2015", "uniprot2023", "caffrey2015", "uniprot2023", "dale2003", "uniprot2023", "hassell2007", "pdb2000"]);
+    assert.deepEqual(assessmentCitations(null), []);
+  });
+
+  it("cites only registry ids from the engine", () => {
+    // The engine names its ids as CITE_* constants in crystallization.py.
+    const engine = readFileSync(new URL("../../protein-labs/backend/protein_labs/protein_planner/crystallization.py", import.meta.url), "utf8");
+    const ids = [...engine.matchAll(/^CITE_\w+ = "([^"]+)"/gm)].map((match) => match[1]);
+    assert.ok(ids.length >= 6);
+    for (const id of ids) assert.ok(citations[id as CitationId], id);
   });
 
   it("cites every predictor from the shared registry", () => {

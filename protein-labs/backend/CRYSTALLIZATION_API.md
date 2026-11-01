@@ -13,6 +13,14 @@ contains `facts` already saved from UniProtKB, PDB homologues/crystal forms, and
 AlphaFold, `explanations` in plain language, and `spaceGroupSuggestions` only
 when a saved PDB homologue reports a group.
 
+Each explanation and the `recommendation` carry citation ids
+(`explanations[].citations`, `recommendationCitations`) from the app's
+registry in `protein-labs-web/lib/citations.ts`; the UI renders them as
+numbered references and ignores ids it does not know. Homologue counts are per
+PDB entry and count only entries whose saved record names a space group, the
+same rule the Space groups tab uses. An X-ray entry without a saved group is
+reported as missing evidence, not as a crystal form.
+
 ## Availability and references
 
 Shoebill is not shipped: its public checkout was audited 2026-10-31, contains
