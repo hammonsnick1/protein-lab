@@ -25,3 +25,6 @@ tsconfig.tsbuildinfo
 /app/
 /data/
 /archive/
+
+# Screenshots from scripts/visual
+.visual-shots/
