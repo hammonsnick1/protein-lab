@@ -39,6 +39,8 @@ describe("compile workflow fixes", () => {
   it("has a specific fix for every warning and blocking check the planner raises", () => {
     const titles = [...compileSource.matchAll(/\b(error|warning)\((["`])(.+?)\2/g)].map((match) => match[3].replace(/\$\{[^}]*\}/g, "X"));
     assert.ok(titles.length >= 15, `found only ${titles.length} titles`);
+    // The pI findings come from lib/pi-distance.ts.
+    titles.push("Buffer pH is too close to the pI", "Buffer pH is close to the pI");
     for (const title of titles) {
       const fix = fixFor(check("error", title));
       assert.ok(fix && !fix.startsWith("Review the saved choices") && !fix.startsWith("Reopen"), `${title} has no specific fix`);
@@ -69,7 +71,7 @@ describe("compile workflow timeline", () => {
     check("warning", "IMAC elution mechanism is unclear"),
     check("pass", "Cleavage site recorded"),
     check("warning", "TEV reducing environment is not documented"),
-    check("warning", "Buffer pH is close to predicted pI 6.10"),
+    check("warning", "Buffer pH is close to the pI"),
   ];
 
   it("shows every check exactly once and none before the first step", () => {
@@ -90,7 +92,7 @@ describe("compile workflow timeline", () => {
     assert.deepEqual(into("Subtractive cleanup").findings.map((item) => item.title), ["Subtractive cleanup selection saved"]);
     assert.deepEqual(into("SEC polish and final buffer exchange").findings.map((item) => item.title), ["SEC polishing selection saved"]);
     assert.deepEqual(into("Quality control and storage").findings, []);
-    assert.deepEqual(timeline.general.map((item) => item.title), ["Buffer pH is close to predicted pI 6.10"]);
+    assert.deepEqual(timeline.general.map((item) => item.title), ["Buffer pH is close to the pI"]);
   });
 
   it("puts a job's unsaved buffers on that job's hand-off and says where to save them", () => {
