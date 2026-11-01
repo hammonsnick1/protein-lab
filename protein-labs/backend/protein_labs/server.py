@@ -597,6 +597,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                     ))
                 elif action == "crystallization/assess":
                     self._send(200, self.planner.crystallization_assessment(protein_id))
+                elif action == "purification-runs/import-roadmap":
+                    value = self.planner.import_purification_roadmap(protein_id)
+                    self._send(201 if value["created"] else 200, value)
+                elif action == "purification-runs":
+                    self._send(201, self.planner.create_purification_run(protein_id, body))
                 elif action == "jobs":
                     self._send(201, self.planner.create_project_job(protein_id, body))
                 elif action == "notebook":
@@ -791,7 +796,7 @@ class ApiHandler(BaseHTTPRequestHandler):
     @staticmethod
     def _protein_action(path: str) -> tuple[str, str] | None:
         match = re.fullmatch(
-            r"/v1/protein-planner/proteins/([^/]+)/(analyze|blast|research|pdb/search|uniprot/search|uniprot/fetch|uniprot/match|alphafold/db|alphafold/server-job|alphafold/import|conservation/consurf-job|conservation/consurf-db|conservation/import|crystallization/assess|jobs|notebook)",
+            r"/v1/protein-planner/proteins/([^/]+)/(analyze|blast|research|pdb/search|uniprot/search|uniprot/fetch|uniprot/match|alphafold/db|alphafold/server-job|alphafold/import|conservation/consurf-job|conservation/consurf-db|conservation/import|crystallization/assess|purification-runs/import-roadmap|purification-runs|jobs|notebook)",
             path,
         )
         return (match.group(1), match.group(2)) if match else None
