@@ -769,6 +769,21 @@ The engine tries UCBShift 2.0, LEGOLAS and SHIFTX2 in turn. If none of them is i
 
 > **Tip:** Above about 30 kDa, peaks broaden and special methods such as TROSY and deuteration are usually needed. The introduction at the top of the job explains this.
 
+### Preparing the NMR sample
+
+Below the peak list, **Preparing a protein NMR sample** gives short, cited advice for making a sample for the real experiment:
+
+- **Size of your protein.** The job works out the protein's mass from its sequence. It says whether an ordinary HSQC should work (below about 25 kDa), whether to use a TROSY-HSQC (about 25–40 kDa), or whether to deuterate the protein as well (above about 40 kDa). The mass is for one chain; for a dimer or larger complex, judge by the complex's mass.
+- **Tube and volume.** Standard 5 mm tubes (500–600 µL), Shigemi tubes (250–300 µL) and 3 mm tubes (160–200 µL), plus tube grade and cleaning.
+- **Concentration and labelling.** 0.1–1 mM protein for an HSQC, and ¹⁵N, ¹³C and ²H labelling in M9 minimal medium.
+- **Buffer and D₂O.** 5–10 % D₂O for the lock, pH 7 or below, deuterated or phosphate buffers, and low salt for cryoprobes.
+- **Additives and reference.** TCEP, DSS or TSP, sodium azide and protease inhibitors.
+- **Before it goes in the magnet.** Spinning or filtering out aggregates, filling the tube, and the measuring temperature.
+
+The **Protein needed** table shows how many milligrams of your protein each tube takes at 0.1 mM and at 1 mM.
+
+> **Note:** These are general starting points. Where your NMR facility's own sample rules differ, follow theirs.
+
 ## Vector and protein library
 
 Your saved vectors and your purified proteins share one page with a tab for each: **Vectors** and **Proteins**. Open it from the **Vector and protein library** card on the dashboard, which counts both libraries and shows where they are saved. You can also use **Tools** → **Vector library** (<kbd>Ctrl+Shift+L</kbd>) or **Tools** → **Protein library** (<kbd>Ctrl+Shift+P</kbd>). Switch tabs by clicking them, or focus a tab and press <kbd>←</kbd> or <kbd>→</kbd>.

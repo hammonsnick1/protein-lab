@@ -198,6 +198,67 @@ const entries = [
     title: "NMRFAM-SPARKY: enhanced software for biomolecular NMR spectroscopy",
     source: "Bioinformatics 31:1325–1327", doi: "10.1093/bioinformatics/btu830", url: "https://nmrfam.wisc.edu/nmrfam-sparky-distribution/",
   },
+  // Preparing a protein NMR sample (HOM-374).
+  {
+    id: "kwan2011", kind: "article", name: "NMR for the non-spectroscopist", authors: "Kwan AH, Mobli M, Gooley PR, King GF, Mackay JP", year: "2011",
+    title: "Macromolecular NMR spectroscopy for the non-spectroscopist",
+    source: "FEBS J 278:687–703", doi: "10.1111/j.1742-4658.2011.08004.x",
+  },
+  {
+    id: "ncbs-nmr-sample", kind: "website", name: "NCBS NMR sample requirements", authors: "NCBS NMR Facility", year: "2026",
+    title: "NMR Facility: sample requirements",
+    source: "National Centre for Biological Sciences, Bengaluru", url: "https://www.ncbs.res.in/research-facilities/nmr-sample",
+  },
+  {
+    id: "umd-nmr-sample", kind: "website", name: "UMD NMR sample requirements", authors: "UMD Biomolecular NMR Facility", year: "2026",
+    title: "NMR sample requirements and preparation",
+    source: "Department of Chemistry and Biochemistry, University of Maryland", url: "https://chem.umd.edu/reserach/core-facilities/biomolecular-nmr/experimental-guide/nmr-sample-requirements-and-preparation",
+  },
+  {
+    id: "nesg-sample-prep", kind: "website", name: "NESG NMR sample preparation", authors: "Northeast Structural Genomics Consortium", year: "2009",
+    title: "NMR sample preparation",
+    source: "NESG Wiki, University at Buffalo", url: "https://nesgwiki.chem.buffalo.edu/index.php/NMR_Sample_Preparation",
+  },
+  {
+    id: "lumsden2002", kind: "website", name: "NMR tube quality", authors: "Lumsden M", year: "2002",
+    title: "Sample tubes in NMR spectroscopy",
+    source: "Atlantic Region Magnetic Resonance Centre, Dalhousie University", url: "https://cdn.dal.ca/content/dam/dalhousie/pdf/Diff/nmr3/general/NMRTubes.pdf",
+  },
+  {
+    id: "wilmad-cleaning", kind: "website", name: "Cleaning NMR tubes", authors: "Wilmad-LabGlass", year: "2002",
+    title: "NMR-010: Proper cleaning procedures for NMR sample tubes",
+    source: "Wilmad-LabGlass, Buena, NJ", url: "https://cdn.dal.ca/content/dam/dalhousie/pdf/Diff/nmr3/general/wilmad%20tube%20cleaning.pdf",
+  },
+  {
+    id: "marley2001", kind: "article", name: "Isotope labelling in minimal medium", authors: "Marley J, Lu M, Bracken C", year: "2001",
+    title: "A method for efficient isotopic labeling of recombinant proteins",
+    source: "J Biomol NMR 20:71–75", doi: "10.1023/A:1011254402785",
+  },
+  {
+    id: "gardner1998", kind: "article", name: "2H, 13C, 15N labelling", authors: "Gardner KH, Kay LE", year: "1998",
+    title: "The use of 2H, 13C, 15N multidimensional NMR to study the structure and dynamics of proteins",
+    source: "Annu Rev Biophys Biomol Struct 27:357–406", doi: "10.1146/annurev.biophys.27.1.357",
+  },
+  {
+    id: "sattler1996", kind: "article", name: "Deuteration", authors: "Sattler M, Fesik SW", year: "1996",
+    title: "Use of deuterium labeling in NMR: overcoming a sizeable problem",
+    source: "Structure 4:1245–1249", doi: "10.1016/S0969-2126(96)00133-5",
+  },
+  {
+    id: "bai1993", kind: "article", name: "Amide hydrogen exchange", authors: "Bai Y, Milne JS, Mayne L, Englander SW", year: "1993",
+    title: "Primary structure effects on peptide group hydrogen exchange",
+    source: "Proteins 17:75–86", doi: "10.1002/prot.340170110",
+  },
+  {
+    id: "kelly2002", kind: "article", name: "Low-conductivity buffers", authors: "Kelly AE, Ou HD, Withers R, Dötsch V", year: "2002",
+    title: "Low-conductivity buffers for high-sensitivity NMR measurements",
+    source: "J Am Chem Soc 124:12013–12019", doi: "10.1021/ja026121b",
+  },
+  {
+    id: "wishart1995ref", kind: "article", name: "DSS chemical-shift referencing", authors: "Wishart DS, Bigam CG, Yao J, Abildgaard F, Dyson HJ, Oldfield E, Markley JL, Sykes BD", year: "1995",
+    title: "1H, 13C and 15N chemical shift referencing in biomolecular NMR",
+    source: "J Biomol NMR 6:135–140", doi: "10.1007/BF00211777",
+  },
   {
     id: "ccd", kind: "database", name: "Chemical Component Dictionary (CCD)", authors: "Westbrook JD, Shao C, Feng Z, Zhuravleva M, Velankar S, Young J", year: "2015",
     title: "The chemical component dictionary: complete descriptions of constituent molecules in experimentally determined 3D macromolecules in the Protein Data Bank",
