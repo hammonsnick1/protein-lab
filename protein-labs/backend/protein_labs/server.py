@@ -279,6 +279,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 return
             match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/readiness/evidence", path
+            )
+            if match:
+                self._send(200, self.planner.readiness_evidence(match.group(1)))
+                return
+            match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/conservation", path
             )
             if match:
