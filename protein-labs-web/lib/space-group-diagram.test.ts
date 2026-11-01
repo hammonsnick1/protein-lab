@@ -95,6 +95,19 @@ describe("the symmetry-element diagram", () => {
     assert.ok(drawn.every((item) => item.symbol === "c" && item.shifted));
   });
 
+  it("repeats an element that sits on a cell edge on the opposite edge", () => {
+    // The 4-fold axis at the origin of P4 belongs to all four corners.
+    const corner = elementDiagram(group("P 4"), frameFor("P 4")).find((item) => item.shape === "point" && item.order === 4)!;
+    assert.equal(corner.repeats.length, 3, "three more corners");
+    // An axis along b at x = 0 runs along the opposite edge as well.
+    const edges = elementDiagram(group("P 1 2 1"), frameFor("P 1 2 1")).filter((item) => item.repeats.length > 0);
+    assert.equal(edges.length, 2, "the axes at x = 0, at both heights");
+    for (const edge of edges) assert.equal(edge.repeats.length, 1, "only the a direction repeats; b runs along the axis");
+    // An axis in the middle of the cell has no edge copy.
+    const middle = elementDiagram(group("P 4"), frameFor("P 4")).find((item) => item.shape === "point" && item.repeats.length === 0);
+    assert.ok(middle, "the axes away from the corners are drawn once");
+  });
+
   it("draws something for every one of the 230 groups without a bad coordinate", () => {
     for (const entry of SPACE_GROUPS) {
       const frame = diagramFrame(defaultCell(entry));

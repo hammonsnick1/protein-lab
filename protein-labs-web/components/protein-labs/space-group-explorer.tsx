@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ArrowRight, Boxes, ChevronRight, CircleDot, Database, GraduationCap, Hexagon, Minus, MoveRight, Pause, Play, RotateCcw, RotateCw, Search, SkipForward, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, Boxes, ChevronRight, Circle, CircleDot, Database, GraduationCap, Minus, MoveRight, Pause, Play, RotateCcw, RotateCw, Search, SkipForward, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Cite, ReferenceList } from "@/components/ui/citations";
 import { citationScope, type CitationId } from "@/lib/citations";
@@ -54,9 +54,10 @@ export function SpaceGroupExplorer({
   const hits = useMemo(() => crystalForms(facts), [facts]);
   const highlights = useMemo(() => spaceGroupHighlights(hits, suggestions), [hits, suggestions]);
   const unresolved = useMemo(() => unresolvedSpaceGroups(hits), [hits]);
-  const [teaching, setTeaching] = useState(false);
+  const start = startingGroup(highlights, initialSymbol);
+  const [teaching, setTeaching] = useState(() => findSpaceGroup(start)?.sohncke === false);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(() => startingGroup(highlights, initialSymbol));
+  const [selected, setSelected] = useState(start);
   const [elementId, setElementId] = useState<string | null>(null);
 
   const group = findSpaceGroup(selected) ?? SOHNCKE_GROUPS[0];
@@ -72,9 +73,8 @@ export function SpaceGroupExplorer({
   const drawn = useMemo(() => elementDiagram(group, frame), [group, frame]);
   const positions = useMemo(() => generalPositions(group, frame), [group, frame]);
   const elements = useMemo(() => groupElements(group), [group]);
-  const chosen = elements.find((element, index) => elementKey(element, index) === elementId)
-    ?? elements.find((element) => element.kind !== "identity")
-    ?? elements[0];
+  const classes = useMemo(() => operationClasses(elements), [elements]);
+  const chosen = (classes.find((entry) => entry.id === elementId) ?? classes[Math.min(1, classes.length - 1)]).element;
 
   const choose = useCallback((entry: SpaceGroup) => {
     setSelected(entry.short);
@@ -172,23 +172,24 @@ export function SpaceGroupExplorer({
 
         <div className="sg-operations">
           <h5>Symmetry operations<span>{elements.length}</span></h5>
-          <p>Each one makes one copy of {proteinName} in the cell. Pick one to see it move.</p>
+          <p>
+            Each one makes one copy of {proteinName} in the cell. Pick one to see it move.
+            {classes.length < elements.length && ` They come in ${classes.length} kinds; a chip marked ×n stands for n of the same kind in different places.`}
+          </p>
           <ul>
-            {elements.map((element, index) => {
-              const key = elementKey(element, index);
-              return <li key={key}>
-                <button
-                  type="button"
-                  aria-pressed={key === elementId || (elementId === null && element === chosen)}
-                  className={`sg-op ${element.category}${element === chosen ? " selected" : ""}`}
-                  onClick={() => setElementId(key)}
-                >
-                  <CategoryMark category={element.category} order={element.order}/>
-                  <span className="sg-op-symbol">{element.symbol}</span>
-                  <span className="sg-op-where">{operationLabel(element)}</span>
-                </button>
-              </li>;
-            })}
+            {classes.map((entry) => <li key={entry.id}>
+              <button
+                type="button"
+                aria-pressed={entry.element === chosen}
+                className={`sg-op ${entry.element.category}${entry.element === chosen ? " selected" : ""}`}
+                onClick={() => setElementId(entry.id)}
+              >
+                <CategoryMark category={entry.element.category} order={entry.element.order}/>
+                <span className="sg-op-symbol">{entry.element.symbol}</span>
+                <span className="sg-op-where">{operationLabel(entry.element)}</span>
+                {entry.count > 1 && <span className="sg-op-count">×{entry.count}</span>}
+              </button>
+            </li>)}
           </ul>
         </div>
 
@@ -200,8 +201,22 @@ export function SpaceGroupExplorer({
   </section>;
 }
 
-function elementKey(element: SymmetryElement, index: number): string {
-  return `${index}-${element.symbol}`;
+/**
+ * The operations of a group, gathered into kinds. A cubic group has 96
+ * operations but only a dozen kinds, and the extra copies are the same
+ * movement somewhere else in the cell, so the list stays readable.
+ */
+function operationClasses(elements: SymmetryElement[]): { id: string; element: SymmetryElement; count: number }[] {
+  const classes = new Map<string, { id: string; element: SymmetryElement; count: number }>();
+  for (const element of elements) {
+    const id = element.kind === "identity" ? "identity"
+      : element.kind === "translation" ? `t|${element.intrinsic.join(",")}`
+      : `${element.symbol}|${element.axis?.join(",") ?? ""}`;
+    const existing = classes.get(id);
+    if (existing) existing.count += 1;
+    else classes.set(id, { id, element, count: 1 });
+  }
+  return [...classes.values()];
 }
 
 function systemLabel(system: CrystalSystem): string {
@@ -245,7 +260,7 @@ function HighlightFlag({ highlight }: { highlight: SpaceGroupHighlight }) {
  * centring translation, a line for a plane, a dot for an inversion centre.
  */
 const CATEGORY_MARKS: Record<SymmetryCategory, { icon: ReactNode; label: string }> = {
-  identity: { icon: <Hexagon aria-hidden="true"/>, label: "the copy you started from" },
+  identity: { icon: <Circle aria-hidden="true"/>, label: "the copy you started from" },
   rotation: { icon: <RotateCw aria-hidden="true"/>, label: "rotation axis" },
   screw: { icon: <MoveRight aria-hidden="true"/>, label: "screw axis: turn and slide" },
   centring: { icon: <ArrowRight aria-hidden="true"/>, label: "centring translation" },
@@ -323,10 +338,37 @@ function AxisMark({ glyph, screw }: { glyph: AxisGlyph; screw: boolean }) {
   </>;
 }
 
+/** Along a, b or c: the directions that stay legible in a crowded cell. */
+function principal(item: DiagramElement): boolean {
+  const axis = item.element.axis;
+  if (!axis) return true;
+  return axis.filter((value) => value !== 0).length === 1;
+}
+
+const CROWDED = 60;
+
+/**
+ * The Tables draw an axis lying in the page as an arrow: both barbs for a
+ * rotation, one barb for a screw. That keeps rotation and screw apart without
+ * relying on colour, which the monochrome appearances do not have.
+ */
+function AxisArrow({ from, to, half }: { from: [number, number]; to: [number, number]; half: boolean }) {
+  const [dx, dy] = [to[0] - from[0], to[1] - from[1]];
+  const length = Math.hypot(dx, dy) || 1;
+  const [ux, uy] = [dx / length, dy / length];
+  const at: [number, number] = [from[0] + dx * 0.66, from[1] + dy * 0.66];
+  const barb = (side: number) => `M${at[0]} ${at[1]} L${at[0] - ux * 7 - uy * 4 * side} ${at[1] - uy * 7 + ux * 4 * side}`;
+  return <path d={half ? barb(1) : `${barb(1)} ${barb(-1)}`} className="sg-axis-arrow"/>;
+}
+
 function ElementFigure({ group, frame, drawn, chosen, scope }: {
   group: SpaceGroup; frame: DiagramFrame; drawn: DiagramElement[]; chosen: SymmetryElement;
   scope: ReturnType<typeof citationScope>;
 }) {
+  const [showAll, setShowAll] = useState(false);
+  const crowded = drawn.length > CROWDED;
+  const shown = crowded && !showAll ? drawn.filter(principal) : drawn;
+  const labelled = shown.length <= 40;
   const chosenAxis = chosen.axis?.join(",") ?? "";
   const isChosen = (item: DiagramElement) =>
     item.symbol === chosen.symbol && (item.element.axis?.join(",") ?? "") === chosenAxis;
@@ -334,33 +376,44 @@ function ElementFigure({ group, frame, drawn, chosen, scope }: {
     <figcaption>
       <strong>Symmetry elements</strong>
       <span>Where the axes and planes of {group.short} sit in one cell, seen down <b>c</b> with <b>a</b> down the page<Cite scope={scope} id="ucl-sgp"/>.</span>
+      {crowded && <span className="sg-figure-toggle">
+        {showAll
+          ? `All ${drawn.length} elements, as crowded as the printed plate.`
+          : `${group.short} has ${drawn.length} elements in one cell. Showing the ${shown.length} along a, b and c.`}
+        <Button type="button" size="xs" variant="outline" onClick={() => setShowAll(!showAll)}>{showAll ? "Only a, b, c" : "Show all"}</Button>
+      </span>}
     </figcaption>
     <svg width={frame.width} height={frame.height} viewBox={`0 0 ${frame.width} ${frame.height}`} role="img"
       aria-label={`Symmetry-element diagram of space group ${symbolText(group)}: ${drawn.length} elements in one unit cell`}>
       <Cell frame={frame}/>
-      {drawn.map((item) => {
+      {shown.map((item) => {
         const highlight = isChosen(item) ? " highlight" : "";
+        const className = `sg-el ${item.category}${item.shifted ? " shifted" : ""}${highlight}`;
+        // The element itself, then its copies on the opposite cell edges.
+        const places: [number, number][] = [[0, 0], ...item.repeats];
         if (item.shape === "line" && item.from && item.to) {
-          return <g key={item.id} className={`sg-el ${item.category}${item.shifted ? " shifted" : ""}${highlight}`}>
-            <line x1={item.from[0]} y1={item.from[1]} x2={item.to[0]} y2={item.to[1]}/>
-            {item.height && <text x={(item.from[0] + item.to[0]) / 2} y={(item.from[1] + item.to[1]) / 2 - 4}>{item.height}</text>}
-          </g>;
+          const [from, to] = [item.from, item.to];
+          return <g key={item.id} className={className}>{places.map(([dx, dy], index) => <g key={index} transform={`translate(${dx} ${dy})`}>
+            <line x1={from[0]} y1={from[1]} x2={to[0]} y2={to[1]}/>
+            {item.category !== "reflection" && <AxisArrow from={from} to={to} half={item.shifted}/>}
+            {item.height && labelled && <text x={(from[0] + to[0]) / 2} y={(from[1] + to[1]) / 2 - 4}>{item.height}</text>}
+          </g>)}</g>;
         }
         if (item.shape === "face" && item.at) {
-          return <g key={item.id} className={`sg-el ${item.category}${item.shifted ? " shifted" : ""}${highlight}`}>
+          return <g key={item.id} className={className}>
             <path d={`M${item.at[0] - 4} ${item.at[1] + 10} v-10 h10`} className="sg-face-mark"/>
             <text x={item.at[0] + 9} y={item.at[1] + 2}>{item.symbol}</text>
           </g>;
         }
         if (!item.at) return null;
-        return <g key={item.id} className={`sg-el ${item.category}${item.shifted ? " shifted" : ""}${highlight}`}
-          transform={`translate(${item.at[0]} ${item.at[1]})`}>
+        const at = item.at;
+        return <g key={item.id} className={className}>{places.map(([dx, dy], index) => <g key={index} transform={`translate(${at[0] + dx} ${at[1] + dy})`}>
           {item.glyph ? <AxisMark glyph={item.glyph} screw={item.shifted}/> : <circle r="3.4" className="sg-inversion-mark"/>}
-        </g>;
+        </g>)}</g>;
       })}
     </svg>
     <ul className="sg-legend">
-      {legendFor(drawn).map((entry) => <li key={entry.label} className={entry.category}>
+      {legendFor(shown).map((entry) => <li key={entry.label} className={entry.category}>
         <svg width="18" height="18" viewBox="-9 -9 18 18" aria-hidden="true">{entry.mark}</svg>
         {entry.label}
       </li>)}
@@ -390,7 +443,10 @@ function legendFor(drawn: DiagramElement[]): LegendEntry[] {
       ? <g className={`sg-el ${item.category}${item.shifted ? " shifted" : ""}`}><AxisMark glyph={item.glyph} screw={item.shifted}/></g>
       : item.shape === "point"
         ? <g className={`sg-el ${item.category}`}><circle r="3.4" className="sg-inversion-mark"/></g>
-        : <g className={`sg-el ${item.category}${item.shifted ? " shifted" : ""}`}><line x1="-8" y1="0" x2="8" y2="0"/></g>;
+        : <g className={`sg-el ${item.category}${item.shifted ? " shifted" : ""}`}>
+          <line x1="-8" y1="0" x2="8" y2="0"/>
+          {item.category !== "reflection" && <AxisArrow from={[-8, 0]} to={[10, 0]} half={item.shifted}/>}
+        </g>;
     entries.push({ label, category: item.category, mark });
   }
   return entries;
@@ -408,17 +464,23 @@ function Cell({ frame, lattice = false }: { frame: DiagramFrame; lattice?: boole
 }
 
 /** A chiral blob: a protein drawn so its mirror image is obvious. */
-function Motif({ className = "" }: { className?: string }) {
-  return <g className={`sg-motif ${className}`.trim()}>
+function Motif({ className = "", scale = 1 }: { className?: string; scale?: number }) {
+  return <g className={`sg-motif ${className}`.trim()} transform={scale === 1 ? undefined : `scale(${scale})`}>
     <path d="M-7.5 -3.4 C-5 -9.5 4.5 -9.5 7.6 -3.6 C10.4 1.7 5.6 8.6 -0.6 8.2 C-6.4 7.8 -9.6 1.8 -7.5 -3.4 Z"/>
     <path d="M1.4 -5.4 C5 -3 4.4 2.4 0.6 4.4" className="sg-motif-helix"/>
     <circle cx="-3.4" cy="1.6" r="1.7" className="sg-motif-site"/>
   </g>;
 }
 
+/** Smaller copies once the cell is busy, so the motifs do not overlap. */
+function motifScale(copies: number): number {
+  return copies <= 4 ? 1.5 : copies <= 12 ? 1.15 : copies <= 32 ? 0.85 : 0.6;
+}
+
 function PositionFigure({ group, frame, positions, proteinName }: {
   group: SpaceGroup; frame: DiagramFrame; positions: GeneralPosition[]; proteinName: string;
 }) {
+  const scale = motifScale(positions.length);
   return <figure className="sg-figure">
     <figcaption>
       <strong>General positions</strong>
@@ -429,9 +491,9 @@ function PositionFigure({ group, frame, positions, proteinName }: {
       <Cell frame={frame}/>
       {positions.map((position, index) => <g key={position.id} className={`sg-copy${position.mirrored ? " mirrored" : ""}${index === 0 ? " origin" : ""}`}
         transform={`translate(${position.at[0]} ${position.at[1]}) matrix(${position.transform.a} ${position.transform.c} ${position.transform.b} ${position.transform.d} 0 0)`}>
-        <Motif/>
+        <Motif scale={scale}/>
       </g>)}
-      {positions.map((position) => <text key={`h-${position.id}`} className="sg-height" x={position.at[0] + 11} y={position.at[1] - 7}>{position.height}</text>)}
+      {positions.length <= 16 && positions.map((position) => <text key={`h-${position.id}`} className="sg-height" x={position.at[0] + 8 + 7 * scale} y={position.at[1] - 4 - 5 * scale}>{position.height}</text>)}
     </svg>
     <p className="sg-figure-note">Coordinates: {positions.slice(0, 4).map((position) => position.triplet).join("; ")}{positions.length > 4 ? ` … (${positions.length - 4} more)` : ""}</p>
   </figure>;
@@ -478,6 +540,7 @@ function Animation({ group, element, frame, cell, proteinName }: {
   }, [playing, step, steps.length]);
 
   const positions = useMemo(() => generalPositions(group, frame), [group, frame]);
+  const scale = motifScale(positions.length);
   const from = step === 0 ? SEED : steps[step - 1].position;
   const live = animationFrame(element, reduced ? 1 : progress, frame, from);
   const startTransform = useMemo(() => operationTransform(powerOf(element, step), frame), [element, step, frame]);
@@ -512,12 +575,12 @@ function Animation({ group, element, frame, cell, proteinName }: {
         <Cell frame={frame} lattice/>
         {positions.map((position) => <g key={position.id} className="sg-copy ghost"
           transform={`translate(${position.at[0]} ${position.at[1]}) matrix(${position.transform.a} ${position.transform.c} ${position.transform.b} ${position.transform.d} 0 0)`}>
-          <Motif/>
+          <Motif scale={scale}/>
         </g>)}
         <ElementMark element={element} frame={frame}/>
         <g className={`sg-copy moving${live.mirrored ? " mirrored" : ""}`}
           transform={`translate(${live.at[0]} ${live.at[1]}) rotate(${motif.rotate}) matrix(${motif.a} ${motif.c} ${motif.b} ${motif.d} 0 0)`}>
-          <Motif/>
+          <Motif scale={Math.max(scale, 1)}/>
         </g>
         <text className="sg-height moving" x={live.at[0] + 12} y={live.at[1] - 8}>{formatHeight(live.point[2])}</text>
       </svg>
@@ -545,7 +608,10 @@ function ElementMark({ element, frame }: { element: SymmetryElement; frame: Diag
   }
   const from = frame.project([point[0], point[1], 0]);
   const to = frame.project([point[0] + element.axis[0], point[1] + element.axis[1], 0]);
-  return <g className={`sg-el ${element.category} highlight`}><line x1={from[0]} y1={from[1]} x2={to[0]} y2={to[1]}/></g>;
+  return <g className={`sg-el ${element.category} highlight`}>
+    <line x1={from[0]} y1={from[1]} x2={to[0]} y2={to[1]}/>
+    {element.category !== "reflection" && <AxisArrow from={from} to={to} half={element.kind === "screw"}/>}
+  </g>;
 }
 
 /** The operation applied `times` over, for the orientation of a later copy. */

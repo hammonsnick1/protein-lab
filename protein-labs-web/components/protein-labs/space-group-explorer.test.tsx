@@ -102,6 +102,19 @@ describe("the space-group explorer", () => {
     assert.match(body, /mirror image/);
   });
 
+  it("gathers a cubic group's 96 operations into a readable set of kinds", () => {
+    const html = renderToStaticMarkup(<SpaceGroupExplorer initialSymbol="F 41 3 2"/>);
+    const body = text(html);
+    const chips = [...html.matchAll(/class="sg-op /g)].length;
+    assert.match(body, /Symmetry operations 96/);
+    assert.ok(chips > 4 && chips < 30, `96 operations became ${chips} chips`);
+    assert.match(body, /They come in \d+ kinds; a chip marked ×n stands for n of the same kind/);
+    assert.match(body, /×\d+/);
+    // The element plate is a thicket, so it opens on the principal directions.
+    assert.match(body, /Showing the \d+ along a, b and c/);
+    assert.match(body, /Show all/);
+  });
+
   it("cites the Tables, the UCL diagrams and the table's source", () => {
     assert.match(plain, /id="ref-space-groups-ita2016"/);
     assert.match(plain, /id="ref-space-groups-ucl-sgp"/);

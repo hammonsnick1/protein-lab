@@ -112,6 +112,12 @@ export type DiagramElement = {
   to?: [number, number];
   /** Height above the page, when it is not zero, e.g. "¼". */
   height?: string;
+  /**
+   * Extra screen offsets to draw the same element at. An element on a cell
+   * edge belongs to the cell next door as well, and the Tables draw it on
+   * both, so a 4-fold axis at the origin appears at all four corners.
+   */
+  repeats: [number, number][];
   /** The sentence shown when the element is selected. */
   element: SymmetryElement;
 };
@@ -202,6 +208,20 @@ function order(element: DiagramElement): number {
   return ranks[element.shape] * 10 - element.order;
 }
 
+/** An element sitting on a cell edge is drawn on the opposite edge too. */
+function edgeRepeats(canonical: Triple, frame: DiagramFrame, along: Triple | null): [number, number][] {
+  const { ax, ay, bx, by } = frame.basis;
+  const parallel = (axis: Triple | null, index: number) =>
+    axis !== null && axis[index] !== 0 && axis.filter((value) => value !== 0).length === 1;
+  const onA = canonical[0] < 1e-6 && !parallel(along, 0);
+  const onB = canonical[1] < 1e-6 && !parallel(along, 1);
+  const repeats: [number, number][] = [];
+  if (onA) repeats.push([ax, ay]);
+  if (onB) repeats.push([bx, by]);
+  if (onA && onB) repeats.push([ax + bx, ay + by]);
+  return repeats;
+}
+
 function drawElement(element: SymmetryElement, canonical: Triple, invariants: Triple[], frame: DiagramFrame, id: string): DiagramElement | null {
   const shared = {
     id, kind: element.kind, category: element.category, symbol: element.symbol, order: element.order,
@@ -213,25 +233,34 @@ function drawElement(element: SymmetryElement, canonical: Triple, invariants: Tr
   if (element.kind === "mirror" || element.kind === "glide") {
     const direction = planeDirection(invariants, element.axis);
     if (!direction) {
-      return { ...shared, shape: "face", at: frame.project([0.06, 0.06, 0]), height: heightText };
+      return { ...shared, shape: "face", at: frame.project([0.06, 0.06, 0]), height: heightText, repeats: [] };
     }
     const start: Triple = [canonical[0], canonical[1], 0];
     const end: Triple = [canonical[0] + direction[0], canonical[1] + direction[1], 0];
-    return { ...shared, shape: "line", from: frame.project(start), to: frame.project(end), height: heightText };
+    return {
+      ...shared, shape: "line", from: frame.project(start), to: frame.project(end), height: heightText,
+      repeats: edgeRepeats(canonical, frame, direction),
+    };
   }
   if (element.kind === "inversion") {
-    return { ...shared, shape: "point", at: frame.project(canonical), glyph: undefined, height: heightText };
+    return { ...shared, shape: "point", at: frame.project(canonical), glyph: undefined, height: heightText, repeats: edgeRepeats(canonical, frame, null) };
   }
   const axis = element.axis;
   if (!axis) return null;
   if (axis[0] === 0 && axis[1] === 0) {
     // Straight out of the page: the Tables' end-on glyph.
-    return { ...shared, shape: "point", at: frame.project(canonical), glyph: GLYPHS[element.order] ?? "lens" };
+    return {
+      ...shared, shape: "point", at: frame.project(canonical),
+      glyph: GLYPHS[element.order] ?? "lens", repeats: edgeRepeats(canonical, frame, null),
+    };
   }
   const start: Triple = [canonical[0], canonical[1], 0];
   const end: Triple = [canonical[0] + axis[0], canonical[1] + axis[1], 0];
   if (Math.abs(start[0] - end[0]) < 1e-9 && Math.abs(start[1] - end[1]) < 1e-9) return null;
-  return { ...shared, shape: "line", from: frame.project(start), to: frame.project(end), height: heightText };
+  return {
+    ...shared, shape: "line", from: frame.project(start), to: frame.project(end), height: heightText,
+    repeats: edgeRepeats(canonical, frame, axis),
+  };
 }
 
 // ── General-position diagram ────────────────────────────────────────────────

@@ -507,3 +507,25 @@
 @media (prefers-reduced-motion: reduce) {
   .sg-mode button, .sg-op { transition: none; }
 }
+
+.sg-op-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  border-left: 1px solid var(--border);
+  padding-left: 6px;
+}
+.sg-figure-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.sg-el .sg-axis-arrow {
+  fill: none;
+  stroke: var(--sg-rotation);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.sg-el.screw .sg-axis-arrow { stroke: var(--sg-screw); }
+.sg-el.highlight .sg-axis-arrow { stroke-width: 2.6; }
