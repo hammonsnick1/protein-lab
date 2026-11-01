@@ -226,7 +226,7 @@ export function tailoringNotes(profile: CrystallizationProfile): { label: string
 /** Ligand advice: co-crystallize or soak. */
 export function ligandAdvice(profile: CrystallizationProfile): string | null {
   if (!profile.ligands.length) return null;
-  return `Earlier jobs record ${listNames(profile.ligands)}. Add it to the protein before setting drops (co-crystallization), at enough excess to keep the protein saturated — commonly a several-fold molar excess. The alternative is to grow crystals first and soak the ligand in; soaking only works if the binding site is open to the solvent channels of the crystal.`;
+  return `Earlier jobs record ${listNames(profile.ligands)}. Add ${new Set(profile.ligands).size > 1 ? "them" : "it"} to the protein before setting drops (co-crystallization), at enough excess to keep the protein saturated — commonly a several-fold molar excess. The alternative is to grow crystals first and soak the ligand in; soaking only works if the binding site is open to the solvent channels of the crystal.`;
 }
 
 function answerText(answer: Answer) {

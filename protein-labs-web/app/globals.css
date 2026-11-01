@@ -16407,7 +16407,7 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   padding: 16px 18px;
   min-width: 0;
 }
-.xtal-card h3 {
+.xtal-card h4 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -16416,7 +16416,7 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   font-size: 15px;
   font-weight: 700;
 }
-.xtal-card h4 { margin: 0 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+.xtal-card h5 { margin: 0 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
 .xtal-card p { margin: 0 0 8px; }
 .xtal-card p:last-child { margin-bottom: 0; }
 .xtal-note { color: var(--muted-foreground); }
@@ -16486,7 +16486,7 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .xtal-tip { border-top: 1px dashed var(--border); padding-top: 6px; }
 .xtal-role.muted > p { color: var(--muted-foreground); }
 .xtal-phase { display: grid; grid-template-columns: minmax(280px, 420px) 1fr; gap: 6px 18px; align-items: start; }
-.xtal-phase h3 { grid-column: 1 / -1; }
+.xtal-phase h4 { grid-column: 1 / -1; }
 .xtal-figure { margin: 0; }
 .xtal-figure svg { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .xtal-figure figcaption { margin-top: 6px; color: var(--muted-foreground); font-size: 12px; }
