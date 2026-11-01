@@ -55,7 +55,7 @@ function ScreensTab({ profile, refs }: { profile: CrystallizationProfile; refs: 
   const ligand = ligandAdvice(profile);
   return <div className="xtal-tab">
     <section className="xtal-card" aria-labelledby="xtal-basis">
-      <h3 id="xtal-basis">What this advice is based on</h3>
+      <h4 id="xtal-basis">What this advice is based on</h4>
       <dl className="xtal-basis">{tailoringNotes(profile).map((note) => <div key={note.label}>
         <dt>{note.label}</dt>
         <dd>{note.value}{note.citations.length > 0 && <CiteGroup scope={refs} ids={note.citations}/>}</dd>
@@ -64,7 +64,7 @@ function ScreensTab({ profile, refs }: { profile: CrystallizationProfile; refs: 
     </section>
 
     <section className="xtal-card" aria-labelledby="xtal-conc">
-      <h3 id="xtal-conc">Starting protein concentration</h3>
+      <h4 id="xtal-conc">Starting protein concentration</h4>
       <p className="xtal-conc-value">
         <strong>{concentration.start} mg/mL</strong>
         {concentration.startMicromolar !== null && <span>≈ {formatMicromolar(concentration.startMicromolar)}</span>}
@@ -78,7 +78,7 @@ function ScreensTab({ profile, refs }: { profile: CrystallizationProfile; refs: 
     <PdbConditions profile={profile}/>
 
     <section className="xtal-card" aria-labelledby="xtal-screens">
-      <h3 id="xtal-screens">Suggested commercial screens</h3>
+      <h4 id="xtal-screens">Suggested commercial screens</h4>
       <p className="xtal-note">A screen is a ready-made plate of 48–96 different conditions. Sparse-matrix screens sample the conditions that most often crystallized other proteins, so a few plates cover a lot of chemistry<CiteGroup scope={refs} ids={["jancarik1991", "newman2005"]}/>.</p>
       <ol className="xtal-screens">{screens.map((item) => <ScreenCard key={item.screen.id} item={item} refs={refs}/>)}</ol>
     </section>
@@ -102,7 +102,7 @@ function ScreenCard({ item, refs }: { item: ScreenSuggestion; refs: CitationScop
 function PdbConditions({ profile }: { profile: CrystallizationProfile }) {
   if (!profile.pdbConditions.length) return null;
   return <section className="xtal-card" aria-labelledby="xtal-pdb">
-    <h3 id="xtal-pdb">Conditions that already worked for related structures</h3>
+    <h4 id="xtal-pdb">Conditions that already worked for related structures</h4>
     <p className="xtal-note">Copied from the crystal-growth records of the PDB entries Sequence research found. A close relative's condition is the strongest starting point there is: set it up alongside the screens.</p>
     <div className="xtal-table-wrap">
       <table className="xtal-table">
@@ -129,7 +129,7 @@ function formatMicromolar(value: number) {
 function ComponentsTab({ profile, refs }: { profile: CrystallizationProfile; refs: CitationScope }) {
   return <div className="xtal-tab">
     <section className="xtal-card xtal-phase" aria-labelledby="xtal-phase">
-      <h3 id="xtal-phase">Why a precipitant at all? The phase diagram</h3>
+      <h4 id="xtal-phase">Why a precipitant at all? The phase diagram</h4>
       <PhaseDiagram/>
       <div>
         <p>Proteins are purified to stay dissolved. To crystallize, the drop must hold <em>more</em> protein than can stay in solution — it must be <strong>supersaturated</strong><CiteGroup scope={refs} ids={["asherie2004", "mcpherson2014"]}/>. A phase diagram maps where that happens:</p>
@@ -149,7 +149,7 @@ function ComponentsTab({ profile, refs }: { profile: CrystallizationProfile; ref
 function RoleCard({ role, applies, membrane, refs }: { role: ComponentRole; applies: boolean; membrane: CrystallizationProfile["membrane"]; refs: CitationScope }) {
   const headingId = `xtal-role-${role.id}`;
   return <section className={`xtal-card xtal-role${applies ? "" : " muted"}`} aria-labelledby={headingId}>
-    <h3 id={headingId}>{role.label}{!applies && <StatusChip tone="review" label={membrane === "no" ? "Not needed for this protein" : "Membrane proteins only"}/>}</h3>
+    <h4 id={headingId}>{role.label}{!applies && <StatusChip tone="review" label={membrane === "no" ? "Not needed for this protein" : "Membrane proteins only"}/>}</h4>
     <p>{role.why}<CiteGroup scope={refs} ids={role.citations}/></p>
     {applies && <div className="xtal-table-wrap">
       <table className="xtal-table">
@@ -225,7 +225,7 @@ function PhaseDiagram() {
 function DropsTab({ refs }: { refs: CitationScope }) {
   return <div className="xtal-tab">
     <section className="xtal-card" aria-labelledby="xtal-vd">
-      <h3 id="xtal-vd">How vapour diffusion works</h3>
+      <h4 id="xtal-vd">How vapour diffusion works</h4>
       <ol className="xtal-steps">{VAPOUR_DIFFUSION_STEPS.map((step) => <li key={step}>{step}</li>)}</ol>
       <p className="xtal-note">Both set-ups below use the same principle; they differ only in where the drop sits<CiteGroup scope={refs} ids={DROP_CITATIONS}/>.</p>
     </section>
@@ -239,14 +239,14 @@ function DropMethodCard({ id, refs }: { id: DropMethodId; refs: CitationScope })
   const method = DROP_METHODS[id];
   const headingId = `xtal-drop-${id}`;
   return <section className="xtal-card xtal-drop" aria-labelledby={headingId}>
-    <h3 id={headingId}>{method.label}</h3>
+    <h4 id={headingId}>{method.label}</h4>
     <figure className="xtal-figure xg-anim">
       {id === "hanging" ? <HangingDropDrawing/> : <SittingDropDrawing/>}
       <figcaption>{method.setup}</figcaption>
     </figure>
     <div className="xtal-proscons">
-      <div><h4>Pros</h4><ul className="pros">{method.pros.map((line) => <li key={line}>{line}</li>)}</ul></div>
-      <div><h4>Cons</h4><ul className="cons">{method.cons.map((line) => <li key={line}>{line}</li>)}</ul></div>
+      <div><h5>Pros</h5><ul className="pros">{method.pros.map((line) => <li key={line}>{line}</li>)}</ul></div>
+      <div><h5>Cons</h5><ul className="cons">{method.cons.map((line) => <li key={line}>{line}</li>)}</ul></div>
     </div>
     <p className="xtal-note">Sources<CiteGroup scope={refs} ids={DROP_CITATIONS}/></p>
   </section>;

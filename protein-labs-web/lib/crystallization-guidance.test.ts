@@ -80,6 +80,8 @@ describe("screen suggestions", () => {
     assert.equal(morpheus?.priority, "first");
     assert.match(morpheus?.why.join(" ") ?? "", /Heme/);
     assert.match(ligandAdvice(profile({ ligands: ["Heme"] })) ?? "", /co-crystallization/);
+    assert.match(ligandAdvice(profile({ ligands: ["Heme"] })) ?? "", /Add it to/);
+    assert.match(ligandAdvice(profile({ ligands: ["Heme", "Mg(2+)"] })) ?? "", /Add them to/);
   });
 
   it("gives every suggestion a reason and every screen a citation", () => {
