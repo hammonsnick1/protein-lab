@@ -57,33 +57,54 @@ describe("content wider than its box", () => {
 
   // A visible box's scrollWidth includes its descendants' overflow, so one
   // long label used to accuse every wrapper between it and the clipping box.
+  // Boxes in such a chain all start at the same x and their content reaches
+  // the same point, which is what identifies them as one problem.
   it("blames only the innermost wrapper in a chain", () => {
-    const wrapper = (cls: string, parent: number | null) => element({ cls, parent, scrollWidth: 312, clientWidth: 200 });
+    const wrapper = (cls: string, parent: number | null) => element({ cls, parent, scrollWidth: 312, clientWidth: 200, reach: 312 });
     expect(run([wrapper("chain-a", null), wrapper("chain-b", 0), wrapper("chain-c", 1)])).toEqual(["wide DIV.chain-c +112px"]);
   });
 
   it("still names the box that does the clipping", () => {
     const findings = run([
-      element({ cls: "col", overflowX: "hidden", scrollWidth: 312, clientWidth: 200 }),
-      element({ cls: "inner", parent: 0, scrollWidth: 312, clientWidth: 200 }),
+      element({ cls: "col", overflowX: "hidden", scrollWidth: 312, clientWidth: 200, reach: 312 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 312, clientWidth: 200, reach: 312 }),
     ]);
     expect(findings).toEqual(["clip DIV.col +112px", "wide DIV.inner +112px"]);
   });
 
   it("yields a clipping box to a nested clipping box", () => {
     const findings = run([
-      element({ cls: "outer", overflowX: "hidden", scrollWidth: 312, clientWidth: 200 }),
-      element({ cls: "inner", overflowX: "hidden", parent: 0, scrollWidth: 312, clientWidth: 200 }),
+      element({ cls: "outer", overflowX: "hidden", scrollWidth: 312, clientWidth: 200, reach: 312 }),
+      element({ cls: "inner", overflowX: "hidden", parent: 0, scrollWidth: 312, clientWidth: 200, reach: 312 }),
     ]);
     expect(findings).toEqual(["clip DIV.inner +112px"]);
   });
 
   it("keeps a wrapper whose child overflows by less", () => {
     const findings = run([
-      element({ cls: "outer", scrollWidth: 312, clientWidth: 200 }),
-      element({ cls: "inner", parent: 0, scrollWidth: 204, clientWidth: 200 }),
+      element({ cls: "outer", scrollWidth: 312, clientWidth: 200, reach: 312 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 204, clientWidth: 200, reach: 204 }),
     ]);
     expect(findings).toEqual(["wide DIV.outer +112px", "wide DIV.inner +4px"]);
+  });
+
+  // A chip that spills 73px *inside* a 200px row is not the reason the row is
+  // 20px too wide. Comparing overflow amounts rather than reach lost the row
+  // entirely — and a chip row is the shape this audit exists for.
+  it("keeps a too-wide row whose chip spills further inside it", () => {
+    const findings = run([
+      element({ tag: "DIV", cls: "chips", scrollWidth: 220, clientWidth: 200, right: 200, reach: 220 }),
+      element({ tag: "SPAN", cls: "chip-a", parent: 0, scrollWidth: 153, clientWidth: 80, right: 80, reach: 153 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.chips +20px", "wide SPAN.chip-a +73px"]);
+  });
+
+  it("falls back to the overflow amount when a snapshot has no reach", () => {
+    const findings = run([
+      element({ cls: "outer", scrollWidth: 312, clientWidth: 200, right: 200 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 312, clientWidth: 200, right: 200 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.inner +112px"]);
   });
 });
 

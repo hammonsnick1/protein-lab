@@ -80,13 +80,21 @@ export function auditFindings(snapshot, { limit = 25 } = {}) {
   elements.forEach((element, index) => {
     if (typeof element.parent === "number" && elements[element.parent]) children[element.parent].push(index);
   });
-  // `wide` yields to a child that is wide or clipped by as much; `clip` only
-  // to a child that clips, so the box where content actually disappears is
-  // still named.
+  // `wide` yields to a child that is wide or clipped; `clip` only to a child
+  // that clips, so the box where content actually disappears is still named.
+  //
+  // The comparison is on *reach* — where the content's right edge lands — not
+  // on how many pixels each box overflows. A chip that spills 73px inside a
+  // 200px row is not the reason the row is 20px too wide, and must not hide
+  // it; in a true wrapper chain every box reaches the same point and the
+  // outer ones do collapse.
+  const reachOf = (index) => (typeof elements[index].reach === "number" ? elements[index].reach : elements[index].right + boxes[index].by);
   const innermost = (index) => {
     const box = boxes[index];
     const yieldsTo = box.kind === "clip" ? ["clip"] : ["clip", "wide"];
-    return !children[index].some((child) => boxes[child] && boxes[child].by >= box.by && yieldsTo.includes(boxes[child].kind));
+    return !children[index].some(
+      (child) => boxes[child] && yieldsTo.includes(boxes[child].kind) && reachOf(child) >= reachOf(index) - 1,
+    );
   };
 
   for (const [index, element] of elements.entries()) {

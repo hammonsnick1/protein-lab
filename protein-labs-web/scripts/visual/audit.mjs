@@ -66,6 +66,10 @@ export const collectExpression = (
       scrollWidth: el.scrollWidth,
       clientWidth: el.clientWidth,
       right: Math.round(rect.right * 100) / 100,
+      // How far the box's *content* reaches, which is not where the box ends.
+      // Two boxes in a chain reach the same point; a child spilling inside a
+      // wider parent does not.
+      reach: Math.round((rect.left + parseFloat(cs.borderLeftWidth || 0) + el.scrollWidth) * 100) / 100,
       hasOwnText: [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()),
       hScrollAllowed: !!(ALLOW && el.matches(ALLOW)),
       inHScroller: !!(ALLOW && el.closest(ALLOW)),

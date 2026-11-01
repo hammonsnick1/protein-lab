@@ -45,6 +45,16 @@
          innermost should get a line. */
       .chain { width: 200px; overflow: hidden; font-size: 13px; }
       .chain span { white-space: nowrap; }
+      /* The inverse case: a chip spills a long way *inside* a row that is
+         itself only a little too wide, for a different reason. Suppressing
+         the row because the chip's number is bigger loses the row entirely —
+         and a chip row is exactly the shape this audit exists for. */
+      .wrap { width: 600px; overflow: hidden; }
+      .chips { width: 200px; display: flex; font-size: 13px; }
+      .chips span { flex: none; white-space: nowrap; }
+      .chip-a { width: 80px; }
+      .chip-gap { width: 40px; }
+      .chip-b { width: 100px; }
       /* The back face of a flip card: laid out, rotated away, marked inert. */
       .flip-back { position: absolute; width: 180px; transform: rotateY(180deg); backface-visibility: hidden; }
       .flip-back .ok-row { white-space: nowrap; width: 100%; overflow: hidden; }
@@ -86,15 +96,27 @@
       <div class="fading">
         <div class="clipped">A panel still faded out, whose row does not fit either</div>
       </div>
-      <div class="chain">
-        <div class="chain-a"><div class="chain-b"><div class="chain-c"><span>One long nowrap label inside three plain wrappers</span></div></div></div>
-      </div>
       <div class="table-scroll">
         <table>
           <tbody>
             <tr><td>Intentionally</td><td>wide</td><td>table</td><td>row</td></tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="nesting">
+      <h2>Nested boxes</h2>
+      <!-- One long label in three plain wrappers: one problem, so one line. -->
+      <div class="chain">
+        <div class="chain-a"><div class="chain-b"><div class="chain-c"><span>One long nowrap label inside three plain wrappers</span></div></div></div>
+      </div>
+      <!-- …but a chip spilling further *inside* a row is a different problem
+           from the row being too wide, so both get a line. -->
+      <div class="wrap">
+        <div class="chips">
+          <span class="chip-a">A much longer chip label</span><span class="chip-gap"></span><span class="chip-b">B fits</span>
+        </div>
       </div>
     </section>
 
