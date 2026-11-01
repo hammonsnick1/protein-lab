@@ -17255,3 +17255,33 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   .hsqc-workspace > footer,
   .hsqc-open-job { display: none; }
 }
+
+/* Construct-driven purification update (HOM-372): what an annotated vector construct changes in the plan. */
+.construct-update { display: flex; flex-direction: column; gap: 10px; margin: 0 0 18px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 9px; background: var(--card); padding: 13px 14px; }
+.construct-update.applied { border-left-color: #20a67c; }
+.construct-update > header { display: flex; gap: 10px; align-items: flex-start; }
+.construct-update > header > svg { width: 20px; flex: none; color: var(--primary); margin-top: 2px; }
+.construct-update.applied > header > svg { color: #20a67c; }
+.construct-update > header > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.construct-update > header strong { font-size: 14px; line-height: 1.4; }
+.construct-update-layout { font-size: 12px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.construct-update-product { font-size: 13px; margin: 0; }
+.construct-update-product b { font-weight: 600; padding: 0 4px; border-radius: 4px; background: var(--muted); }
+.construct-update-status { display: flex; align-items: flex-start; gap: 7px; margin: 0; font-size: 12px; color: var(--muted-foreground); line-height: 1.45; }
+.construct-update-status svg { width: 14px; flex: none; margin-top: 1px; }
+.construct-update-status.warning svg { color: #d39227; }
+.construct-update-status.error { color: var(--destructive); }
+.construct-update-changes { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.construct-update-changes > li { display: grid; grid-template-columns: minmax(140px, 180px) 1fr; gap: 12px; border-radius: 7px; background: var(--background); padding: 8px 10px; }
+.construct-update-changes > li.changed { box-shadow: inset 3px 0 0 var(--primary); }
+.construct-update.applied .construct-update-changes > li.changed { box-shadow: inset 3px 0 0 #20a67c; }
+.construct-update-stage { font-size: 12px; font-weight: 600; }
+.construct-update-diff { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; min-width: 0; }
+.construct-update-diff s, .construct-update-was { color: var(--muted-foreground); }
+.construct-update-diff > svg { width: 14px; flex: none; color: var(--muted-foreground); }
+.construct-update-diff b { font-weight: 600; }
+.construct-update-diff em { font-style: normal; font-size: 12px; color: var(--muted-foreground); border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; }
+.construct-update-diff small { flex-basis: 100%; font-size: 12px; color: var(--muted-foreground); line-height: 1.45; }
+.construct-update > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.construct-update > footer small { font-size: 12px; color: var(--muted-foreground); max-width: 62ch; }
+@media (max-width: 900px) { .construct-update-changes > li { grid-template-columns: 1fr; gap: 4px; } }

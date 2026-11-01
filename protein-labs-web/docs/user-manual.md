@@ -450,6 +450,23 @@ The **Plan your purification** jobs choose the columns, buffers, host, vector an
 4. Under **Binding, wash and elution buffers**, choose a **Starting preset**. Then edit each buffer in the buffer composer.
 5. Click **Save tag, resin and buffers**.
 
+### Update the plan from an annotated construct
+
+If a saved vector already has your construct in it, Protein Lab reads the plan from the vector. The vector must have the protein's coding sequence and features for the affinity tag and the protease site. Protein Lab reads the order of the parts from the features and the DNA. Residues between features, such as a linker or the GA after a TEV site, come from the translated sequence.
+
+1. Open **Affinity capture** or **Compile workflow**. When a vector has an annotated construct, the **ANNOTATED CONSTRUCT FOUND** card names the construct and the vector, and shows the parts in order, for example *M – 6xHis – DYDIPTT – TEV site – GA – HBB*.
+2. Read the cleaved product: the scar the protease leaves, the length, the mass and the pI.
+3. Read the changes. For each job, the card shows the saved choice, the new choice and the reason:
+   - **Affinity capture**: the resin for the annotated tag, for example Ni-NTA for a His tag, Strep-Tactin for Strep-tag II, or glutathione resin for GST. A resin that already captures the tag is kept.
+   - **Tag cleavage**: the annotated protease and the residues it leaves on the protein.
+   - **Subtractive cleanup**: a second pass on the same resin after cleavage. The released tag, the uncleaved fusion and a tagged protease (for example His-tagged TEV) bind. Collect the cleaved product in the flow-through.
+   - **SEC polishing**: a column sized from the cleaved product's mass and the oligomeric state, and an approximate elution volume. Calibrate the column in Chromatogram Studio for a real value.
+4. Click **Update plan from construct**. Nothing changes until you click it.
+
+After the update, **PLAN UPDATED FROM CONSTRUCT** tells you what changed and from which construct. Each job stays editable. Open a job and save it to run its compatibility check again.
+
+> **Note:** If a buffer pH is within 0.5 unit of the cleaved product's pI, the update moves it away from the pI and tells you. IMAC buffers stay at pH 7 or above.
+
 ### Subtractive cleanup
 
 1. Open **Subtractive cleanup**.
@@ -479,6 +496,8 @@ Affinity capture, Subtractive cleanup, SEC polishing and Cell lysis use the same
 6. To remove a component, click the bin button on its row.
 
 The composer marks a concentration that is outside the typical range. It also shows cautions for known problems. For example, EDTA removes Ni²⁺ and Co²⁺ from IMAC resins.
+
+> **Note:** Use 1–5 mM TCEP as the reducing agent with Ni-NTA and other IMAC resins. TCEP does not reduce the nickel or remove it from the resin. DTT or β-mercaptoethanol at higher concentration can reduce Ni²⁺, so the IMAC presets, the lysis suggestion and the reverse-IMAC buffer use TCEP. Compile workflow warns about DTT above 1 mM or β-mercaptoethanol above 20 mM in an IMAC buffer.
 
 ### Choose expression system
 

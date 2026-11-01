@@ -71,22 +71,22 @@ export function suggestLysisBuffer(context:LysisContext):LysisSuggestion{
     const saved=Number((binding?.components??[]).find(item=>purposeOf(item)==="competitor")?.concentration);
     const imidazole=Number.isFinite(saved)&&saved>=10&&saved<=20?saved:Number.isFinite(saved)&&saved>20?20:10;
     add(row("Imidazole",imidazole,"mM","competitor"),`${imidazole} mM imidazole stops host proteins with a few surface histidines from binding ${column}; 10–20 mM keeps the His tag bound.`);
-    add(row("TCEP",0.5,"mM","reducing"),"TCEP, not DTT: DTT reduces the Ni²⁺ on IMAC resin and turns it brown.");
+    add(row("TCEP",1,"mM","reducing"),"1 mM TCEP (1–5 mM suits IMAC): TCEP does not reduce the Ni²⁺ on the resin, so it is the preferred reductant here. DTT or β-mercaptoethanol at higher concentration can reduce Ni²⁺ and turn the resin brown.");
     reasons.push({component:"EDTA",text:"No EDTA: it strips Ni²⁺ and Co²⁺ from the IMAC resin."});
   }else if(chemistry==="gst"){
     add(row("DTT",1,"mM","reducing"),"DTT is fine here: glutathione resin has no metal to reduce, and a reductant keeps GST in its binding-competent state.");
     reasons.push({component:"Imidazole",text:"No imidazole: glutathione resin does not need a competitor to keep background low."});
   }else if(chemistry==="strep"){
-    add(row("TCEP",0.5,"mM","reducing"),"TCEP keeps cysteines reduced and does not affect Strep-Tactin binding.");
+    add(row("TCEP",1,"mM","reducing"),"TCEP keeps cysteines reduced and does not affect Strep-Tactin binding.");
     reasons.push({component:"Biotin",text:"No biotin: free biotin blocks Strep-Tactin. If the culture medium or host supplies biotin, add avidin (optional) to mask it before loading."});
   }else if(chemistry==="mbp"){
-    add(row("TCEP",0.5,"mM","reducing"),"TCEP keeps cysteines reduced and does not affect amylose binding.");
+    add(row("TCEP",1,"mM","reducing"),"TCEP keeps cysteines reduced and does not affect amylose binding.");
     reasons.push({component:"Maltose",text:"No maltose: it is the eluent and would stop the MBP fusion binding the amylose or dextrin resin."});
   }else if(chemistry==="calcium"){
     add(row("CaCl₂",2,"mM","metal-cofactor"),`${column} binds only in calcium, so the lysate carries 2 mM CaCl₂.`);
     reasons.push({component:"EDTA",text:"No EDTA or EGTA: chelating calcium is how this resin elutes."});
   }else{
-    add(row("TCEP",0.5,"mM","reducing"),"TCEP keeps cysteines reduced during lysis and is compatible with most affinity resins.");
+    add(row("TCEP",1,"mM","reducing"),"TCEP keeps cysteines reduced during lysis and is compatible with most affinity resins.");
   }
 
   // Membrane proteins: extract with the detergent the SEC buffer keeps.
