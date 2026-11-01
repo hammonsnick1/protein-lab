@@ -26,6 +26,10 @@ Protein Lab is an offline workspace for planning protein expression, recording p
 
 This release adds the following. Each item links to its place in the manual.
 
+- **2D ligand drawing** in the Structure Viewer, linked atom for atom to the 3D view, with R/S and E/Z labels. See [Draw a ligand in 2D](#draw-a-ligand-in-2d).
+- **Crystallize your protein**, a new job: crystallization propensity, space groups, a lattice and packing builder, and practical advice on screens and drops. See [Crystallize your protein](#crystallize-your-protein).
+- **Predict the HSQC spectrum**, a new job: a predicted ¹H–¹⁵N HSQC, linked peak for peak to the 3D structure. See [HSQC spectrum prediction](#hsqc-spectrum-prediction).
+- **References on every new screen.** Each method, tool, dataset and rule of thumb has a numbered reference; the list is at the bottom of the screen.
 - **Previous job and Next job tabs** at the bottom of every job replace the recommended-next card and banner. See [Move between jobs](#move-between-jobs).
 - **Organism search** in Protein sequence looks up UniProt and NCBI Taxonomy as you type. See [Protein sequence](#protein-sequence).
 - **Most abundant residue** is highlighted in the amino-acid composition table. See [Protein properties](#protein-properties).
@@ -116,7 +120,7 @@ Each project opens on its dashboard. Use **Resume workflow** to move from the pr
 
 ![The project dashboard with Resume workflow, Purification roadmap and Report](manual/project-dashboard.webp)
 
-![The project workflow with its four sections of numbered job cards](manual/workflow.webp)
+![The top of the project workflow with the numbered job cards of the first two sections](manual/workflow.webp)
 *Job cards are numbered in the recommended order and show their status.*
 
 To plan a project:
@@ -129,13 +133,18 @@ To plan a project:
 
 > **Tip:** A workflow card can be opened again to check or revise its saved choices before you start the corresponding bench step.
 
-The workflow page has two sections of numbered jobs, followed by the **Purify your protein** card. The table lists the jobs in their recommended order. **Previous job** and **Next job** follow the same order.
+The workflow page has two sections of numbered jobs, then the **Purify your protein** card, then the **Crystallize your protein** and **Study it by NMR** sections. The table lists the jobs in their recommended order. **Previous job** and **Next job** follow the same order.
 
 | Section | Jobs |
 | --- | --- |
 | **Understanding your protein** | Protein sequence, Protein properties, Sequence research, Choose reference match, Structure Viewer, Protein readiness check |
 | **Plan your purification** | Affinity capture, Subtractive cleanup, SEC polishing, Choose expression system, Expression vector design, Cell lysis, Compile workflow |
 | **Purify your protein** (from the roadmap) | Transformation and Expression, Chromatogram Studio, Gel densitometry |
+| **Crystallize your protein** | Crystallize your protein |
+| **Study it by NMR** | Predict the ¹H–¹⁵N HSQC spectrum |
+
+![The bottom of the project workflow with the Purify your protein card and the Crystallize your protein and Study it by NMR sections](manual/workflow-crystallize-nmr.webp)
+*The two newest sections each hold one job. They use what the earlier jobs saved.*
 
 The bench jobs in **Purify your protein** open from the steps of the [purification roadmap](#purification-roadmap), or with **Next job** after **Compile workflow**.
 
@@ -382,6 +391,26 @@ The **Conservation** panel colours each residue by how conserved it is across ho
 
 > **Note:** Conservation colouring and interface highlighting replace each other. Turning one on turns the other off. A button is grey until its data exists; the panel tells you which job to run first.
 
+### Draw a ligand in 2D
+
+A PDB entry often holds small molecules: substrates, inhibitors, cofactors. The 2D drawing shows one of them as a chemist draws it, next to the 3D view.
+
+1. Load a PDB entry that has ligands. The facts list in the title shows how many, for example **1CNY · X-ray diffraction · 2.30 Å · 3 ligands**.
+2. In **Regions of interest**, choose a ligand binding site, for example **EG3 A 555**. The **2D drawing** panel opens beside the 3D view. The first drawing of a ligand can take a few seconds, because the engine reads its chemical definition from the PDB.
+3. If the entry has more than one ligand, choose another one in the **Ligand** list of the panel. Its binding site is highlighted too.
+4. Click an atom in the drawing. The 3D view turns to that atom and marks it. Click a ligand atom in the 3D view, and the drawing marks it. Point at an atom in either view to see it in the other.
+5. Read **Stereocentres (R/S)** and **Double bonds (E/Z)** under the drawing. Click a stereocentre to find it in 3D. Open **All drawn atoms** to pick any atom by its PDB name.
+6. Click **Wider drawing** to give the drawing half of the view. Click **Close the 2D drawing** to hide the panel. Choosing a region that is not a ligand also hides it.
+
+![The Structure Viewer with PDB entry 1CNY, the EG3 inhibitor binding site highlighted in 3D, and the 2D drawing of EG3 beside it with its stereocentre C15 selected](manual/ligand-2d.webp)
+*The inhibitor EG3 in carbonic anhydrase II (1CNY). Stereocentre C15 (S) is selected in both views.*
+
+Open **How to read this drawing** in the panel for a short guide: carbon atoms at corners and line ends, wedge and hash bonds, and how R/S and E/Z are assigned.
+
+The engine draws the ligand with RDKit from the PDB Chemical Component Dictionary. It takes the stereochemistry from the coordinates of this instance in this entry. If those coordinates disagree with the dictionary, the panel shows a warning: the ligand may be modelled wrongly in that entry, so check the electron density before you trust it.
+
+> **Note:** The drawing needs an internet connection the first time each ligand is drawn. If it fails, the panel tells you why; click **Try again**.
+
 ### Get an AlphaFold model
 
 In the **AlphaFold model** panel, enter a **UniProt accession**, or leave it blank to use the inferred accession. Click **Retrieve AlphaFold DB model**. If there is no model in AlphaFold DB, click **Prepare AlphaFold Server job**, or build a complete job with partners and ligands in [Choose reference match](#export-an-alphafold-server-job). When the server returns the result, click **Import returned result**.
@@ -606,6 +635,118 @@ The exported **Protein properties** page includes two tables:
 
 In a Standalone HTML export, a gel figure also includes the gel image and the note for each lane.
 
+## Crystallize your protein
+
+To see a protein's atoms by X-ray crystallography, you first need a crystal. **Crystallize your protein** estimates how likely crystals are, explains the crystal symmetry, lets you build and inspect a crystal lattice, and suggests where to start at the bench.
+
+The job reads what earlier jobs found: size, membrane and disorder answers, ligands and cofactors, PDB homologues, ConSurf grades and the AlphaFold model. You do not type any of it in again. Each fact names the job it came from; open that job to add a fact that is missing.
+
+The job has four tabs. Use the mouse, or <kbd>←</kbd> <kbd>→</kbd> when a tab has the focus.
+
+| Tab | What it shows |
+| --- | --- |
+| **Propensity and advice** | How likely crystals are, and why |
+| **Space groups** | The symmetry the crystal could have |
+| **Lattice and packing** | How copies of the protein pack in a crystal |
+| **Practical guidance** | Screens, drops and buffers to start with |
+
+Every tab ends with a numbered reference list. A small number next to a statement, for example [1], points to its reference.
+
+### Propensity and advice
+
+1. Open **Crystallize your protein** in the workflow. The assessment starts by itself.
+2. Read **Combined propensity**: the chance, from 0 to 1, that the protein gives crystals good enough to solve its structure. A range shows how sure the predictors are.
+3. Read the **Recommendation** and its points. Each point says whether it is a caution, an action, supporting evidence or missing evidence, and where it came from.
+4. Read **The predictors**. Each card names a published model and says whether it ran. A predictor that did not run says why. Protein Lab never puts a guess in its place.
+5. Read **Space-group suggestions** and **How what you already know changed the advice**. Click **Open** on a missing fact to fill it in.
+6. Click **Save assessment**. This completes the job. Click **Re-run assessment** after you change an earlier job.
+
+![The Propensity and advice tab: the combined propensity scale with no score yet, the recommendation, and the four tabs of the job](manual/crystallize-propensity.webp)
+*With no crystallization predictor installed, the job shows **No score yet** and still gives evidence-based advice.*
+
+> **Note:** The propensity predictors are not included with every installation. Without them the score shows **No score yet**, and the advice comes from the saved evidence only. A low score does not mean the protein will never crystallise, and a high score does not promise crystals.
+
+> **Warning:** Membrane proteins need detergents or lipids to crystallise. The predictors do not model them, so treat their scores with extra care.
+
+### Space groups
+
+A space group is the set of symmetry moves (rotations, screw axes and translations) that copies one molecule into every position in the crystal. Proteins are made of L-amino acids, so a protein crystal can only use the 65 groups that keep the handedness of the molecule.
+
+1. Open the **Space groups** tab.
+2. In **Pick a group**, search by symbol (for example `P212121`), number or crystal system. Groups that your PDB homologues crystallised in are flagged in the list.
+3. Choose **All 230** to see the other 165 groups in teaching mode. Choose **65 for proteins** to go back.
+4. Read the facts of the group: number, crystal system, point group and copies per cell. The two diagrams show where the symmetry elements sit in one cell and where the copies of the molecule sit.
+5. Under **Symmetry operations**, pick an operation. **Step through** animates how it moves one copy. Use **Play**, **Next step** and **Reset**.
+
+The group you pick is saved with the project. The lattice builder uses it.
+
+![The Space groups tab with P212121 selected, its facts, and its symmetry-element and general-position diagrams](manual/crystallize-space-groups.webp)
+*P2₁2₁2₁, the space group proteins choose most often, with its two International Tables diagrams.*
+
+> **Note:** If your computer is set to reduce motion, **Play** is not available. Use **Next step** to move through the operation one step at a time.
+
+### Lattice and packing
+
+The lattice builder repeats a structure by the space group and the unit cell, and measures where the copies touch.
+
+1. **Choose a structure to pack.** Under **Your protein**, choose the AlphaFold model or a PDB entry saved in the Structure Viewer. Under **Learning examples**, choose a known crystal, for example ubiquitin (1UBQ) or tetragonal lysozyme (193L). Each example has a short note on what to look for.
+2. **Set the unit cell.** An experimental PDB entry uses its own cell (**Experimental cell**). For the AlphaFold model, or to try another cell, choose **Hypothetical cell**, choose one of the 65 space groups, and enter the free cell edges and angles. Click **Build this cell**, or click **Suggest a cell that fits** to let the app search for the smallest cell without clashes.
+3. **The lattice in 3D.** Choose **Molecule and its neighbours** or **One unit cell**. Each copy has its own colour; chain "A-3" is copy 3 of chain A.
+4. **Packing analysis.** Read the counts: neighbours touching, residue contacts, possible hydrogen bonds, clashes and interface residues. Drag **Contact distance** to change what counts as a contact. Click a row, or a residue in 3D, to highlight both sides of that contact.
+
+![The Lattice and packing tab with ubiquitin (1UBQ) in P212121, the molecule and its 14 neighbours drawn in 3D in different colours](manual/crystallize-lattice.webp)
+*Ubiquitin (1UBQ) and every copy that touches it in its P2₁2₁2₁ crystal.*
+
+For an AlphaFold model, tick the option to leave out residues with low pLDDT confidence. Floppy ends would otherwise make the cell too large.
+
+> **Warning:** A hypothetical cell is a teaching aid, not a prediction of your crystal. If the analysis reports clashes, the copies overlap and no real crystal could have that cell.
+
+### Practical guidance
+
+The **Practical guidance** tab helps you set up the first crystallization trials. Its advice is tailored from what earlier jobs recorded about the protein. It has three tabs.
+
+- **Screens and concentration.** **What this advice is based on** lists the size, membrane, disorder and ligand facts used. **Starting protein concentration** gives a starting value and a range in mg/mL. **Conditions that already worked for related structures** copies the crystal-growth records of PDB entries that Sequence research found. **Suggested commercial screens** lists screens in order of priority, each with the reasons for it.
+- **What goes in the drop.** A schematic phase diagram explains why a precipitant is needed. Cards explain the role of the precipitant, the buffer and pH, salt, additives and, for membrane proteins, detergent.
+- **Hanging vs sitting drop.** How vapour diffusion works, and the pros and cons of the two drop set-ups.
+
+![The Practical guidance tab with the facts the advice is based on, the starting protein concentration, and crystallization conditions copied from related PDB entries](manual/crystallize-guidance.webp)
+*For carbonic anhydrase II, five related PDB entries already record a hanging-drop condition.*
+
+> **Tip:** A condition that worked for a close relative is the strongest starting point. Set it up beside the commercial screens.
+
+> **Note:** If no earlier job says whether the protein is a membrane protein, the guidance asks you to answer it in the [Protein readiness check](#protein-readiness-check). The advice changes for membrane proteins.
+
+## HSQC spectrum prediction
+
+An ¹H–¹⁵N HSQC is the standard first NMR experiment on a protein. Each backbone N–H gives one peak: its ¹H shift on one axis and its ¹⁵N shift on the other. Proline has no backbone N–H, so it gives no peak. A folded protein spreads its peaks out; an unfolded one crowds them near 8–8.5 ppm.
+
+**Predict the ¹H–¹⁵N HSQC spectrum** predicts where each peak should fall, draws the spectrum the way NMR software such as Sparky does, and links every peak to its residue in the 3D structure.
+
+1. Save the sequence in **Protein sequence** first. The job uses it and, if they exist, the AlphaFold model, PDB entries, disorder notes and ligands from earlier jobs.
+2. Open **Predict the ¹H–¹⁵N HSQC spectrum** in the **Study it by NMR** section of the workflow. The prediction starts by itself.
+3. Under **What the prediction starts from**, check the sequence, the structure, the disordered residues and the residues near a ligand. To use another structure, choose it in the **Structure** list.
+4. Read **Predictor used**. It names the predictor, says whether it is **Structure-based** or **Sequence only**, and gives its published expected error.
+5. Find a peak. Click it in the spectrum, choose a row in the **Peak list**, or click a residue in the 3D structure. All three views mark the same residue.
+6. Click **Save prediction**. Click **Predict again** to run the prediction again, for example after you change an earlier job.
+
+![The HSQC job with the predicted spectrum on the left, the AlphaFold model on the right, and peak W5 selected in both](manual/hsqc.webp)
+*Peak W5 selected in the spectrum and the structure. With the sequence-only fallback, the peaks crowd near 8.2 ppm.*
+
+To read the spectrum:
+
+- By NMR convention both axes run backwards: ¹H falls from left to right and ¹⁵N rises from top to bottom.
+- Each peak is drawn as contour rings. The legend shows folded residues, disordered residues, residues near a ligand and side-chain N–H peaks.
+- Scroll to zoom and drag to pan. Use the zoom buttons, or the full-spectrum button to see everything again.
+- **Labels** shows residue names. Where peaks crowd, some labels are hidden; zoom in to see them.
+- **Error on every peak** draws the expected error of the predictor around each peak.
+- Where peaks overlap, click again to step through them.
+
+The engine tries UCBShift 2.0, LEGOLAS and SHIFTX2 in turn. If none of them is installed, it uses average random-coil shifts. Random-coil shifts ignore the 3D fold, so the peaks of a folded protein crowd together.
+
+> **Note:** A prediction is a guide for assigning a real spectrum. It does not replace one. A bound ligand can move the peaks of nearby residues in ways the predictor does not model; those peaks are flagged **Near a ligand**.
+
+> **Tip:** Above about 30 kDa, peaks broaden and special methods such as TROSY and deuteration are usually needed. The introduction at the top of the job explains this.
+
 ## Vector and protein library
 
 Your saved vectors and your purified proteins share one page with a tab for each: **Vectors** and **Proteins**. Open it from the **Vector and protein library** card on the dashboard, which counts both libraries and shows where they are saved. You can also use **Tools** → **Vector library** (<kbd>Ctrl+Shift+L</kbd>) or **Tools** → **Protein library** (<kbd>Ctrl+Shift+P</kbd>). Switch tabs by clicking them, or focus a tab and press <kbd>←</kbd> or <kbd>→</kbd>.
@@ -739,6 +880,10 @@ The pictures in this manual follow the appearance: **Monochrome dark** shows the
 | Organism field: <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Esc</kbd> | Move through the suggestions, choose one, close the list |
 | ConSurf strip: <kbd>←</kbd> <kbd>→</kbd> / <kbd>↑</kbd> <kbd>↓</kbd> | Move one residue / one row |
 | Structure Viewer, narrow window: <kbd>Esc</kbd> | Close the side panel |
+| Crystallize your protein: <kbd>←</kbd> <kbd>→</kbd> | Move between the four tabs |
+| HSQC spectrum: <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Pan the focused spectrum |
+| HSQC spectrum: <kbd>+</kbd>, <kbd>-</kbd>, <kbd>0</kbd> | Zoom in, zoom out, show the full spectrum |
+| HSQC spectrum: <kbd>[</kbd> <kbd>]</kbd>, <kbd>Esc</kbd> | Step through the peaks, clear the selection |
 | Vector Workbench: <kbd>Ctrl+O</kbd> | Open a vector |
 | Vector Workbench: <kbd>Ctrl+S</kbd>, <kbd>Ctrl+E</kbd> | Save to the library, export |
 | Vector Workbench: <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+Shift+Z</kbd> | Undo, redo |
