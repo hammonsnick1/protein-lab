@@ -269,14 +269,17 @@ function HmSymbol({ group }: { group: SpaceGroup }) {
  */
 function HighlightFlag({ highlight }: { highlight: SpaceGroupHighlight }) {
   const predicted = highlight.predictor;
-  return <>
+  // One element around both badges, so that when the row has to wrap they
+  // move to the next line together instead of splitting wherever they
+  // happen to run out of room.
+  return <span className="sg-flags">
     {highlight.kind === "pdb" && <span className="sg-flag pdb" title={highlight.detail}>
       <Database aria-hidden="true"/>{highlight.pdbIds.length} PDB
     </span>}
     {predicted && <span className="sg-flag predictor" title={predicted.detail}>
       <Sparkles aria-hidden="true"/>{predicted.source}
     </span>}
-  </>;
+  </span>;
 }
 
 /**

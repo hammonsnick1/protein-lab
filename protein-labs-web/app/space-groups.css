@@ -163,7 +163,8 @@
 .sg-list-system ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 /* A group can carry both an evidence badge and a prediction badge, which no
    longer fits the column beside the symbol. The row wraps instead of pushing
-   a badge off the edge; the badges then sit together on their own line. */
+   a badge off the edge, and `.sg-flags` keeps the badges as one item, so they
+   move to the second line together rather than splitting across both. */
 .sg-list-system button {
   display: flex;
   flex-wrap: wrap;
@@ -198,6 +199,12 @@
 .sg-hm sub { font-size: 12px; }
 .sg-hm .barred { text-decoration: overline; }
 
+.sg-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
 .sg-flag {
   display: inline-flex;
   align-items: center;
