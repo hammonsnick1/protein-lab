@@ -5,22 +5,26 @@ import { Check, CircleMinus, CirclePlus, ShieldAlert, Sparkles, WandSparkles } f
 import { Button } from "@/components/ui/button";
 import { BufferComposer } from "@/components/protein-labs/buffer-composer";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
-import { normalizeBufferSteps, type BufferComponent, type BufferStep } from "@/lib/purification-catalog";
+import type { BufferComponent, BufferStep } from "@/lib/purification-catalog";
+import { savedBufferSteps } from "@/lib/purification-buffers";
 import { lysisBuffers } from "@/lib/purification-stage-catalog";
 import { lysisHost, lysisHostLabels, suggestLysisBuffer, type LysisContext } from "@/lib/lysis-buffer-suggestion";
+import { constructCysteines } from "@/lib/reductant-need";
 
 /** What the lysis suggestion reads from the other saved purification jobs. */
-export function lysisSuggestionContext(bundle:ProteinBundle,membrane:boolean):LysisContext&{hostName:string;secName:string}{
+export function lysisSuggestionContext(bundle:ProteinBundle,membrane:boolean,method?:string):LysisContext&{hostName:string;secName:string}{
   const config=(type:string)=>bundle.projectJobs.find(job=>job.appType===type)?.config??{};
   const affinity=config("purification-affinity"),cleanup=config("purification-subtractive"),sec=config("purification-sec"),expression=config("expression-system");
-  const shared=normalizeBufferSteps(config("purification-buffer").steps);
-  const binding=normalizeBufferSteps(affinity.buffers)?.binding??shared?.binding??null;
-  const secComponents=Array.isArray(sec.bufferComponents)?(sec.bufferComponents as JsonObject[]).map(item=>({name:String(item.name??""),concentration:String(item.concentration??""),unit:String(item.unit??""),role:String(item.role??"")})):shared?.storage.components??[];
+  const shared=savedBufferSteps(bundle.projectJobs);
+  const binding=shared.binding??null;
+  const secComponents=shared.storage?.components??[];
   const host=lysisHost(expression.hostSystemId??expression.hostSystem);
+  // The lysate holds the tagged fusion, so count its cysteines.
+  const construct=(config("purification-cleavage").construct??affinity.construct) as JsonObject|undefined;
   return{
     capture:affinity.columnId?{columnId:String(affinity.columnId),shortName:String(affinity.shortName??""),tag:String(affinity.tag??""),binding:binding?.components.length?binding:null}:null,
     cleanup:cleanup.columnId?{columnId:String(cleanup.columnId),shortName:String(cleanup.shortName??""),tag:String(cleanup.tag??"")}:null,
-    secComponents,host,membrane,
+    secComponents,host,membrane,method,cysteines:constructCysteines(construct,bundle.protein.sequence),
     hostName:host?`${capitalize(lysisHostLabels[host])}${expression.strainName?` · ${expression.strainName}`:""}`:"",
     secName:String(sec.bufferName??""),
   };
@@ -32,15 +36,15 @@ export function lysisSuggestionContext(bundle:ProteinBundle,membrane:boolean):Ly
  * shared Buffer composer, where the scientist keeps editing it. The lysis
  * presets stay available as other starting points.
  */
-export function LysisBufferPanel({ bundle, membrane, step, source, onApply, onEdit, onInspectPreset }: { bundle:ProteinBundle; membrane:boolean; step:BufferStep; source:string; onApply:(step:BufferStep)=>void; onEdit:(step:BufferStep)=>void; onInspectPreset:(id:string)=>void }) {
-  const context=useMemo(()=>lysisSuggestionContext(bundle,membrane),[bundle,membrane]);
+export function LysisBufferPanel({ bundle, membrane, methodId, step, source, onApply, onEdit, onInspectPreset }: { bundle:ProteinBundle; membrane:boolean; methodId:string; step:BufferStep; source:string; onApply:(step:BufferStep)=>void; onEdit:(step:BufferStep)=>void; onInspectPreset:(id:string)=>void }) {
+  const context=useMemo(()=>lysisSuggestionContext(bundle,membrane,methodId),[bundle,membrane,methodId]);
   const suggestion=useMemo(()=>suggestLysisBuffer(context),[context]);
   // Re-key the composer when a whole buffer is loaded, so its row selection resets.
   const [version,setVersion]=useState(0);
   const applied=sameStep(step,suggestion.step);
   const inBuffer=new Set(suggestion.step.components.map(item=>item.name));
   function apply(){onApply(structuredClone(suggestion.step));setVersion(value=>value+1)}
-  const facts:[string,string,boolean][]=[["Capture",context.capture?.shortName||"Not saved",Boolean(context.capture)],["Host",context.hostName||"Not saved",Boolean(context.host)],["Membrane protein",membrane?"Yes":"No",true],["Cleanup",context.cleanup?.shortName||"Not saved",Boolean(context.cleanup)],["SEC buffer",context.secName||"Not saved",Boolean(context.secName)]];
+  const facts:[string,string,boolean][]=[["Capture",context.capture?.shortName||"Not saved",Boolean(context.capture)],["Host",context.hostName||"Not saved",Boolean(context.host)],["Membrane protein",membrane?"Yes":"No",true],["Cysteines",context.cysteines===null||context.cysteines===undefined?"No sequence":String(context.cysteines),context.cysteines!==null&&context.cysteines!==undefined],["Cleanup",context.cleanup?.shortName||"Not saved",Boolean(context.cleanup)],["SEC buffer",context.secName||"Not saved",Boolean(context.secName)]];
   return <section className="stage-choice-section lysis-buffer-section">
     <header><h3>Lysis buffer</h3><p>Apply the suggestion to start from a buffer that suits your capture column, or start from a preset. Every component stays editable below.</p></header>
     <div className="lysis-buffer-layout">

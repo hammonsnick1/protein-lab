@@ -36,17 +36,28 @@ export function stageBindingLabel(stageId: string | null, options: RoadmapStepOp
 }
 
 export function liveSteps(bundle: ProteinBundle): RoadmapStep[] {
-  const expression = config(bundle, "expression-system"), vector = config(bundle, "expression-planning"), transformation = config(bundle, "transformation-expression"), lysis = config(bundle, "purification-lysis"), affinity = config(bundle, "purification-affinity"), cleavage = config(bundle, "purification-cleavage"), subtractive = config(bundle, "purification-subtractive"), sec = config(bundle, "purification-sec"), buffer = config(bundle, "purification-buffer");
-  const host = first(expression.strainName, transformation.hostName, "the selected production host"), media = first(transformation.mediaName, "the planned medium"), lysisMethod = first(lysis.methodName, "the selected lysis method"), affinityColumn = first(affinity.columnName, "the selected affinity medium"), protease = first(cleavage.proteaseName, cleavage.proteaseId, "the cleavage strategy"), retain = String(cleavage.proteaseId ?? "") === "retain", cleanup = first(subtractive.columnName, "the subtractive medium"), secColumn = first(sec.columnName, "the SEC column"), storage = first(buffer.presetName, buffer.presetId, "the storage buffer");
+  const expression = config(bundle, "expression-system"), vector = config(bundle, "expression-planning"), transformation = config(bundle, "transformation-expression"), lysis = config(bundle, "purification-lysis"), affinity = config(bundle, "purification-affinity"), cleavage = config(bundle, "purification-cleavage"), subtractive = config(bundle, "purification-subtractive"), sec = config(bundle, "purification-sec"), storageBuffer = finalStorageBuffer(bundle);
+  const host = first(expression.strainName, transformation.hostName, "the selected production host"), media = first(transformation.mediaName, "the planned medium"), lysisMethod = first(lysis.methodName, "the selected lysis method"), affinityColumn = first(affinity.columnName, "the selected affinity medium"), protease = first(cleavage.proteaseName, cleavage.proteaseId, "the cleavage strategy"), retain = String(cleavage.proteaseId ?? "") === "retain", cleanup = first(subtractive.columnName, "the subtractive medium"), secColumn = first(sec.columnName, "the SEC column"), storage = first(storageBuffer?.name, "the storage buffer");
   return [
     step("transformation-expression", "Transformation and expression", `Begin the production run in ${host} using ${media}.`, "Starting material, medium, supplements, culture conditions, induction, harvest, and deviations.", Boolean(expression.strainId || transformation.mediaId), "transformation-expression", "Transformation and Expression", details(["Host", expression.strainName], ["Vector", vector.vectorName ?? expression.projectVectorName ?? expression.vectorFamilyName], ["Medium", transformation.mediaName])),
     step("lysis", "Cell lysis and clarification", `Disrupt the harvested material using ${lysisMethod}, then clarify before loading.`, "Pellet mass, resuspension volume, lysis settings, centrifugation, filtration, and retained samples.", Boolean(lysis.methodId), "purification-lysis", "Cell lysis job", details(["Method", lysis.methodName], ["Buffer", lysis.bufferName])),
     step("affinity", "Affinity capture", `Capture the target with ${affinityColumn}; retain load, flow-through, wash, and elution fractions.`, "Column, load amount, flow, washes, elution, fraction IDs, recovery, and purity.", Boolean(affinity.columnId), "purification-affinity", "Affinity capture job", details(["Column", affinity.columnName], ["Tag", affinity.tag])),
-    step("cleavage", retain ? "Retain affinity tag" : "Affinity-tag cleavage", retain ? "The current plan keeps the affinity tag on the final construct." : `Exchange into compatible buffer and cleave with ${protease}.`, "Reaction conditions, completion, samples, and downstream tag/protease removal.", Boolean(cleavage.proteaseId), "purification-subtractive", "Subtractive-cleanup job", details(["Strategy", cleavage.proteaseName ?? cleavage.proteaseId], ["Conditions", cleavage.conditions])),
-    step("subtractive", "Subtractive cleanup", retain ? "Optional in the current tag-retention plan." : `Pass the cleavage mixture over ${cleanup} and collect the target fraction.`, "Load, flow-through, wash, elution, recovery, purity, and evidence of contaminant removal.", retain || Boolean(subtractive.columnId), "purification-subtractive", "Subtractive-cleanup job", details(["Column", subtractive.columnName], ["Buffer", subtractive.bufferName])),
+    step("cleavage", retain ? "Retain affinity tag" : "Affinity-tag cleavage", retain ? "The current plan keeps the affinity tag on the final construct." : `Exchange into compatible buffer and cleave with ${protease}.`, "Reaction conditions, completion, samples, and downstream tag/protease removal.", Boolean(cleavage.proteaseId), "purification-subtractive", "Protease choice · Subtractive cleanup job", details(["Strategy", cleavage.proteaseName ?? cleavage.proteaseId], ["Conditions", cleavage.conditions])),
+    step("subtractive", "Subtractive cleanup", retain ? "Optional in the current tag-retention plan." : `Pass the cleavage mixture over ${cleanup} and collect the target fraction.`, "Load, flow-through, wash, elution, recovery, purity, and evidence of contaminant removal.", retain || Boolean(subtractive.columnId), "purification-subtractive", "Subtractive cleanup job", details(["Column", subtractive.columnName], ["Buffer", subtractive.bufferName])),
     step("sec", "SEC polishing", `Polish the target on ${secColumn} and associate the chromatogram with this step.`, "Sample concentration and volume, flow, trace, fractions, yield, purity, and oligomeric state.", Boolean(sec.columnId), "purification-sec", "SEC polishing job", details(["Column", sec.columnName], ["Buffer", sec.bufferName], ["Expected mass", sec.expectedMassKDa ? `${sec.expectedMassKDa} kDa` : ""])),
-    step("quality-storage", "Quality control and storage", `Confirm quality before transferring into ${storage}.`, "Final concentration, yield, purity, identity, activity, storage, aliquots, freeze–thaw history, gels, and images.", Boolean(buffer.presetId), "purification-sec", "SEC polishing job", details(["Buffer plan", buffer.presetName ?? buffer.presetId])),
+    step("quality-storage", "Quality control and storage", `Confirm quality before transferring into ${storage}.`, "Final concentration, yield, purity, identity, activity, storage, aliquots, freeze–thaw history, gels, and images.", Boolean(storageBuffer), "purification-sec", "Storage buffer · SEC polishing job", details(["Storage buffer", storageBuffer && (storageBuffer.pH ? `${storageBuffer.name}, pH ${storageBuffer.pH}` : storageBuffer.name)])),
   ];
+}
+/**
+ * The final storage buffer, as the SEC polishing job saved it. Projects from
+ * before per-job buffers kept a named preset on the shared buffer record; the
+ * "per-job" marker on that record is not a buffer and is never reported.
+ */
+export function finalStorageBuffer(bundle: ProteinBundle): { name: string; pH: string } | null {
+  const sec = config(bundle, "purification-sec"), legacy = config(bundle, "purification-buffer");
+  if (sec.bufferId || sec.bufferStep) return { name: `${first(sec.bufferName, "Composed storage buffer")}${sec.bufferEdited === true ? " (edited)" : ""}`, pH: first(sec.bufferPH) };
+  if (legacy.presetId && legacy.presetId !== "per-job") return { name: first(legacy.presetName, legacy.presetId), pH: "" };
+  return null;
 }
 function step(id: string, title: string, instruction: string, record: string, ready: boolean, jobId: string, jobLabel: string, planDetails: string[]): RoadmapStep { return { id, title, instruction, record, ready, jobId, jobLabel, planDetails, components: [] }; }
 export function config(bundle: ProteinBundle, appType: string): JsonObject { return bundle.projectJobs.find((job) => job.appType === appType)?.config ?? {}; }
@@ -65,3 +76,48 @@ export function mergeSavedSteps(base: RoadmapStep[], raw: unknown): RoadmapStep[
   return [...restored, ...base.filter((value) => !restoredIds.has(value.id))];
 }
 export function object(value: unknown): JsonObject { return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {}; }
+
+/**
+ * Moves the item at `from` so it lands at insertion point `insertion`, counted
+ * in the list before the move (0 is before the first item, length after the
+ * last). Dropping an item on either side of itself leaves the order unchanged.
+ */
+export function moveStep<T>(items: T[], from: number, insertion: number): T[] {
+  if (from < 0 || from >= items.length) return items;
+  const target = Math.max(0, Math.min(insertion, items.length)), next = [...items], [moved] = next.splice(from, 1);
+  next.splice(from < target ? target - 1 : target, 0, moved);
+  return next;
+}
+
+/** A buffer recipe shown on a roadmap column; empty `ingredients` means not saved yet. */
+export type StepBuffer = { id: string; label: string; pH: string; ingredients: BufferIngredient[] };
+const stepBufferIds: Record<string, string[]> = { lysis: ["lysis"], affinity: ["binding", "wash", "elution"], cleavage: ["cleavage"], subtractive: ["cleavage"], sec: ["storage"] };
+const stepBufferLabels: Record<string, string> = { lysis: "Lysis", binding: "Binding", wash: "Wash", elution: "Elution", cleavage: "Cleavage / cleanup", storage: "SEC running / storage" };
+// Where each buffer lives on its own job's config, for projects saved before
+// the shared purification-buffer record held it.
+function ownJobBuffer(bundle: ProteinBundle, id: string): JsonObject {
+  if (["binding", "wash", "elution"].includes(id)) return object(object(config(bundle, "purification-affinity").buffers)[id]);
+  const appType = ({ lysis: "purification-lysis", cleavage: "purification-subtractive", storage: "purification-sec" } as Record<string, string | undefined>)[id];
+  if (!appType) return {};
+  const job = config(bundle, appType);
+  return { pH: job.bufferPH ?? null, components: job.bufferComponents ?? null };
+}
+
+/**
+ * The buffers used at a planned step, read from the shared purification-buffer
+ * record (with the owning job's own buffer as a fallback for older projects).
+ * Custom steps, steps without a buffer and a retained-tag cleavage step
+ * return an empty list.
+ */
+export function stepBuffers(bundle: ProteinBundle, stepId: string): StepBuffer[] {
+  // A plan that keeps the tag has no cleavage reaction to make a buffer for.
+  if (stepId === "cleavage" && String(config(bundle, "purification-cleavage").proteaseId ?? "") === "retain") return [];
+  const shared = object(config(bundle, "purification-buffer").steps);
+  return (stepBufferIds[stepId] ?? []).map((id) => {
+    const record = object(shared[id]), source = bufferIngredients(record.components).some((item) => item.name) ? record : ownJobBuffer(bundle, id);
+    return { id, label: stepBufferLabels[id], pH: first(source.pH), ingredients: bufferIngredients(source.components).filter((item) => item.name) };
+  });
+}
+export function bufferIngredients(value: unknown): BufferIngredient[] { return Array.isArray(value) ? value.filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((raw) => { const item = raw as JsonObject; return { name: String(item.name ?? ""), concentration: String(item.concentration ?? ""), unit: String(item.unit ?? ""), role: String(item.role ?? "") }; }) : []; }
+/** "50 mM Tris-HCl" — one ingredient as it is written on a bench recipe. */
+export function ingredientLabel(item: BufferIngredient) { return [item.concentration, item.unit, item.name].map((value) => value.trim()).filter(Boolean).join(" "); }

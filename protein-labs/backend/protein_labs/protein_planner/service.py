@@ -12,7 +12,7 @@ from typing import Any
 import uuid
 import zipfile
 
-from .database import Database, utc_now
+from .database import Database, local_sequence_metrics, utc_now
 from .integrations import (
     AlphaFoldDBClient,
     NCBIBlastClient,
@@ -35,6 +35,13 @@ from .ligand_depiction import render_ligand_depiction
 from .protparam import analyze_sequence, normalize_sequence
 from .project_trees import ProjectTreeService
 from .crystallization import crystallization_assessment
+from .readiness import (
+    choose_conservation,
+    choose_model,
+    conservation_grades_by_construct,
+    model_confidence_evidence,
+    model_sequence_and_plddt,
+)
 from .taxonomy import TaxonomyClient
 from ..expression_planner import (
     COMMON_ENZYMES,
@@ -229,16 +236,26 @@ class ProteinPlanner:
     def search_uniprot(
         self, protein_id: str, query: str, *, size: int = 10
     ) -> list[dict[str, Any]]:
-        self.database.get_protein(protein_id)
+        sequence = self.database.get_protein(protein_id)["sequence"]
         records = self.uniprot.search(query, size=size)
         for record in records:
-            self.database.save_uniprot_match(protein_id, record, "UniProt search")
+            self.database.save_uniprot_match(
+                protein_id,
+                record,
+                "UniProt search",
+                local_sequence_metrics(sequence, record),
+            )
         return records
 
     def fetch_uniprot(self, protein_id: str, accession: str) -> dict[str, Any]:
-        self.database.get_protein(protein_id)
+        sequence = self.database.get_protein(protein_id)["sequence"]
         record = self.uniprot.fetch(accession)
-        self.database.save_uniprot_match(protein_id, record, "UniProt accession")
+        self.database.save_uniprot_match(
+            protein_id,
+            record,
+            "UniProt accession",
+            local_sequence_metrics(sequence, record),
+        )
         return record
 
     def match_uniprot_sequence(
@@ -1170,6 +1187,58 @@ class ProteinPlanner:
         self.database.get_protein(protein_id)
         self.database.delete_conservation_job(protein_id, job_id)
         return {"deleted": job_id}
+
+    def readiness_evidence(self, protein_id: str) -> dict[str, Any]:
+        """Model confidence and conservation for the protein readiness check.
+
+        Both sections are ``None`` when the project has no model or no
+        complete ConSurf run; a model that cannot be read is reported with
+        ``error`` instead of failing the whole response.
+        """
+        bundle = self.database.get_bundle(protein_id)
+        construct = bundle["protein"]["sequence"]
+        reference = next(
+            (job["config"] for job in bundle["projectJobs"] if job["appType"] == "reference-match"),
+            {},
+        )
+        model = choose_model(bundle["alphaFoldModels"], str(reference.get("selectedAccession") or ""))
+        confidence: dict[str, Any] | None = None
+        if model:
+            confidence = {
+                "modelId": model["modelId"],
+                "source": model["source"],
+                "accession": model["accession"],
+                "name": model["name"],
+                "numbering": "Model positions count along the model's first chain (equal to UniProt positions for AlphaFold DB); construct positions count along this construct. Both one-based.",
+            }
+            try:
+                stored = self.database.get_alphafold_model(protein_id, model["modelId"])
+                sequence, plddt = model_sequence_and_plddt(stored["structureText"], stored["format"])
+                confidence.update(model_confidence_evidence(construct, sequence, plddt))
+                confidence["error"] = ""
+            except ValueError as error:
+                confidence["error"] = str(error)
+        conservation: dict[str, Any] | None = None
+        job = choose_conservation(self.database.list_conservation_jobs(protein_id, include_residues=True))
+        if job:
+            metadata = job.get("metadata") or {}
+            grades = conservation_grades_by_construct(construct, job["residues"])
+            conservation = {
+                "jobId": job["id"],
+                "source": job["source"],
+                "pdbId": job["pdbId"],
+                "chain": job["chain"],
+                "identicalPdbId": metadata.get("identicalPdbId") or "",
+                "identicalChain": metadata.get("identicalChain") or "",
+                "constructGrades": grades,
+                "gradedConstructResidues": sum(1 for grade in grades if grade != "."),
+            }
+        return {
+            "proteinId": protein_id,
+            "constructLength": len(construct),
+            "modelConfidence": confidence,
+            "conservation": conservation,
+        }
 
     def get_alphafold_model(
         self, protein_id: str, model_id: str

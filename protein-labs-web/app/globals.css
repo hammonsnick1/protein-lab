@@ -4616,6 +4616,66 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   min-height: 0;
   width: 100%;
 }
+.trace-selector .trace-step {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted-foreground);
+}
+.trace-selector .trace-step select {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.gel-studio {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.gel-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 75%, var(--background));
+}
+.gel-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted-foreground);
+}
+.gel-picker select {
+  min-width: 280px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  padding: 0 8px;
+  font-size: 13px;
+}
+.gel-picker > span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.gel-studio > .gel-analysis-full {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
 .gel-analysis-full {
   position: relative;
   height: 100%;
@@ -10456,6 +10516,7 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .roadmap-record-guidance { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); background: var(--background); padding: 12px 25px; }
 .roadmap-record-guidance strong { font-size: 12px; white-space: nowrap; }
 .roadmap-record-guidance span { color: var(--muted-foreground); font-size: 12px; line-height: 1.45; }
+.roadmap-record-guidance span svg { display: inline; width: 13px; height: 13px; vertical-align: -2px; }
 .roadmap-component-palette { border-bottom: 1px solid var(--border); background: var(--background); padding: 13px 25px 16px; }
 .roadmap-component-palette > header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .roadmap-component-palette > header strong { font-size: 12px; }
@@ -10468,20 +10529,35 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .roadmap-component-palette button > span > svg { grid-row: 1 / 3; width: 17px; color: var(--component-color); }
 .roadmap-component-palette strong { font-size: 12px; }
 .roadmap-component-palette small { color: var(--muted-foreground); font-size: 12px; line-height: 1.3; }
-.roadmap-board { display: flex; align-items: flex-start; gap: 16px; min-height: 570px; overflow: auto; padding: 21px 25px 45px; }
+.roadmap-board { display: flex; align-items: flex-start; gap: 0; min-height: 570px; overflow: auto; padding: 21px 25px 45px; }
 .roadmap-column { position: relative; width: 310px; min-width: 310px; min-height: 500px; display: flex; flex-direction: column; border: 1px solid var(--border); border-top: 4px solid var(--primary); border-radius: 14px; background: color-mix(in srgb, var(--card) 94%, transparent); transition: border-color var(--speed-fast) ease, background var(--speed-fast) ease, transform var(--speed-fast) var(--ease-out); }
 .roadmap-column.pending { border-top-color: color-mix(in srgb, var(--muted-foreground) 65%, var(--border)); }
 .roadmap-column.move-selected { border-color: #4d9de8; background: color-mix(in srgb, #4d9de8 9%, var(--card)); box-shadow: 0 0 0 3px color-mix(in srgb, #4d9de8 23%, transparent), 0 16px 34px rgba(0,0,0,.14); transform: translateY(-4px); }
 .roadmap-column.move-selected:before { content: "MOVING · CTRL-SELECT DESTINATION"; position: absolute; z-index: 2; top: -24px; left: 8px; border-radius: 999px; background: #4d9de8; color: white; padding: 4px 7px; font-size: 12px; font-weight: 850; letter-spacing: .06em; }
 .roadmap-column.drag-over { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--card)); transform: translateY(-3px); box-shadow: 0 16px 32px rgba(0,0,0,.14); }
-.roadmap-column:not(:last-child):after { content: ""; position: absolute; top: 31px; left: 100%; width: 16px; border-top: 2px dotted color-mix(in srgb, var(--primary) 55%, var(--border)); }
-.roadmap-column > header { display: grid; grid-template-columns: auto 1fr auto auto; gap: 7px; align-items: start; border-bottom: 1px solid var(--border); padding: 12px; }
+.roadmap-column.drag-source { opacity: .45; }
+.roadmap-step-gap { position: relative; flex: 0 0 26px; align-self: stretch; display: flex; justify-content: center; }
+.roadmap-step-gap:not(:first-child):before { content: ""; position: absolute; top: 31px; left: 0; right: 0; border-top: 2px dotted color-mix(in srgb, var(--primary) 55%, var(--border)); }
+.roadmap-step-gap > button { position: relative; z-index: 1; width: 24px; height: 24px; display: grid; place-items: center; margin-top: 20px; border: 1px solid var(--border); border-radius: 50%; background: var(--background); color: var(--muted-foreground); cursor: pointer; transition: border-color var(--speed-fast) ease, color var(--speed-fast) ease, transform var(--speed-fast) var(--ease-out); }
+.roadmap-step-gap > button:hover, .roadmap-step-gap > button:focus-visible { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--background)); color: var(--primary); transform: scale(1.12); }
+.roadmap-step-gap > button svg { width: 14px; height: 14px; }
+.roadmap-board.dragging .roadmap-step-gap > button { opacity: .35; }
+.roadmap-step-gap.drop-target:after { content: ""; position: absolute; z-index: 2; top: 0; bottom: 0; left: 50%; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent); }
+.roadmap-add-step { flex: 0 0 170px; min-height: 500px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 1px dashed var(--border); border-radius: 14px; background: transparent; color: var(--muted-foreground); padding: 16px; text-align: center; cursor: pointer; }
+.roadmap-add-step:hover, .roadmap-add-step:focus-visible { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 5%, transparent); color: var(--primary); }
+.roadmap-add-step svg { width: 20px; height: 20px; }
+.roadmap-add-step strong { font-size: 13px; }
+.roadmap-add-step small { font-size: 12px; line-height: 1.4; }
+.roadmap-column > header { display: grid; grid-template-columns: auto auto 1fr auto auto; gap: 7px; align-items: start; border-bottom: 1px solid var(--border); padding: 12px; }
 .roadmap-column > header > em { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: var(--foreground); color: var(--background); font-size: 12px; font-style: normal; font-weight: 900; }
 .roadmap-column > header > span { display: flex; flex-direction: column; }
 .roadmap-column > header strong { font-size: 12px; }
 .roadmap-column > header small { color: var(--muted-foreground); font-size: 12px; line-height: 1.35; margin-top: 3px; }
 .roadmap-column > header > button { border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; }
 .roadmap-column > header > button svg { width: 16px; }
+.roadmap-column > header > button.roadmap-drag-handle { width: 18px; height: 25px; display: grid; place-items: center; margin-left: -5px; border-radius: 5px; padding: 0; cursor: grab; }
+.roadmap-column > header > button.roadmap-drag-handle:hover, .roadmap-column > header > button.roadmap-drag-handle:focus-visible { background: var(--muted); color: var(--foreground); }
+.roadmap-column > header > button.roadmap-drag-handle:active { cursor: grabbing; }
 .roadmap-column > header > button.roadmap-open-job { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid var(--border); border-radius: 7px; background: var(--background); color: var(--primary); }
 .roadmap-column > header > button.roadmap-open-job:hover { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 9%, var(--background)); }
 .roadmap-custom-badge { align-self: center; border-radius: 99px; background: color-mix(in srgb, #a878e8 13%, var(--muted)); color: #8b5cc7; padding: 4px 6px; font-size: 12px; font-weight: 800; text-transform: uppercase; }
@@ -10501,6 +10577,13 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .roadmap-custom-step-note { display: flex; flex-direction: column; gap: 3px; border: 1px dashed color-mix(in srgb, #a878e8 48%, var(--border)); border-radius: 9px; background: color-mix(in srgb, #a878e8 5%, var(--background)); margin: 9px 10px 0; padding: 10px; }
 .roadmap-custom-step-note strong { font-size: 12px; }
 .roadmap-custom-step-note small { color: var(--muted-foreground); font-size: 12px; line-height: 1.4; }
+.roadmap-step-buffers { display: flex; flex-direction: column; gap: 7px; margin: 9px 10px 0; border: 1px solid color-mix(in srgb, #4d9de8 30%, var(--border)); border-radius: 9px; background: color-mix(in srgb, #4d9de8 5%, var(--background)); padding: 8px 9px; }
+.roadmap-step-buffers > strong { color: var(--muted-foreground); font-size: 12px; letter-spacing: .07em; text-transform: uppercase; }
+.roadmap-step-buffers > div > span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.roadmap-step-buffers b { font-size: 12px; }
+.roadmap-step-buffers small { color: var(--muted-foreground); font-size: 12px; white-space: nowrap; }
+.roadmap-step-buffers p { margin: 2px 0 0; font-size: 12px; line-height: 1.4; }
+.roadmap-step-buffers p.missing { color: var(--muted-foreground); font-style: italic; }
 .roadmap-component-list { display: flex; flex-direction: column; gap: 7px; padding: 10px; }
 .roadmap-item { position: relative; width: 100%; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; border: 1px solid var(--border); border-left: 4px solid var(--component-color); border-radius: 9px; background: var(--background); color: var(--foreground); padding: 8px; text-align: left; cursor: pointer; overflow: hidden; }
 .roadmap-item:hover { border-color: var(--component-color); box-shadow: 0 5px 14px rgba(0,0,0,.1); }
@@ -10518,13 +10601,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .roadmap-context-menu { position: fixed; z-index: 120; width: min(320px, calc(100vw - 24px)); max-height: calc(100vh - 84px); overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--popover); box-shadow: 0 18px 45px rgba(0,0,0,.28); padding: 6px; }
 .roadmap-context-menu > strong { display: block; color: var(--muted-foreground); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; padding: 6px 8px; }
 .roadmap-context-menu > button { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 7px; background: transparent; color: var(--foreground); padding: 8px; font-size: 12px; text-align: left; cursor: pointer; }
-.roadmap-context-menu > button:hover { background: var(--muted); }
+.roadmap-context-menu > button:hover:not(:disabled) { background: var(--muted); }
+.roadmap-context-menu > button:disabled { opacity: .45; cursor: default; }
 .roadmap-context-menu > button.delete { color: var(--destructive); }
 .roadmap-context-menu svg { width: 15px; }
 .roadmap-context-menu > button > span { display: flex; flex: 1; flex-direction: column; gap: 2px; }
 .roadmap-context-menu > button b { font-size: 12px; }
 .roadmap-context-menu > button small { color: var(--muted-foreground); font-size: 12px; line-height: 1.3; }
-.roadmap-context-menu > button > svg:last-child { margin-left: auto; color: var(--primary); }
+.roadmap-context-menu > button > svg:last-child:not(:first-child) { margin-left: auto; color: var(--primary); }
 .roadmap-context-menu hr { border: 0; border-top: 1px solid var(--border); margin: 5px; }
 .roadmap-menu-hint { display: block; color: var(--muted-foreground); font-size: 12px; line-height: 1.45; padding: 7px 9px; }
 .roadmap-step-library { max-width: 850px; }
@@ -10554,9 +10638,9 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 .roadmap-transition-grid aside b { font-size: 12px; }
 .roadmap-transition-grid aside p { color: var(--muted-foreground); font-size: 12px; line-height: 1.45; margin: 6px 0; }
 .roadmap-transition-grid aside small { color: #248d72; font-size: 12px; }
-.roadmap-message { position: fixed; z-index: 100; right: 22px; bottom: 22px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 10px; background: var(--popover); box-shadow: 0 15px 38px rgba(0,0,0,.25); padding: 11px 13px; font-size: 12px; }
-.roadmap-message button { border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; }
-.roadmap-message svg { width: 14px; }
+.roadmap-message { position: fixed; z-index: 100; right: 22px; bottom: 22px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 10px; background: var(--popover); box-shadow: 0 15px 38px rgba(0,0,0,.25); max-width: min(620px, calc(100vw - 44px)); padding: 11px 13px; font-size: 12px; line-height: 1.45; }
+.roadmap-message > button:last-child { border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; }
+.roadmap-message svg { width: 14px; flex: none; }
 .roadmap-editor-dialog { max-width: 680px; }
 .roadmap-editor-fields { display: flex; flex-direction: column; gap: 10px; max-height: 65vh; overflow: auto; padding-right: 3px; }
 .roadmap-editor-fields label { display: flex; flex-direction: column; gap: 5px; color: var(--muted-foreground); font-size: 12px; font-weight: 750; }
@@ -13453,7 +13537,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 /* Headings are one-row textareas that grow to fit, so long titles wrap. */
 .report-title-input, .report-page-title, .report-page-subtitle { display: block; resize: none; overflow: hidden; field-sizing: content; }
 .report-title-input:focus, .report-summary-input:focus, .report-page-title:focus, .report-page-subtitle:focus { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 3px; border-radius: 4px; }
-.report-title-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; margin: auto 0 0; }
+.report-title-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; margin: 0; }
+/* The cover is as tall as what it holds: title, summary, the model, the facts. */
+.report-sheet.report-title-sheet { aspect-ratio: auto; }
+.report-cover-structure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.report-cover-structure > img { display: block; width: 100%; max-width: 440px; height: auto; max-height: 440px; object-fit: contain; }
+/* Holds roughly the picture's height while it renders, so the cover does not jump. */
+.report-cover-structure > .report-missing { min-height: 320px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.report-cover-structure figcaption { font-size: 12px; color: #7b848a; text-align: center; }
 .report-title-facts > div, .report-property-grid > div {
   display: flex;
   align-items: baseline;
@@ -13502,6 +13593,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   place-items: center;
 }
 .report-structure-frame > * { width: 100%; height: 100%; }
+/* The picture is rendered on white; it fills the frame, whatever the frame's shape. */
+.report-structure-frame:has(> img) { background: #fff; }
+.report-structure-frame > img { position: absolute; inset: 0; padding: 10px; object-fit: contain; }
+.report-structure-frame > .report-missing { width: auto; height: auto; padding: 12px; text-align: center; }
+.report-structure-frame > .report-missing:has(> .spin) { display: flex; align-items: center; gap: 6px; }
+.report-missing > .spin { width: 13px; height: 13px; flex: none; }
+/* A Cα trace (no coordinates file to draw from) sits on the paper, not on the app's dark stage. */
+.report-structure-frame > .structure-viewer { background: #fafbfc; }
 .report-structure small { font-size: 12px; color: #7b848a; text-align: center; }
 .report-property-grid { margin: 0; }
 .report-construct table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -16667,8 +16766,10 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 
 /* Shared citations (components/ui/citations.tsx): inline [n] markers and the
    numbered reference list and licence table that go with them. */
+/* A fixed 12px, not a fraction of the text around it: .72em put the marker
+   at 8.6-10px, under the text floor (HOM-401). */
 .cite-marker {
-  font-size: .72em;
+  font-size: 12px;
   line-height: 0;
   font-weight: 600;
   color: var(--muted-foreground);
