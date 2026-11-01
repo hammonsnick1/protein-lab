@@ -430,6 +430,31 @@ def test_rcsb_search_reports_identity_and_similarity_closest_first():
     assert records[0]["method"] == "X-RAY DIFFRACTION" and records[0]["resolution"] == 1.74
     assert records[0]["spaceGroup"] == "P 21 21 21"
     assert records[0]["source"]["entryUrl"] == "https://www.rcsb.org/structure/2BBB"
+    assert records[0]["unitCell"] is None
+
+
+def test_rcsb_fetch_record_reports_1ca3_crystal_space_group_and_unit_cell():
+    """Known RCSB 1CA3 values, captured from its public entry JSON."""
+    def transport(method, url, *, data, headers):
+        if "/entry/" in url:
+            return HttpResponse(200, json.dumps({
+                "symmetry": {"space_group_name_H_M": "P 1 21 1"},
+                "cell": {
+                    "length_a": 42.7, "length_b": 41.7, "length_c": 73.0,
+                    "angle_alpha": 90.0, "angle_beta": 104.6, "angle_gamma": 90.0,
+                },
+            }), {})
+        if "/polymer_entity/" in url:
+            return HttpResponse(200, "{}", {})
+        return HttpResponse(200, "data_1CA3\n", {})
+
+    record = RCSBClient(HttpClient(transport=transport)).fetch_record("1CA3", "1")
+
+    assert record["spaceGroup"] == "P 1 21 1"
+    assert record["unitCell"] == {
+        "a": 42.7, "b": 41.7, "c": 73.0,
+        "alpha": 90.0, "beta": 104.6, "gamma": 90.0,
+    }
 
 
 def test_rcsb_search_rejects_invalid_query_and_malformed_result_list():
