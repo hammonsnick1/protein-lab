@@ -3,7 +3,7 @@
 import csv
 from pathlib import Path
 
-from protein_labs.nmr import PREDICTOR_DETAILS, predict_hsqc
+from protein_labs.nmr import BACKBONE_RMSE_PPM, PREDICTOR_DETAILS, predict_hsqc
 
 
 def test_disorder_proline_and_ligand_flags_are_explicit_and_deterministic():
@@ -69,6 +69,19 @@ def test_residue_before_proline_uses_wishart_ggxpgg_set():
 
 def test_random_coil_reference_cites_the_wishart_1995_doi():
     assert "doi:10.1007/BF00227471" in PREDICTOR_DETAILS["random_coil"]["reference"]
+
+
+def test_shiftx2_reference_names_han_2011_not_neal_2003_shiftx():
+    # Han B, Liu Y, Ginzinger SW, Wishart DS, J Biomol NMR 50:43-57 (2011).
+    assert PREDICTOR_DETAILS["shiftx2"]["reference"].startswith("Han et al., J Biomol NMR (2011)")
+    assert "doi:10.1007/s10858-011-9478-4" in PREDICTOR_DETAILS["shiftx2"]["reference"]
+
+
+def test_published_backbone_rmse_matches_the_papers():
+    # UCBShift 1.0 backbone model (kept by 2.0): Li et al., Chem Sci 11:3180 (2020)
+    # abstract, H 0.31 / N 1.81 ppm. SHIFTX2 abstract: 1HN 0.1711 / 15N 1.1169 ppm.
+    assert BACKBONE_RMSE_PPM["ucbshift2"] == {"H": 0.31, "N": 1.81}
+    assert BACKBONE_RMSE_PPM["shiftx2"] == {"H": 0.17, "N": 1.12}
 
 
 def _predictor(monkeypatch, csv_text):

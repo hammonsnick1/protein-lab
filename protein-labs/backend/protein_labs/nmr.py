@@ -11,20 +11,27 @@ import subprocess
 import tempfile
 from typing import Any
 
+# Published backbone amide RMSEs. UCBShift 2.0 (Ptaszek 2024) reports side-chain
+# RMSEs only and keeps the UCBShift 1.0 backbone model, so its H/N values are the
+# 1.0 paper's: Li J, Bennett KC, Liu Y, Martin MV, Head-Gordon T, Chem Sci 11:3180-3191
+# (2020), doi:10.1039/c9sc06561j, abstract (H 0.31, N 1.81 ppm; the arXiv preprint
+# said N 1.83). SHIFTX2: Han et al. 2011 abstract (1HN 0.1711, 15N 1.1169 ppm).
 BACKBONE_RMSE_PPM = {
-    "ucbshift2": {"H": 0.31, "N": 1.83}, "shiftx2": {"H": 0.17, "N": 1.12},
+    "ucbshift2": {"H": 0.31, "N": 1.81}, "shiftx2": {"H": 0.17, "N": 1.12},
     "legolas": {"H": None, "N": None}, "random_coil": {"H": None, "N": None},
 }
 PREDICTOR_DETAILS = {
     "ucbshift2": {"label": "UCBShift 2.0", "reference": "Ptaszek et al., JACS (2024), doi:10.1021/jacs.4c10474", "commandEnv": "PROTEIN_LABS_UCBSHIFT_COMMAND"},
     "legolas": {"label": "LEGOLAS", "reference": "Darrows et al., JCTC (2025), doi:10.1021/acs.jctc.5c00026", "commandEnv": "PROTEIN_LABS_LEGOLAS_COMMAND"},
-    "shiftx2": {"label": "SHIFTX2", "reference": "Neal et al., J Biomol NMR (2011), doi:10.1007/s10858-011-9478-4", "commandEnv": "PROTEIN_LABS_SHIFTX2_COMMAND"},
+    "shiftx2": {"label": "SHIFTX2", "reference": "Han et al., J Biomol NMR (2011), doi:10.1007/s10858-011-9478-4", "commandEnv": "PROTEIN_LABS_SHIFTX2_COMMAND"},
     "random_coil": {"label": "Random-coil fallback", "reference": "Wishart et al., J Biomol NMR (1995), doi:10.1007/BF00227471", "commandEnv": None},
 }
 # Wishart DS, Bigam CG, Holm A, Hodges RS, Sykes BD, J Biomol NMR 5:67-81 (1995),
 # doi:10.1007/BF00227471: backbone amide ¹H / ¹⁵N (ppm, DSS-referenced) of X in
-# Ac-GGXAGG-NH2 in 1 M urea, 25 °C, pH 5. Cys is the reduced form. Values as
-# tabulated from that paper in UCBShift/CSpred (THGLab/CSpred ucbshifty.py).
+# Ac-GGXAGG-NH2 in 1 M urea, 25 °C, pH 5. Cys is the reduced form. The paper is
+# paywalled, so these published numbers were read from the transcription of it in
+# THGLab/CSpred ucbshifty.py (UC Regents not-for-profit licence). Only the measured
+# values are reused, no CSpred code; THIRD_PARTY_NOTICES.md declares this.
 RANDOM_COIL = {
     "A": {"H": 8.24, "N": 123.8}, "C": {"H": 8.32, "N": 118.8}, "D": {"H": 8.34, "N": 120.4},
     "E": {"H": 8.42, "N": 120.2}, "F": {"H": 8.30, "N": 120.3}, "G": {"H": 8.33, "N": 108.8},
