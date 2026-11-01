@@ -517,6 +517,21 @@ def roadmap_to_run(
     })
 
 
+def new_run(jobs: list[dict[str, Any]], *, now: str) -> dict[str, Any]:
+    """A fresh run: plan snapshot taken now, one planned step per live plan step."""
+    snapshot = plan_snapshot(jobs, now)
+    configs = {app_type: job["config"] for app_type, job in snapshot["jobs"].items()}
+    return normalize_run({
+        "schemaVersion": SCHEMA_VERSION,
+        "status": "planned",
+        "planSnapshot": snapshot,
+        "steps": [
+            _plan_step(_live_step(step_id, kind, title, configs), snapshot)
+            for step_id, kind, title in LIVE_ROADMAP_STEPS
+        ],
+    })
+
+
 def _live_step(step_id: str, kind: str, title: str, configs: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Port of ``liveSteps`` ids, titles, readiness and plan details."""
     def cfg(app_type: str) -> dict[str, Any]:

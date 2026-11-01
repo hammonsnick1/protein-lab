@@ -319,3 +319,33 @@ def test_http_import_returns_201_then_200(tmp_path):
     assert first["created"] is True and second["created"] is False
     assert first["run"]["id"] == second["run"]["id"]
     assert missing_status == 404
+
+
+def test_new_run_snapshots_the_current_plan_and_numbers_its_name(tmp_path):
+    service, protein_id, plan, _, _ = import_board(tmp_path)
+    service.import_purification_roadmap(protein_id)
+
+    run = service.create_purification_run(protein_id, {})
+    named = service.create_purification_run(protein_id, {"name": "Prep 3 · 2 L TB"})
+
+    assert (run["name"], named["name"]) == ("Run 2", "Prep 3 · 2 L TB")
+    assert run["id"] != named["id"]
+    config = run["config"]
+    assert [s["id"] for s in config["steps"]] == [step_id for step_id, _, _ in LIVE_ROADMAP_STEPS]
+    assert all(s["status"] == "planned" for s in config["steps"])
+    assert config["importedFrom"] is None
+    steps = {s["id"]: s for s in config["steps"]}
+    assert steps["affinity"]["plan"]["jobId"] == plan["purification-affinity"]["id"]
+    assert steps["affinity"]["plan"]["details"] == ["Column: HisTrap HP 5 mL", "Tag: His6"]
+    assert set(config["planSnapshot"]["jobs"]) == set(plan)
+
+
+def test_http_new_run_creates_one_job_per_call(tmp_path):
+    with project_tree_api(tmp_path) as (port, planner):
+        protein_id = planner.create_protein({"name": "CA2", "sequence": "MSHHWGYGK"})["protein"]["id"]
+        path = f"/v1/protein-planner/proteins/{protein_id}/purification-runs"
+        statuses = [request(port, "POST", path, {})[0] for _ in range(2)]
+        too_long = request(port, "POST", path, {"name": "x" * 121})[0]
+        jobs = planner.database.get_bundle(protein_id)["projectJobs"]
+    assert statuses == [201, 201] and too_long == 400
+    assert sorted(j["name"] for j in jobs if j["appType"] == "purification-run") == ["Run 1", "Run 2"]

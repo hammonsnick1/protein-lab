@@ -21,6 +21,29 @@ Runs use the existing job endpoints:
 | `PUT` | `/v1/protein-planner/proteins/{proteinId}/jobs/{jobId}` | Validated the same way. |
 | `DELETE` | `/v1/protein-planner/proteins/{proteinId}/jobs/{jobId}` | |
 | `POST` | `/v1/protein-planner/proteins/{proteinId}/purification-runs/import-roadmap` | One-shot importer, below. |
+| `POST` | `/v1/protein-planner/proteins/{proteinId}/purification-runs` | `{"name"?: "..."}`. Creates a **new** run job every call: plan snapshot taken now, one `planned` step per live plan step (same ids and details as the importer). Name defaults to "Run N" (N = existing runs + 1). Returns `201` with the job. |
+
+The UI must create one job per run (`createJob` / the endpoint above) and must
+never use `ensureProjectJob` for runs, which reuses the first job of an
+appType (report R2/R3).
+
+### For the UI (`lib/purification-run.ts`)
+
+- A run in the UI is `{id: job.id, proteinId: job.proteinId, name: job.name, ...job.config}`.
+  When saving, send `id`/`proteinId`/`name` as job fields, **not** inside `config`.
+  Unknown config keys are rejected with a 400.
+- Not measured is `null`. A real measured `0` is allowed. Strings in numeric
+  fields are rejected.
+- `order` is rewritten from list position on save. Reducers may leave it stale.
+- Removing a step must also remove or retarget everything that points at it.
+  Otherwise the save is rejected. That covers:
+  - its samples, and those samples' ids in other steps' `bench.inputSampleId`
+    and `attachments[].sampleId`;
+  - `decision.createdStepId`;
+  - `repeatOfStepId`.
+- Step templates, per-kind bench field lists and the reducers (insert, move,
+  remove, update, decide) are UI-owned. `bench.parameters` is a free-form JSON
+  object keyed however the UI's bench field list defines it.
 
 Saved runs come back in the protein bundle's `projectJobs`, like every job.
 

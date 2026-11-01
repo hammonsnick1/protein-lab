@@ -39,6 +39,7 @@ from .purification_run import (
     IMPORTED_RUN_NAME,
     ROADMAP_APP_TYPE,
     RUN_APP_TYPE,
+    new_run,
     normalize_run,
     roadmap_to_run,
 )
@@ -1278,6 +1279,19 @@ class ProteinPlanner:
                 protein_id, IMPORTED_RUN_NAME, RUN_APP_TYPE, config
             )
             return {"created": True, "run": run}
+
+    def create_purification_run(
+        self, protein_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        """A new run of this protein from the current plan ("Run N" by default)."""
+        jobs = self.database.get_bundle(protein_id)["projectJobs"]
+        count = sum(1 for job in jobs if job["appType"] == RUN_APP_TYPE)
+        name = str(fields.get("name") or "").strip() or f"Run {count + 1}"
+        if len(name) > 120:
+            raise ValueError("Project job names must be 120 characters or fewer")
+        return self.database.create_project_job(
+            protein_id, name, RUN_APP_TYPE, new_run(jobs, now=utc_now())
+        )
 
     def delete_project_job(self, protein_id: str, job_id: str) -> None:
         existing = self.database.get_project_job(job_id)
