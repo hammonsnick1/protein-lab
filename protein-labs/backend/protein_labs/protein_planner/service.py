@@ -12,7 +12,7 @@ from typing import Any
 import uuid
 import zipfile
 
-from .database import Database, utc_now
+from .database import Database, local_sequence_metrics, utc_now
 from .integrations import (
     AlphaFoldDBClient,
     NCBIBlastClient,
@@ -229,16 +229,26 @@ class ProteinPlanner:
     def search_uniprot(
         self, protein_id: str, query: str, *, size: int = 10
     ) -> list[dict[str, Any]]:
-        self.database.get_protein(protein_id)
+        sequence = self.database.get_protein(protein_id)["sequence"]
         records = self.uniprot.search(query, size=size)
         for record in records:
-            self.database.save_uniprot_match(protein_id, record, "UniProt search")
+            self.database.save_uniprot_match(
+                protein_id,
+                record,
+                "UniProt search",
+                local_sequence_metrics(sequence, record),
+            )
         return records
 
     def fetch_uniprot(self, protein_id: str, accession: str) -> dict[str, Any]:
-        self.database.get_protein(protein_id)
+        sequence = self.database.get_protein(protein_id)["sequence"]
         record = self.uniprot.fetch(accession)
-        self.database.save_uniprot_match(protein_id, record, "UniProt accession")
+        self.database.save_uniprot_match(
+            protein_id,
+            record,
+            "UniProt accession",
+            local_sequence_metrics(sequence, record),
+        )
         return record
 
     def match_uniprot_sequence(
