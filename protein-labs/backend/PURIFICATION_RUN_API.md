@@ -21,7 +21,7 @@ Runs use the existing job endpoints:
 | `PUT` | `/v1/protein-planner/proteins/{proteinId}/jobs/{jobId}` | Validated the same way. |
 | `DELETE` | `/v1/protein-planner/proteins/{proteinId}/jobs/{jobId}` | |
 | `POST` | `/v1/protein-planner/proteins/{proteinId}/purification-runs/import-roadmap` | One-shot importer, below. |
-| `POST` | `/v1/protein-planner/proteins/{proteinId}/purification-runs` | `{"name"?: "..."}`. Creates a **new** run job every call: plan snapshot taken now, one `planned` step per live plan step (same ids and details as the importer). Name defaults to "Run N" (N = existing runs + 1). Returns `201` with the job. |
+| `POST` | `/v1/protein-planner/proteins/{proteinId}/purification-runs` | `{"name"?: "..."}`. Creates a **new** run job every call: plan snapshot taken now, one `planned` step per live plan step (same ids and details as the importer). The default name is "Run N", where N is one more than both the run count and the highest existing "Run N". A deleted run's number is not reused. The importer names its run "Run 1", or the next free "Run N" if "Run 1" is taken. Returns `201` with the job. |
 
 The UI must create one job per run (`createJob` / the endpoint above) and must
 never use `ensureProjectJob` for runs, which reuses the first job of an

@@ -400,3 +400,24 @@ def test_unknown_buffer_ingredient_keys_are_rejected():
     run["steps"][0]["bench"] = {"buffersUsed": [{"bufferKey": "k", "ingredients": [{"name": "NaCl", "grams": 3}]}]}
     with pytest.raises(ValueError, match=r"buffer ingredient has unknown field\(s\): grams"):
         normalize_run(run)
+
+
+def test_run_names_never_repeat(tmp_path):
+    service = build_planner(tmp_path)
+    protein_id = make_protein(service)
+    first = service.create_purification_run(protein_id, {})            # Run 1
+    second = service.create_purification_run(protein_id, {})           # Run 2
+    service.delete_project_job(protein_id, first["id"])
+    third = service.create_purification_run(protein_id, {})            # not a 2nd "Run 2"
+    imported = service.import_purification_roadmap(protein_id)["run"]  # "Run 1" is free again
+    fourth = service.create_purification_run(protein_id, {})
+
+    assert [second["name"], third["name"], imported["name"], fourth["name"]] == [
+        "Run 2", "Run 3", "Run 1", "Run 4"]
+
+
+def test_import_after_a_new_run_does_not_reuse_run_1(tmp_path):
+    service = build_planner(tmp_path)
+    protein_id = make_protein(service)
+    service.create_purification_run(protein_id, {})
+    assert service.import_purification_roadmap(protein_id)["run"]["name"] == "Run 2"

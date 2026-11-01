@@ -14,6 +14,7 @@ silently. ``roadmap_to_run`` turns the existing one-per-protein
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 import uuid
 
@@ -529,6 +530,17 @@ def roadmap_to_run(
         "importedFrom": imported_from,
         "importWarnings": warnings,
     })
+
+
+def next_run_name(jobs: list[dict[str, Any]], preferred: str | None = None) -> str:
+    """``preferred`` if no run has that name, else "Run N" above every existing
+    "Run N" and the run count, so a name never repeats after a delete or when
+    a new run was made before the roadmap import."""
+    names = {str(job.get("name") or "") for job in jobs if job.get("appType") == RUN_APP_TYPE}
+    if preferred and preferred not in names:
+        return preferred
+    numbers = [int(name[4:]) for name in names if re.fullmatch(r"Run [1-9][0-9]{0,8}", name)]
+    return f"Run {max([len(names), *numbers]) + 1}"
 
 
 def new_run(jobs: list[dict[str, Any]], *, now: str) -> dict[str, Any]:
