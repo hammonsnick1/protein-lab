@@ -399,7 +399,7 @@ A PDB entry often holds small molecules: substrates, inhibitors, cofactors. The 
 2. In **Regions of interest**, choose a ligand binding site, for example **EG3 A 555**. The **2D drawing** panel opens beside the 3D view. The first drawing of a ligand can take a few seconds, because the engine reads its chemical definition from the PDB.
 3. If the entry has more than one ligand, choose another one in the **Ligand** list of the panel. Its binding site is highlighted too.
 4. Click an atom in the drawing. The 3D view turns to that atom and marks it. Click a ligand atom in the 3D view, and the drawing marks it. Point at an atom in either view to see it in the other.
-5. Read **Stereocentres (R/S)** and **Double bonds (E/Z)** under the drawing. Click a stereocentre to find it in 3D. Open **All drawn atoms** to pick any atom by its PDB name.
+5. Read **Stereocentres (R/S)** and **Double bonds (E/Z)** under the drawing. Click a stereocentre to find it in 3D. Open the list of all drawn atoms to pick any atom by its PDB name.
 6. Click **Wider drawing** to give the drawing half of the view. Click **Close the 2D drawing** to hide the panel. Choosing a region that is not a ligand also hides it.
 
 ![The Structure Viewer with PDB entry 1CNY, the EG3 inhibitor binding site highlighted in 3D, and the 2D drawing of EG3 beside it with its stereocentre C15 selected](manual/ligand-2d.webp)
@@ -658,7 +658,7 @@ Every tab ends with a numbered reference list. A small number next to a statemen
 2. Read **Combined propensity**: the chance, from 0 to 1, that the protein gives crystals good enough to solve its structure. A range shows how sure the predictors are.
 3. Read the **Recommendation** and its points. Each point says whether it is a caution, an action, supporting evidence or missing evidence, and where it came from.
 4. Read **The predictors**. Each card names a published model and says whether it ran. A predictor that did not run says why. Protein Lab never puts a guess in its place.
-5. Read **Space-group suggestions** and **How what you already know changed the advice**. Click **Open** on a missing fact to fill it in.
+5. Read **Space-group suggestions** and **How what you already know changed the advice**. Click the **Open …** button on a missing fact to open the job that fills it in.
 6. Click **Save assessment**. This completes the job. Click **Re-run assessment** after you change an earlier job.
 
 ![The Propensity and advice tab: the combined propensity scale with no score yet, the recommendation, and the four tabs of the job](manual/crystallize-propensity.webp)
@@ -670,7 +670,7 @@ Every tab ends with a numbered reference list. A small number next to a statemen
 
 ### Space groups
 
-A space group is the set of symmetry moves (rotations, screw axes and translations) that copies one molecule into every position in the crystal. Proteins are made of L-amino acids, so a protein crystal can only use the 65 groups that keep the handedness of the molecule.
+A space group is the set of symmetry moves (rotations, screw rotations and translations) that copies one molecule into every position in the crystal. Proteins are made of L-amino acids, so a protein crystal can only use the 65 groups that keep the handedness of the molecule.
 
 1. Open the **Space groups** tab.
 2. In **Pick a group**, search by symbol (for example `P212121`), number or crystal system. Groups that your PDB homologues crystallised in are flagged in the list.
