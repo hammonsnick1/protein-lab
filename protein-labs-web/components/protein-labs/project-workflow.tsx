@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Atom, BadgeCheck, Beaker, BookOpen, Boxes, Check, ChevronRight, CircleCheck, Dna, FlaskConical, GitBranch, Microscope, Search } from "lucide-react";
+import { Activity, Atom, BadgeCheck, Beaker, BookOpen, Boxes, Check, ChevronRight, CircleCheck, Dna, FlaskConical, Gem, GitBranch, Microscope, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinLabsApi } from "@/lib/protein-labs-api";
-import { isComplete, workflowJobs, workflowSections, workflowState } from "@/lib/workflow";
+import { isComplete, workflowJobs, workflowSections, workflowState, type WorkflowSectionDefinition } from "@/lib/workflow";
 
 const jobIcons = {
   sequence: Dna,
@@ -22,10 +22,13 @@ const jobIcons = {
   "purification-subtractive": FlaskConical,
   "purification-sec": Activity,
   "purification-workflow": GitBranch,
+  crystallize: Gem,
 } as const;
 
 const workflowDefinitions = workflowJobs.filter((definition) => definition.stage === "understand" || definition.stage === "plan");
 const workflowSectionDefinitions = workflowSections.filter((section) => section.id === "understand" || section.id === "plan");
+// Crystallization follows the bench work, so its section sits after the roadmap.
+const crystallizeSection = workflowSections.find((section) => section.id === "crystallize")!;
 
 export function ProjectDashboard({ bundle, onResume, onRoadmap, onReports }: { bundle: ProteinBundle; onResume: () => void; onRoadmap: () => void; onReports: () => void }) {
   const [page, setPage] = useState(0);
@@ -61,14 +64,17 @@ export function ProjectWorkflow({ bundle, onOpenJob, onRoadmap }: { bundle: Prot
     <div className="workflow-toolbar"><span><strong>Workflow</strong><small>{bundle.protein.name} · Complete the jobs in order or open any card when your experiment requires a different path.</small></span></div>
     <div className="workflow-card-view single-project-workflow">
       <section className="workflow-branch-card active"><div className="workflow-section-stack">
-        {workflowSectionDefinitions.map((section) => {
-          const jobs = workflowDefinitions.filter((definition) => definition.stage === section.id);
-          return <section className="workflow-card-section" style={{ "--section-color": section.color } as React.CSSProperties} key={section.id}><header><span><strong>{section.label}</strong><small>{section.description}</small></span><b>{jobs.length} JOBS</b></header><div>{jobs.map((definition, index) => { const Icon = jobIcons[definition.id as keyof typeof jobIcons] ?? Activity; const state = workflowState(bundle, definition); return <button key={definition.id} style={{ "--job-color": definition.color } as React.CSSProperties} onClick={() => onOpenJob(definition.id)}><span><Icon/></span><strong><i>{index + 1}</i>{definition.label}</strong><small>{definition.description}</small><em className={state}>{state.replace("_", " ")}</em></button>; })}</div></section>;
-        })}
+        {workflowSectionDefinitions.map((section) => <WorkflowSection key={section.id} bundle={bundle} section={section} onOpenJob={onOpenJob}/>)}
         <section className="workflow-card-section roadmap-launch-section" style={{ "--section-color": "#ef8f47" } as React.CSSProperties}><header><span><strong>Purify your protein</strong><small>Carry the approved plan to the bench in its data-linked roadmap.</small></span><b>{workflowComplete ? "READY" : "LIVE"}</b></header><button className="workflow-roadmap-launch" onClick={onRoadmap}><span><FlaskConical/></span><strong>Open purification roadmap</strong><small>Run transformation, lysis, capture, cleavage, cleanup, SEC, and quality control. Workflow choices populate the steps automatically.</small><em className={workflowComplete ? "completed" : "available"}>{workflowComplete ? "plan ready" : "available now"}</em><ChevronRight/></button></section>
+        <WorkflowSection bundle={bundle} section={crystallizeSection} onOpenJob={onOpenJob}/>
       </div></section>
     </div>
   </main>;
+}
+
+function WorkflowSection({ bundle, section, onOpenJob }: { bundle: ProteinBundle; section: WorkflowSectionDefinition; onOpenJob: (jobId: string) => void }) {
+  const jobs = workflowJobs.filter((definition) => definition.stage === section.id);
+  return <section className="workflow-card-section" style={{ "--section-color": section.color } as React.CSSProperties}><header><span><strong>{section.label}</strong><small>{section.description}</small></span><b>{jobs.length} {jobs.length === 1 ? "JOB" : "JOBS"}</b></header><div>{jobs.map((definition, index) => { const Icon = jobIcons[definition.id as keyof typeof jobIcons] ?? Activity; const state = workflowState(bundle, definition); return <button key={definition.id} style={{ "--job-color": definition.color } as React.CSSProperties} onClick={() => onOpenJob(definition.id)}><span><Icon/></span><strong><i>{index + 1}</i>{definition.label}</strong><small>{definition.description}</small><em className={state}>{state.replace("_", " ")}</em></button>; })}</div></section>;
 }
 
 function formatMetric(value: unknown, divisor: number, decimals: number) { return typeof value === "number" ? (value / divisor).toFixed(decimals) : "—"; }

@@ -16271,6 +16271,319 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   margin-top: 16px;
 }
 
+/* Crystallize your protein (crystallize-job.tsx): propensity scale,
+   recommendation, predictors, space groups and the fact-influence table. */
+.crystallize-workspace {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.crystallize-workspace > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+.crystallize-workspace > header h2 {
+  font-size: 26px;
+  margin: 5px 0;
+}
+.crystallize-workspace > header p {
+  max-width: 850px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.crystallize-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.crystallize-tabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted-foreground);
+  padding: 7px 12px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.crystallize-tabs button strong { font-size: 13px; color: var(--foreground); }
+.crystallize-tabs button small { font-size: 12px; }
+.crystallize-tabs button[aria-selected="true"] { border-bottom-color: var(--primary); }
+.crystallize-tabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+.crystallize-propensity {
+  display: grid;
+  gap: 13px;
+}
+.crystallize-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 13px;
+}
+.crystallize-score,
+.crystallize-recommendation,
+.crystallize-explainer,
+.crystallize-section {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 16px 18px;
+  min-width: 0;
+}
+.crystallize-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent 55%),
+    var(--card);
+}
+.crystallize-score .eyebrow { display: inline-flex; align-items: baseline; gap: 2px; }
+.crystallize-score > strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 30px;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.crystallize-score > strong small {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+}
+.crystallize-score.unavailable > strong,
+.crystallize-score.loading > strong,
+.crystallize-score.error > strong {
+  align-items: center;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+}
+.crystallize-score > strong svg { width: 18px; height: 18px; }
+.crystallize-score.error > strong svg { color: #e56565; }
+.crystallize-score > small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.crystallize-score > button { margin-top: 6px; }
+.crystallize-scale {
+  width: 100%;
+  margin: 4px 0 2px;
+}
+.crystallize-scale svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.crystallize-scale .axis,
+.crystallize-scale .tick { stroke: color-mix(in srgb, var(--foreground) 35%, transparent); stroke-width: 1; }
+.crystallize-scale .midline { stroke: color-mix(in srgb, var(--foreground) 30%, transparent); stroke-width: 1; stroke-dasharray: 3 3; }
+.crystallize-scale text { fill: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
+.crystallize-scale .band {
+  fill: color-mix(in srgb, var(--primary) 26%, transparent);
+  stroke: var(--primary);
+  stroke-width: 1.5;
+}
+.crystallize-scale .estimate { stroke: var(--foreground); stroke-width: 2; stroke-linecap: round; }
+.crystallize-scale .unknown { stroke: color-mix(in srgb, var(--foreground) 22%, transparent); stroke-width: 1; stroke-dasharray: 4 3; }
+.crystallize-scale .hatch { stroke: color-mix(in srgb, var(--foreground) 18%, transparent); stroke-width: 2; }
+.crystallize-scale figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.crystallize-scale figcaption span:nth-child(2) { font-weight: 700; color: var(--foreground); }
+.crystallize-recommendation .eyebrow { display: inline-flex; align-items: center; gap: 5px; }
+.crystallize-recommendation .eyebrow svg { width: 13px; height: 13px; }
+.crystallize-recommendation .crystallize-lead {
+  margin: 6px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.crystallize-recommendation ul {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.crystallize-recommendation li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.crystallize-recommendation li small {
+  display: block;
+  color: var(--muted-foreground);
+}
+.crystallize-recommendation .method,
+.crystallize-empty,
+.crystallize-note {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.crystallize-note { margin-top: 8px; }
+.crystallize-explainer h3,
+.crystallize-section > header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.crystallize-explainer > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 10px;
+}
+.crystallize-explainer h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.crystallize-explainer p,
+.crystallize-explainer li {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.crystallize-explainer p { margin: 0 0 6px; }
+.crystallize-explainer ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; list-style: disc; }
+.crystallize-section > header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+.crystallize-section > header small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 900px;
+}
+.crystallize-predictors {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.crystallize-predictor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 11px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.crystallize-predictor.unavailable { border-style: dashed; }
+.crystallize-predictor > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.crystallize-predictor > header strong { font-size: 13px; }
+.crystallize-predictor p { margin: 0; }
+.crystallize-predictor .reason { color: var(--muted-foreground); }
+.crystallize-predictor-score { display: flex; align-items: baseline; gap: 6px; }
+.crystallize-predictor-score b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.crystallize-predictor-score small { color: var(--muted-foreground); }
+.crystallize-features caption { text-align: left; font-weight: 700; padding-bottom: 4px; }
+.crystallize-features tbody th small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.crystallize-features td:last-child { white-space: nowrap; }
+.crystallize-groups,
+.crystallize-influences,
+.crystallize-features {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.crystallize-groups th,
+.crystallize-groups td,
+.crystallize-influences th,
+.crystallize-influences td,
+.crystallize-features th,
+.crystallize-features td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.crystallize-groups thead th,
+.crystallize-influences thead th,
+.crystallize-features thead th {
+  font-weight: 700;
+  color: var(--muted-foreground);
+  padding-top: 0;
+}
+.crystallize-groups .num,
+.crystallize-features .num { text-align: right; font-variant-numeric: tabular-nums; }
+.crystallize-groups td > span { display: block; }
+.space-group { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.crystallize-influences tbody th { width: 24%; font-weight: 400; }
+.crystallize-influences tbody th strong { display: block; font-size: 13px; }
+.crystallize-influences tbody th small,
+.crystallize-source {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+}
+.crystallize-influences td:nth-child(3) { width: 1%; white-space: nowrap; }
+.crystallize-influences tr.missing td:nth-child(2) { color: var(--muted-foreground); }
+.crystallize-open-job { display: flex; margin-top: 6px; }
+.crystallize-references { margin-top: 2px; }
+.crystallize-propensity > footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.crystallize-propensity > footer > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.crystallize-propensity > footer > span.error { color: #e56565; }
+.crystallize-propensity > footer > span svg { width: 14px; height: 14px; }
+@media (max-width: 1080px) {
+  .crystallize-summary,
+  .crystallize-explainer > div { grid-template-columns: 1fr; }
+  .crystallize-predictors { grid-template-columns: 1fr; }
+}
+@media print {
+  .crystallize-workspace > header button,
+  .crystallize-tabs,
+  .crystallize-propensity > footer,
+  .crystallize-open-job { display: none; }
+}
+
 /* Shared citations (components/ui/citations.tsx): inline [n] markers and the
    numbered reference list and licence table that go with them. */
 .cite-marker {

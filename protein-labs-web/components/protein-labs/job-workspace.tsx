@@ -1,7 +1,7 @@
 "use client";
 
 import { PointerEvent, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, MousePointerClick, Play, Scale, Search, ShieldCheck, SkipForward, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
+import { Activity, ArrowDownNarrowWide, Atom, BadgeCheck, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Columns3, Disc3, Dna, Download, Filter, FlaskConical, Gem, LayoutGrid, ListTree, LoaderCircle, Magnet, Microscope, MousePointerClick, Play, Scale, Search, ShieldCheck, SkipForward, SquareDashedMousePointer, Upload, Workflow, X, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -18,6 +18,7 @@ import { ReferenceMatchJob } from "@/components/protein-labs/reference-match-job
 import { StructureJob } from "@/components/protein-labs/structure-viewer-job";
 import { TransformationExpressionJob } from "@/components/protein-labs/transformation-expression-job";
 import { ExpressionJob } from "@/components/protein-labs/expression-system-job";
+import { CrystallizeJob } from "@/components/protein-labs/crystallize-job";
 import { OrganismCombobox } from "@/components/protein-labs/organism-combobox";
 import { buildSkipConfig, definitionFor, jobsFor, type WorkflowJobDefinition } from "@/lib/workflow";
 import { canSkipJob, jobNeighbours } from "@/lib/job-navigation";
@@ -43,6 +44,7 @@ const labels: Record<string, [string, string, typeof Dna]> = {
   "transformation-expression": ["Transformation and Expression", "Record starting material, host-specific medium, culture conditions, and expression notes.", FlaskConical],
   chromatogram: ["Chromatogram Studio", "Import traces, select peaks, calculate areas, and save results.", Activity],
   gel: ["Gel densitometry", "Detect lanes and bands, estimate molecular weight, and quantify purity.", Columns3],
+  crystallize: ["Crystallize your protein", "Judge how likely crystals are and plan the first screens from what the project already knows.", Gem],
 };
 
 type JobProps = { bundle: ProteinBundle; onChanged: () => Promise<void> };
@@ -73,7 +75,7 @@ export function JobWorkspace({ jobId, bundle, returnTo, onBack, onOpenJob, onSte
       <ChevronLeft/>{returnTo === "roadmap" ? <FlaskConical/> : workflowLayout === "cards" ? <LayoutGrid/> : <ListTree/>}<span><strong>{returnTo === "roadmap" ? "Purification roadmap" : "Project planning"}</strong><small>{returnTo === "roadmap" ? "Back to roadmap" : `Back to ${workflowLayout === "cards" ? "Planning" : "tree"}`}</small></span>
     </button>
     <header className="job-header"><div className="job-title-row"><span className="job-hero-icon"><Icon /></span><div><span className="eyebrow">{bundle.protein.name} · CURRENT JOB</span><h1>{title}</h1><p>{description}</p></div></div><div className="job-header-actions"><span className={`engine-state ${online ? "online" : online === false ? "offline" : "checking"}`}><span />{online ? "Local engine connected" : online === false ? "Local engine unavailable" : "Checking engine"}</span><Button variant="outline" onClick={onRoadmap}><FlaskConical/> Roadmap</Button><Button variant="outline" onClick={onReports}><BookOpen /> Report</Button></div></header>
-    <section className="job-surface">{jobId === "sequence" && <SequenceJob bundle={bundle} onChanged={changed} />}{jobId === "properties" && <PropertiesJob bundle={bundle} onChanged={changed} />}{jobId === "research" && <SequenceResearchJob bundle={bundle} onChanged={changed} />}{jobId === "reference-match" && <ReferenceMatchJob bundle={bundle} onChanged={changed} />}{jobId === "structure" && <StructureJob bundle={bundle} onChanged={changed} onOpenJob={onOpenJob} />}{jobId === "readiness" && <ProteinReadinessJob bundle={bundle} onChanged={changed} onReports={onReports} onOpenJob={onOpenJob} />}{jobId === "expression-system" && <ExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "expression-vector" && <ExpressionVectorJob bundle={bundle} onChanged={changed} />}{(["purification-lysis","purification-subtractive","purification-sec"] as string[]).includes(jobId) && <PurificationStageJob bundle={bundle} onChanged={changed} mode={jobId as "purification-lysis"|"purification-subtractive"|"purification-sec"} />}{(["purification-affinity","purification-workflow"] as string[]).includes(jobId) && <PurificationPlannerJob bundle={bundle} onChanged={changed} section={jobId} />}{jobId === "transformation-expression" && <TransformationExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "chromatogram" && <ChromatogramStudioJob bundle={bundle} onChanged={changed} />}{jobId === "gel" && <GelAnalysisJob bundle={bundle} onChanged={changed} />}</section>
+    <section className="job-surface">{jobId === "sequence" && <SequenceJob bundle={bundle} onChanged={changed} />}{jobId === "properties" && <PropertiesJob bundle={bundle} onChanged={changed} />}{jobId === "research" && <SequenceResearchJob bundle={bundle} onChanged={changed} />}{jobId === "reference-match" && <ReferenceMatchJob bundle={bundle} onChanged={changed} />}{jobId === "structure" && <StructureJob bundle={bundle} onChanged={changed} onOpenJob={onOpenJob} />}{jobId === "readiness" && <ProteinReadinessJob bundle={bundle} onChanged={changed} onReports={onReports} onOpenJob={onOpenJob} />}{jobId === "expression-system" && <ExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "expression-vector" && <ExpressionVectorJob bundle={bundle} onChanged={changed} />}{(["purification-lysis","purification-subtractive","purification-sec"] as string[]).includes(jobId) && <PurificationStageJob bundle={bundle} onChanged={changed} mode={jobId as "purification-lysis"|"purification-subtractive"|"purification-sec"} />}{(["purification-affinity","purification-workflow"] as string[]).includes(jobId) && <PurificationPlannerJob bundle={bundle} onChanged={changed} section={jobId} />}{jobId === "transformation-expression" && <TransformationExpressionJob bundle={bundle} onChanged={changed} />}{jobId === "chromatogram" && <ChromatogramStudioJob bundle={bundle} onChanged={changed} />}{jobId === "gel" && <GelAnalysisJob bundle={bundle} onChanged={changed} />}{jobId === "crystallize" && <CrystallizeJob bundle={bundle} onChanged={changed} onOpenJob={onOpenJob} />}</section>
     <JobNavigation bundle={bundle} jobId={jobId} saved={saved > 0} onStep={onStep} onChanged={onChanged}/>
   </main>;
 }
