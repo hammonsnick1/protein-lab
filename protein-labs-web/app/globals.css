@@ -13443,7 +13443,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
 /* Headings are one-row textareas that grow to fit, so long titles wrap. */
 .report-title-input, .report-page-title, .report-page-subtitle { display: block; resize: none; overflow: hidden; field-sizing: content; }
 .report-title-input:focus, .report-summary-input:focus, .report-page-title:focus, .report-page-subtitle:focus { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 3px; border-radius: 4px; }
-.report-title-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; margin: auto 0 0; }
+.report-title-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; margin: 0; }
+/* The cover is as tall as what it holds: title, summary, the model, the facts. */
+.report-sheet.report-title-sheet { aspect-ratio: auto; }
+.report-cover-structure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.report-cover-structure > img { display: block; width: 100%; max-width: 440px; height: auto; max-height: 440px; object-fit: contain; }
+/* Holds roughly the picture's height while it renders, so the cover does not jump. */
+.report-cover-structure > .report-missing { min-height: 320px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.report-cover-structure figcaption { font-size: 12px; color: #7b848a; text-align: center; }
 .report-title-facts > div, .report-property-grid > div {
   display: flex;
   align-items: baseline;
@@ -13492,6 +13499,14 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   place-items: center;
 }
 .report-structure-frame > * { width: 100%; height: 100%; }
+/* The picture is rendered on white; it fills the frame, whatever the frame's shape. */
+.report-structure-frame:has(> img) { background: #fff; }
+.report-structure-frame > img { position: absolute; inset: 0; padding: 10px; object-fit: contain; }
+.report-structure-frame > .report-missing { width: auto; height: auto; padding: 12px; text-align: center; }
+.report-structure-frame > .report-missing:has(> .spin) { display: flex; align-items: center; gap: 6px; }
+.report-missing > .spin { width: 13px; height: 13px; flex: none; }
+/* A Cα trace (no coordinates file to draw from) sits on the paper, not on the app's dark stage. */
+.report-structure-frame > .structure-viewer { background: #fafbfc; }
 .report-structure small { font-size: 12px; color: #7b848a; text-align: center; }
 .report-property-grid { margin: 0; }
 .report-construct table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
@@ -16657,8 +16672,10 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 
 /* Shared citations (components/ui/citations.tsx): inline [n] markers and the
    numbered reference list and licence table that go with them. */
+/* A fixed 12px, not a fraction of the text around it: .72em put the marker
+   at 8.6-10px, under the text floor (HOM-401). */
 .cite-marker {
-  font-size: .72em;
+  font-size: 12px;
   line-height: 0;
   font-weight: 600;
   color: var(--muted-foreground);

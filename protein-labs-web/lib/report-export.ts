@@ -220,7 +220,8 @@ function htmlProperties(properties: ProteinProperties) {
       ${htmlFacts(properties.constructFacts)}`;
 }
 
-export function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], analyses: ProjectJob[]) {
+/** `structureImage` is a PNG data URI of the model; the cover carries it when given. */
+export function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], analyses: ProjectJob[], structureImage: string | null = null) {
   const body = pages.filter((page) => !page.hidden).map((page) => {
     const facts = page.showFacts ? pageFacts(bundle, page.templateId) : [];
     const properties = exportedProperties(bundle, page);
@@ -262,9 +263,11 @@ export function reportHtml(bundle: ProteinBundle, title: string, summary: string
     figcaption { font-size: 12px; color: #5d666c; margin-top: 7px; }
     figcaption .gel-note { display: block; margin-top: 5px; font-size: 11px; line-height: 1.5; color: #6d767c; }
     .placeholder { color: #8a9197; font-style: italic; }
+    .cover-structure { margin: 18px auto; text-align: center; } .cover-structure img { max-width: 100%; max-height: 380px; border: none; }
     @media print { body { background: #fff; } .sheet { box-shadow: none; margin: 0; page-break-after: always; } }
   </style></head><body>
     <section class="sheet"><h1>${escapeHtml(title)}</h1><p class="subtitle">${escapeHtml(summary)}</p>
+    ${structureImage?.startsWith("data:image/png;base64,") ? `<figure class="cover-structure"><img src="${structureImage}" alt="Structure of ${escapeHtml(bundle.protein.name)}"/></figure>` : ""}
     <dl><div><dt>Construct</dt><dd>${escapeHtml(bundle.protein.name)}</dd></div><div><dt>Length</dt><dd>${bundle.protein.sequence.length} aa</dd></div><div><dt>Organism</dt><dd>${escapeHtml(bundle.protein.organism || "—")}</dd></div><div><dt>Prepared</dt><dd>${new Date().toLocaleDateString()}</dd></div></dl></section>
     ${body}
   </body></html>`;
