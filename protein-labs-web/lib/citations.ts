@@ -83,6 +83,11 @@ const entries = [
     source: "Nature 596:583–589", doi: "10.1038/s41586-021-03819-2",
   },
   {
+    id: "tunyasuvunakool2021", kind: "article", name: "pLDDT and disorder", authors: "Tunyasuvunakool K, Adler J, Wu Z, et al.", year: "2021",
+    title: "Highly accurate protein structure prediction for the human proteome",
+    source: "Nature 596:590–596", doi: "10.1038/s41586-021-03828-1",
+  },
+  {
     id: "consurf2023", kind: "software", name: "ConSurf", authors: "Yariv B, Yariv E, Kessel A, et al.", year: "2023",
     title: "Using evolutionary data to make sense of macromolecules with a “face-lifted” ConSurf",
     source: "Protein Sci 32:e4582", doi: "10.1002/pro.4582", url: "https://consurf.tau.ac.il",
@@ -119,7 +124,7 @@ const entries = [
     id: "ucbshift2", kind: "software", name: "UCBShift 2.0", authors: "Ptaszek AL, Li J, Konrat R, Platzer G, Head-Gordon T", year: "2024",
     title: "UCBShift 2.0: bridging the gap from backbone to side chain protein chemical shift prediction for protein structures",
     source: "J Am Chem Soc 146:31733–31745", doi: "10.1021/jacs.4c10474", url: "https://github.com/THGLab/CSpred",
-    license: { name: "UC Regents, not-for-profit only", reuse: "restricted", url: "https://github.com/THGLab/CSpred/blob/master/LICENSE.txt", usage: "Method studied and cited; no code shipped." },
+    license: { name: "UC Regents, not-for-profit only", reuse: "restricted", url: "https://github.com/THGLab/CSpred/blob/master/LICENSE.txt", usage: "Method studied and cited; no code shipped. Wishart 1995 random-coil values read from its transcription." },
   },
   {
     id: "legolas2025", kind: "software", name: "LEGOLAS", authors: "Darrows MY, Kodituwakku D, Xue J, Pickering I, Terrel NS, Roitberg AE", year: "2025",
@@ -131,12 +136,19 @@ const entries = [
     id: "shiftx2", kind: "software", name: "SHIFTX2", authors: "Han B, Liu Y, Ginzinger SW, Wishart DS", year: "2011",
     title: "SHIFTX2: significantly improved protein chemical shift prediction",
     source: "J Biomol NMR 50:43–57", doi: "10.1007/s10858-011-9478-4", url: "http://www.shiftx2.ca",
+    license: { name: "No licence published", reuse: "none", url: "http://www.shiftx2.ca/download.html", usage: "Optional operator-installed HSQC predictor; not bundled or installed by the app." },
+  },
+  {
+    id: "biopython", kind: "software", name: "Biopython", authors: "Cock PJA, Antao T, Chang JT, Chapman BA, Cox CJ, Dalke A, Friedberg I, Hamelryck T, Kauff F, Wilczynski B, de Hoon MJL", year: "2009",
+    title: "Biopython: freely available Python tools for computational molecular biology and bioinformatics",
+    source: "Bioinformatics 25:1422–1423", doi: "10.1093/bioinformatics/btp163", url: "https://biopython.org",
+    license: { name: "Biopython License Agreement", reuse: "permissive", url: "https://github.com/biopython/biopython/blob/master/LICENSE.rst", usage: "Bundled in the engine; reads mmCIF files, including ligand definitions for 2D drawing; notice in THIRD_PARTY_NOTICES.md." },
   },
   {
     id: "rdkit", kind: "software", name: "RDKit", authors: "RDKit contributors", year: "2006–",
     title: "RDKit: open-source cheminformatics",
     source: "rdkit.org", doi: "10.5281/zenodo.591637", url: "https://www.rdkit.org",
-    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Backend dependency for 2D ligand drawing and R/S, E/Z labels; notice in THIRD_PARTY_NOTICES.md." },
+    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Bundled in the engine for 2D ligand drawing and R/S, E/Z labels, with its Boost, cairo, InChI and other native libraries; notices in THIRD_PARTY_NOTICES.md." },
   },
   {
     id: "molstar", kind: "software", name: "Mol*", authors: "Sehnal D, Bittrich S, Deshpande M, Svobodová R, Berka K, Bazgier V, Velankar S, Burley SK, Koča J, Rose AS", year: "2021",
@@ -156,7 +168,7 @@ const entries = [
     source: "Chem Phys Lett 69:185–189", doi: "10.1016/0009-2614(80)80041-8",
   },
   {
-    id: "kay1992", kind: "article", name: "Sensitivity-enhanced HSQC", authors: "Kay L, Keifer P, Saarinen T", year: "1992",
+    id: "kay1992", kind: "article", name: "Sensitivity-enhanced HSQC", authors: "Kay LE, Keifer P, Saarinen T", year: "1992",
     title: "Pure absorption gradient enhanced heteronuclear single quantum correlation spectroscopy with improved sensitivity",
     source: "J Am Chem Soc 114:10663–10665", doi: "10.1021/ja00052a088",
   },
@@ -367,6 +379,21 @@ const entries = [
     source: "J Phys Chem 68:441–451", doi: "10.1021/j100785a001",
   },
   {
+    id: "carugo2017", kind: "article", name: "Crystal-contact distance", authors: "Carugo O, Blatova OA, Medrish EO, Blatov VA, Proserpio DM", year: "2017",
+    title: "Packing topology in crystals of proteins and small molecules: a comparison",
+    source: "Sci Rep 7:13209", doi: "10.1038/s41598-017-12699-4",
+  },
+  {
+    id: "jeffrey1997", kind: "book", name: "Hydrogen-bond distances", authors: "Jeffrey GA", year: "1997",
+    title: "An introduction to hydrogen bonding",
+    source: "Oxford University Press, New York", url: "https://archive.org/details/introductiontohy0000jeff",
+  },
+  {
+    id: "wwpdb-valsym", kind: "website", name: "wwPDB close symmetry contacts", authors: "wwPDB", year: "2026",
+    title: "PDBx/mmCIF dictionary: category pdbx_val_sym_contact",
+    source: "Worldwide Protein Data Bank", url: "https://mmcif.wwpdb.org/dictionaries/mmcif_pdbx_v50.dic/Categories/pdbx_val_sym_contact.html",
+  },
+  {
     id: "vijaykumar1987", kind: "article", name: "PDB 1UBQ", authors: "Vijay-Kumar S, Bugg CE, Cook WJ", year: "1987",
     title: "Structure of ubiquitin refined at 1.8 Å resolution",
     source: "J Mol Biol 194:531–544", doi: "10.1016/0022-2836(87)90679-6",
@@ -408,6 +435,9 @@ export type CitationId = (typeof entries)[number]["id"];
 export const citations: Readonly<Record<CitationId, Citation>> = Object.fromEntries(entries.map((entry) => [entry.id, entry])) as Record<CitationId, Citation>;
 
 export function getCitation(id: CitationId): Citation { return citations[id]; }
+
+/** True for an id in the registry; ids that arrive from the engine are checked with this before they are cited. */
+export function isCitationId(value: string): value is CitationId { return Object.hasOwn(citations, value); }
 
 /** The link a reader follows: the DOI when there is one, otherwise the URL. */
 export function citationHref(citation: Citation): string | null {

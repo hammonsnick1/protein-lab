@@ -332,7 +332,11 @@ function applyFractional(op: SymOp, point: Vec3): Vec3 {
 export const VDW_RADII: Record<string, number> = { C: 1.7, N: 1.55, O: 1.52, S: 1.8, SE: 1.9, P: 1.8 };
 /** MolProbity calls an overlap of 0.4 Å or more between van der Waals spheres a serious clash. */
 export const CLASH_OVERLAP = 0.4;
-/** Nitrogen and oxygen atoms this far apart may share a hydrogen (a hydrogen bond or salt bridge); closer than the minimum they clash. */
+/**
+ * Nitrogen and oxygen atoms this far apart may share a hydrogen (a hydrogen bond or salt bridge). 2.2 Å is the
+ * shortest donor–acceptor distance of even a strong hydrogen bond (Jeffrey 1997) and the wwPDB's limit for
+ * flagging close symmetry contacts (`pdbx_val_sym_contact`), so closer than the minimum they clash.
+ */
 export const HBOND_RANGE = { min: 2.2, max: 3.5 } as const;
 
 export type ResidueRef = { chain: string; seq: number };
@@ -579,7 +583,7 @@ function roundCell(cell: UnitCell): UnitCell {
   return { a: half(cell.a), b: half(cell.b), c: half(cell.c), alpha: half(cell.alpha), beta: half(cell.beta), gamma: half(cell.gamma) };
 }
 
-/** AlphaFold keeps pLDDT in the B-factor column; below 50 the residue is likely disordered and would swell the cell. */
+/** AlphaFold keeps pLDDT in the B-factor column; below 50 the residue is likely disordered (Tunyasuvunakool et al. 2021) and would swell the cell. */
 export const LOW_CONFIDENCE_PLDDT = 50;
 
 export function confidentAtoms(atoms: readonly LatticeAtom[], threshold = LOW_CONFIDENCE_PLDDT): LatticeAtom[] {
