@@ -166,6 +166,7 @@ return `400`, because AlphaFold models do not contain ligands.
   "ligand": {"ccdId": "ATP", "chainId": "E", "authSeqId": "355", "insertionCode": null},
   "svg": "<?xml ...><svg ...>",
   "atomIndexToPdbAtomName": {"0": "PG", "1": "O1G"},
+  "atomCoordinates": {"0": [110.6, 203.3], "1": [59.8, 206.4]},
   "bondIndexToPdbAtomNames": {"0": ["PG", "O1G"]},
   "stereo": {
     "method": "CCD connectivity; R/S and E/Z perceived from deposited 3D coordinates at CCD-declared stereocentres and stereo double bonds",
@@ -182,6 +183,9 @@ return `400`, because AlphaFold models do not contain ligands.
   0-based RDKit indices in the drawing; values are deposited
   `_atom_site.label_atom_id` names, so the UI can sync 2D and 3D selections.
   `cipLabels` is keyed by atom index, `doubleBondLabels` by bond index.
+  `atomCoordinates` gives each mapped atom's `[x, y]` in the SVG's own
+  `viewBox` pixels (the point RDKit drew it at), so the UI can find the atom
+  under a click; carbons have no label element in the SVG to click on.
 - **Atoms drawn.** Connectivity and bond orders come from the [PDB Chemical
   Component Dictionary](https://www.wwpdb.org/data/ccd). Only heavy atoms are
   drawn (hydrogens are implicit). CCD *leaving* atoms that are absent from the
