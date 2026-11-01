@@ -83,29 +83,28 @@ export function auditFindings(snapshot, { limit = 25 } = {}) {
   // `wide` yields to a child that is wide or clipped; `clip` only to a child
   // that clips, so the box where content actually disappears is still named.
   //
-  // A child has to match its parent on two counts to stand in for it:
+  // When is a box's line just a restatement of its child's?
   //
-  //   reach  — where the content's right edge lands. A chip spilling 73px
-  //            inside a 200px row is not why the row is 20px too wide.
-  //   amount — how far past its own box the content goes. Equal reach only
-  //            says the child holds the far edge; if the child's *box* is
-  //            itself poking out of the parent (pushed right by a sibling),
-  //            it overflows by less and is not the whole story.
+  // Only when the box is not a problem in its own right. Ask that directly:
+  // if any direct child's *box* lands past where this box's children are
+  // supposed to stop, the box is too small for its own contents whatever the
+  // text inside those children does, and it keeps its line. Otherwise, a
+  // child that holds the box's reach is telling the whole story and the
+  // outer line is noise.
   //
-  // In a true wrapper chain the child's box sits inside the parent and both
-  // match, so the outer wrappers collapse. Either test alone loses a real
-  // row — both halves were found by review, one each.
+  // Inferring this from one child's overflow numbers instead was wrong three
+  // times: a chip spilling inside a wide row, a chip pushed out of its row,
+  // and the two split across sibling chips. Each is just "the row is too
+  // narrow for its children", which this asks outright.
   const reachOf = (index) => (typeof elements[index].reach === "number" ? elements[index].reach : elements[index].right + boxes[index].by);
+  // Falls back to the border-box edge, which is a pixel or two wider than the
+  // content edge and so errs toward keeping the parent's line.
+  const edgeOf = (index) => (typeof elements[index].contentRight === "number" ? elements[index].contentRight : elements[index].right);
   const innermost = (index) => {
-    const box = boxes[index];
-    const yieldsTo = box.kind === "clip" ? ["clip"] : ["clip", "wide"];
-    return !children[index].some(
-      (child) =>
-        boxes[child] &&
-        yieldsTo.includes(boxes[child].kind) &&
-        boxes[child].by >= box.by - 1 &&
-        reachOf(child) >= reachOf(index) - 1,
-    );
+    const kids = children[index];
+    if (kids.some((child) => elements[child].right > edgeOf(index) + 1)) return true;
+    const yieldsTo = boxes[index].kind === "clip" ? ["clip"] : ["clip", "wide"];
+    return !kids.some((child) => boxes[child] && yieldsTo.includes(boxes[child].kind) && reachOf(child) >= reachOf(index) - 1);
   };
 
   for (const [index, element] of elements.entries()) {

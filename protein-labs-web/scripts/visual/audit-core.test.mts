@@ -111,6 +111,19 @@ describe("content wider than its box", () => {
     expect(findings).toEqual(["wide DIV.row +92px", "wide SPAN.last +62px"]);
   });
 
+  // The two split across siblings: the chip holding the far edge is not the
+  // chip whose box pokes out, so no single child tells the row's story. The
+  // row is 20px too narrow for its children (80 + 40 + 100 in 200) before
+  // any text is measured.
+  it("keeps a row whose spilling and pushed-out chips are different", () => {
+    const findings = run([
+      element({ tag: "DIV", cls: "sib", scrollWidth: 396, clientWidth: 200, right: 200, contentRight: 200, reach: 396 }),
+      element({ tag: "SPAN", cls: "sib-a", parent: 0, scrollWidth: 276, clientWidth: 80, right: 80, contentRight: 80, reach: 396 }),
+      element({ tag: "SPAN", cls: "sib-b", parent: 0, scrollWidth: 100, clientWidth: 100, right: 220, contentRight: 220, reach: 220 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.sib +196px", "wide SPAN.sib-a +196px"]);
+  });
+
   it("estimates reach from the right edge when a snapshot has none", () => {
     const findings = run([
       element({ cls: "outer", scrollWidth: 312, clientWidth: 200, right: 200 }),

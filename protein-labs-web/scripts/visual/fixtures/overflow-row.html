@@ -63,6 +63,19 @@
       .pushed span { flex: none; white-space: nowrap; }
       .push-spacer { width: 150px; }
       .push-last { width: 80px; }
+      /* And the two split across siblings: one chip spills its text, a
+         *different* one is pushed out. Neither chip alone tells the row's
+         story — the row is 20px too narrow for 80 + 40 + 100. */
+      .sib { width: 200px; display: flex; font-size: 13px; }
+      .sib span { flex: none; white-space: nowrap; }
+      .sib-a { width: 80px; }
+      .sib-gap { width: 40px; }
+      .sib-b { width: 100px; }
+      /* A padded card around a chain: Chromium counts the end padding in
+         scrollWidth, so card and inner reach the same point and the chain
+         must still collapse even though the inner box is inset. */
+      .card { width: 200px; padding: 0 12px; overflow: hidden; font-size: 13px; }
+      .card-inner span { white-space: nowrap; }
       /* The back face of a flip card: laid out, rotated away, marked inert. */
       .flip-back { position: absolute; width: 180px; transform: rotateY(180deg); backface-visibility: hidden; }
       .flip-back .ok-row { white-space: nowrap; width: 100%; overflow: hidden; }
@@ -132,6 +145,17 @@
         <div class="pushed">
           <span class="push-spacer"></span><span class="push-last">A much longer chip label</span>
         </div>
+      </div>
+      <!-- …and the two split across siblings: the chip that holds the far
+           edge is not the chip whose box pokes out. -->
+      <div class="wrap">
+        <div class="sib">
+          <span class="sib-a">A much much longer chip label that keeps going</span><span class="sib-gap"></span><span class="sib-b">B fits</span>
+        </div>
+      </div>
+      <!-- Padding must not look like a child poking out of its parent. -->
+      <div class="card">
+        <div class="card-inner"><span>A long nowrap label inside a padded card</span></div>
       </div>
     </section>
 

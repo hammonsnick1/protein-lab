@@ -70,6 +70,10 @@ export const collectExpression = (
       // Two boxes in a chain reach the same point; a child spilling inside a
       // wider parent does not.
       reach: Math.round((rect.left + parseFloat(cs.borderLeftWidth || 0) + el.scrollWidth) * 100) / 100,
+      // Where this box's children are supposed to stop. A child whose box
+      // lands past it means the box is too small for its own contents,
+      // whatever the text inside those children is doing.
+      contentRight: Math.round(contentRight(el) * 100) / 100,
       hasOwnText: [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()),
       hScrollAllowed: !!(ALLOW && el.matches(ALLOW)),
       inHScroller: !!(ALLOW && el.closest(ALLOW)),

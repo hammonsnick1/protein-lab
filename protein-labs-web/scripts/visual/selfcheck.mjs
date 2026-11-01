@@ -116,6 +116,15 @@ try {
   // would hide a row that is too wide before any text is measured.
   expect("keeps a row whose last chip is pushed out of it", has(findings, /^wide DIV\.pushed \+\d+px/));
   expect("still blames the pushed-out chip", has(findings, /^wide SPAN\.push-last \+\d+px/));
+  // …and with the two split across siblings: the chip holding the far edge
+  // is not the chip whose box pokes out, so neither tells the row's story.
+  expect("keeps a row whose spilling and pushed-out chips are different", has(findings, /^wide DIV\.sib \+\d+px/));
+  expect("still blames the spilling sibling", has(findings, /^wide SPAN\.sib-a \+\d+px/));
+  // A padded card's inner box is inset, which must not read as the card
+  // being too narrow for it.
+  const card = findings.filter((finding) => /^wide DIV\.card/.test(finding));
+  expect(`does not treat padding as a child poking out (got ${card.length}: ${card.join(" | ") || "none"})`, card.length === 1 && /card-inner/.test(card[0]));
+  expect("still names the padded card as the box that clips", has(findings, /^clip DIV\.card \+/));
   expect("does not report a sideways-scrolling page", !has(findings, /^page scrollX/));
 
   // The control: the old gate saw none of it.
