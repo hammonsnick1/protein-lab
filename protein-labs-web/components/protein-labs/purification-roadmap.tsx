@@ -1,12 +1,12 @@
 "use client";
 
-import { type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, ArrowUpRight, Beaker, Check, ChevronRight, CircleCheck, Download, FileImage, FlaskConical, Image as ImageIcon, LoaderCircle, MoreHorizontal, Plus, Printer, Save, Share2, TestTubeDiagonal, Trash2, X } from "lucide-react";
+import { type DragEvent, Fragment, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Activity, ArrowLeft, ArrowRight, ArrowUpRight, Beaker, Check, ChevronRight, CircleCheck, Download, FileImage, FlaskConical, GripVertical, Image as ImageIcon, LoaderCircle, MoreHorizontal, Plus, Printer, Save, Share2, TestTubeDiagonal, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ensureProjectJob, fileToBase64, type JsonObject, type ProjectJob, type ProteinBundle } from "@/lib/protein-labs-api";
 import { bandQuantification, formatSignalFraction, gelReportLanes, readGelJobConfig, SIGNAL_FRACTION_CAVEAT } from "@/lib/gel-quantification";
-import { type BufferIngredient, type ComponentType, config, liveSteps, mergeSavedSteps, object, type RoadmapComponent, type RoadmapStep } from "@/lib/roadmap-steps";
+import { type BufferIngredient, bufferIngredients, type ComponentType, config, ingredientLabel, liveSteps, mergeSavedSteps, moveStep, object, type RoadmapComponent, type RoadmapStep, type StepBuffer, stepBuffers } from "@/lib/roadmap-steps";
 import { dismissesMenu, menuAnchor, placeMenu } from "@/lib/context-menu";
 
 type SavedBuffer = { key: string; jobId: string; title: string; purpose: string; pH: string; ingredients: BufferIngredient[]; source: string };
@@ -14,6 +14,7 @@ type ContextMenu = { kind: "board" | "step" | "record" | "component"; stepId?: s
 type StepInsertion = { index: number };
 type PendingAnalysis = { proteinId: string; stepId: string; type: "chromatogram" | "gel"; previousUpdatedAt: string };
 type TagProfile = { label: string; sequence: string; source: string };
+type Notice = { text: string; action?: { label: string; jobId: string } };
 
 const componentCatalog: { type: ComponentType; label: string; description: string; icon: typeof Beaker; color: string }[] = [
   { type: "buffer", label: "Saved buffer", description: "Choose a buffer saved in one of the purification-planning jobs.", icon: Beaker, color: "#4d9de8" },
@@ -51,11 +52,12 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
   const currentPlan = useMemo(() => liveSteps(bundle), [bundle]);
   const savedBuffers = useMemo(() => savedBufferOptions(bundle), [bundle]);
   const [steps, setSteps] = useState<RoadmapStep[]>(() => mergeSavedSteps(currentPlan, savedJob?.config.steps));
-  const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState("");
+  const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [notice, setNotice] = useState<Notice | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null), [dropIndex, setDropIndex] = useState<number | null>(null);
   const [context, setContext] = useState<ContextMenu | null>(null), [editingStep, setEditingStep] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ stepId: string; component: RoadmapComponent } | null>(null);
   const [insertion, setInsertion] = useState<StepInsertion | null>(null), [movingStep, setMovingStep] = useState<string | null>(null);
-  const lastSource = useRef(sourceSignature);
+  const lastSource = useRef(sourceSignature), board = useRef<HTMLElement>(null);
   const proteinTransition = useMemo(() => cleavageTransition(bundle), [bundle]);
 
   useEffect(() => {
@@ -83,6 +85,9 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
     });
   }, [bundle.projectJobs, bundle.protein.id]);
 
+  // The notice stays on the board until dismissed; an action lets the scientist
+  // choose to leave for another job instead of being sent there.
+  function setMessage(text: string, action?: Notice["action"]) { setNotice(text ? { text, action } : null); }
   function change(updater: (value: RoadmapStep[]) => RoadmapStep[]) { setSteps((value) => updater(value)); setDirty(true); setMessage(""); }
   function editComponent(stepId: string, componentId: string) { const component = steps.find((step) => step.id === stepId)?.components.find((item) => item.id === componentId); if (component) setEditor({ stepId, component: structuredClone(component) }); setContext(null); }
   function commitComponent() { if (!editor) return; change((values) => values.map((step) => step.id !== editor.stepId ? step : { ...step, components: step.components.some((item) => item.id === editor.component.id) ? step.components.map((item) => item.id === editor.component.id ? editor.component : item) : [...step.components, editor.component] })); setEditor(null); }
@@ -96,7 +101,7 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
       onOpenJob(type === "chromatogram" ? "chromatogram" : "gel");
       return;
     }
-    if (type === "buffer" && !savedBuffers.length) { setMessage("No saved planning buffers are available. Opening Affinity capture, where the capture buffers are set, so you can save one first."); onOpenJob("purification-affinity"); return; }
+    if (type === "buffer" && !savedBuffers.length) { setMessage("No buffers are saved yet. Buffers are set in Cell lysis, Affinity capture, Subtractive cleanup and SEC polishing; save one there, then add it here.", { label: "Open Affinity capture", jobId: "purification-affinity" }); return; }
     const component = newComponent(type);
     setEditor({ stepId, component: type === "buffer" ? applySavedBuffer(component, savedBuffers[0]) : component });
   }
@@ -121,17 +126,48 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
     if (!ctrlKey) return;
     if (!movingStep) { setMovingStep(stepId); setMessage("Step selected. Keep Ctrl held and select another step to move it before that step."); return; }
     if (movingStep === stepId) { setMovingStep(null); setMessage("Step move cancelled."); return; }
-    const fromIndex = steps.findIndex((value) => value.id === movingStep);
-    if (fromIndex < 0) { setMovingStep(null); return; }
-    change((items) => {
-      const next = [...items], [moved] = next.splice(fromIndex, 1);
-      const destination = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
-      next.splice(destination, 0, moved);
-      return next;
-    });
+    moveTo(movingStep, targetIndex);
     setMovingStep(null);
-    setMessage("Step moved. Roadmap numbering and report order were updated automatically.");
   }
+  /** Moves a step to an insertion point (0 = before step 1, steps.length = after the last). */
+  function moveTo(stepId: string, insertion: number, refocus = false) {
+    const fromIndex = steps.findIndex((value) => value.id === stepId);
+    if (fromIndex < 0 || insertion === fromIndex || insertion === fromIndex + 1) return;
+    const next = moveStep(steps, fromIndex, insertion), position = next.findIndex((value) => value.id === stepId) + 1;
+    change(() => next);
+    setMessage(`${steps[fromIndex].title} moved to step ${position}. Numbering and report order were updated.`);
+    // React moves the column's DOM node, which drops keyboard focus from its handle.
+    if (refocus) requestAnimationFrame(() => board.current?.querySelector<HTMLElement>(`[data-step-handle="${CSS.escape(stepId)}"]`)?.focus());
+  }
+  function handleKeys(event: ReactKeyboardEvent, stepId: string, index: number) {
+    const insertion = { ArrowLeft: index - 1, ArrowUp: index - 1, ArrowRight: index + 2, ArrowDown: index + 2, Home: 0, End: steps.length }[event.key];
+    if (insertion === undefined) return;
+    event.preventDefault();
+    if (insertion >= 0 && insertion <= steps.length) moveTo(stepId, insertion, true);
+  }
+  function startDrag(event: DragEvent, stepId: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", stepId);
+    const column = (event.currentTarget as HTMLElement).closest("article");
+    if (column) event.dataTransfer.setDragImage(column, 24, 24);
+    setDragging(stepId); setContext(null);
+  }
+  function dragOver(event: DragEvent, insertion: number) {
+    if (!dragging) return;
+    event.preventDefault(); event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    if (dropIndex !== insertion) setDropIndex(insertion);
+  }
+  function dragOverColumn(event: DragEvent, index: number) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    dragOver(event, event.clientX < rect.left + rect.width / 2 ? index : index + 1);
+  }
+  function drop(event: DragEvent) {
+    event.preventDefault();
+    if (dragging && dropIndex !== null) moveTo(dragging, dropIndex);
+    endDrag();
+  }
+  function endDrag() { setDragging(null); setDropIndex(null); }
 
   async function saveBoard() {
     setBusy(true); setMessage("");
@@ -151,21 +187,34 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
 
   return <main className="roadmap-workspace" onClick={() => setContext(null)}>
     <header className="roadmap-workspace-header"><div className="roadmap-heading-group"><Button className="roadmap-workflow-back" variant="outline" onClick={onBackToWorkflow}><ArrowLeft/> Back to workflow</Button><div><span className="eyebrow">DEDICATED EXPERIMENT WORKSPACE</span><h1>Purification roadmap</h1><p>Add records to the relevant step. Buffers come from saved planning choices, while chromatography and gel records stay connected to their analysis jobs.</p></div></div><div className="roadmap-header-actions"><span className={`roadmap-save-state ${dirty ? "dirty" : "saved"}`}>{dirty ? "Unsaved changes" : "Saved locally"}</span><Button variant="outline" onClick={exportDocument}><Download/> Export report</Button><Button variant="outline" onClick={printDocument}><Printer/> Print / PDF</Button><Button variant="outline" onClick={() => void shareDocument()}><Share2/> Share</Button><Button disabled={busy || !dirty} onClick={() => void saveBoard()}>{busy ? <LoaderCircle className="spin"/> : <Save/>} Save roadmap</Button></div></header>
-    <section className="roadmap-record-guidance"><strong>Build and reorder the purification route</strong><span>Right-click the roadmap to insert any purification step. To reorder, hold <b>Ctrl</b>, select the step to move, then—while still holding Ctrl—select its new position. Step numbers update automatically.</span></section>
-    <section className="roadmap-board" onContextMenu={(event) => { if (event.target !== event.currentTarget) return; event.preventDefault(); setContext({ kind: "board", x: event.clientX, y: event.clientY }); }}>{steps.map((step, index) => <article key={step.id} className={`roadmap-column ${step.ready ? "ready" : "pending"} ${movingStep === step.id ? "move-selected" : ""}`} onClick={(event) => selectForMove(step.id, index, event.ctrlKey)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setContext({ kind: "step", stepId: step.id, x: event.clientX, y: event.clientY }); }}>
-      <header><em>{index + 1}</em><span><strong>{step.title}</strong><small>{step.instruction}</small></span>{step.jobId ? <button className="roadmap-open-job" title={`Open ${step.jobLabel}`} onClick={(event) => { event.stopPropagation(); onOpenJob(step.jobId); }}><ArrowUpRight/></button> : <span className="roadmap-custom-badge">Custom</span>}<button onClick={(event) => { event.stopPropagation(); setContext({ kind: "step", stepId: step.id, ...menuPoint(event) }); }}><MoreHorizontal/></button></header>
+    <section className="roadmap-record-guidance"><strong>Build and reorder the purification route</strong><span>Press <b>+</b> between two steps to insert one there. Drag a step by its <GripVertical aria-label="handle"/> handle to reorder it, or focus the handle and press <b>←</b> / <b>→</b>. Right-click and Ctrl-select still work. Step numbers update automatically.</span></section>
+    <section ref={board} className={`roadmap-board ${dragging ? "dragging" : ""}`} onDragOver={(event) => { if (dragging) event.preventDefault(); }} onDrop={drop} onContextMenu={(event) => { if (event.target !== event.currentTarget) return; event.preventDefault(); setContext({ kind: "board", x: event.clientX, y: event.clientY }); }}>{steps.map((step, index) => <Fragment key={step.id}><StepGap index={index} steps={steps} active={dropIndex === index} onInsert={beginStepInsertion} onDragOver={dragOver}/><article className={`roadmap-column ${step.ready ? "ready" : "pending"} ${movingStep === step.id ? "move-selected" : ""} ${dragging === step.id ? "drag-source" : ""}`} onClick={(event) => selectForMove(step.id, index, event.ctrlKey)} onDragOver={(event) => dragOverColumn(event, index)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setContext({ kind: "step", stepId: step.id, x: event.clientX, y: event.clientY }); }}>
+      <header><button className="roadmap-drag-handle" draggable data-step-handle={step.id} aria-label={`Move step ${index + 1}, ${step.title}. Drag, or press the arrow keys.`} title="Drag to reorder · or focus and press ← / →" onClick={(event) => event.stopPropagation()} onDragStart={(event) => startDrag(event, step.id)} onDragEnd={endDrag} onKeyDown={(event) => handleKeys(event, step.id, index)}><GripVertical/></button><em>{index + 1}</em><span><strong>{step.title}</strong><small>{step.instruction}</small></span>{step.jobId ? <button className="roadmap-open-job" title={`Open ${step.jobLabel}`} onClick={(event) => { event.stopPropagation(); onOpenJob(step.jobId); }}><ArrowUpRight/></button> : <span className="roadmap-custom-badge">Custom</span>}<button onClick={(event) => { event.stopPropagation(); setContext({ kind: "step", stepId: step.id, ...menuPoint(event) }); }}><MoreHorizontal/></button></header>
       <div className="roadmap-column-status"><span>{step.ready ? <CircleCheck/> : <ChevronRight/>}{step.ready ? "Planning choices saved" : "Planning is still in progress"}</span><small>{step.record}</small></div>
       {step.jobId ? <button className="roadmap-plan-loaded" onClick={(event) => { event.stopPropagation(); onOpenJob(step.jobId); }}><span><strong>{step.jobLabel}</strong><small>{step.planDetails.length ? "Automatically populated from Workflow" : "Open this job to finish its setup"}</small></span><ArrowUpRight/>{step.planDetails.length > 0 && <div>{step.planDetails.map((detail) => <em key={detail}>{detail}</em>)}</div>}</button> : <div className="roadmap-custom-step-note"><strong>User-defined step</strong><small>Add buffers, measurements, analyses, images, or notes below.</small></div>}
+      <StepBufferList buffers={step.custom ? [] : stepBuffers(bundle, step.id)}/>
       <div className="roadmap-component-list">{step.components.map((component) => <RoadmapItem key={component.id} value={component} onOpen={() => editComponent(step.id, component.id)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setContext({ kind: "component", stepId: step.id, componentId: component.id, x: event.clientX, y: event.clientY }); }}/>)}</div>
       <button className="roadmap-column-add" onClick={(event) => { event.stopPropagation(); setContext({ kind: "record", stepId: step.id, ...menuPoint(event) }); }}><Plus/> Add record or data</button>
-    </article>)}</section>
+    </article></Fragment>)}<StepGap index={steps.length} steps={steps} active={dropIndex === steps.length} onInsert={beginStepInsertion} onDragOver={dragOver}/><button className="roadmap-add-step" onClick={(event) => { event.stopPropagation(); beginStepInsertion(steps.length); }} onDragOver={(event) => dragOver(event, steps.length)}><Plus/><strong>Add step</strong><small>Insert any purification operation after step {steps.length}.</small></button></section>
     <ProteinTransitionSummary value={proteinTransition}/>
-    {context && <RoadmapContextMenu value={context} steps={steps} onAddComponent={addComponent} onEditComponent={editComponent} onDeleteComponent={deleteComponent} onInsert={beginStepInsertion} onEditStep={(stepId) => { setEditingStep(stepId); setContext(null); }} onDeleteStep={removeStep} onClose={() => setContext(null)}/>} 
-    {message && <div className="roadmap-message">{message}<button onClick={() => setMessage("")}><X/></button></div>}
+    {context && <RoadmapContextMenu value={context} steps={steps} onAddComponent={addComponent} onEditComponent={editComponent} onDeleteComponent={deleteComponent} onInsert={beginStepInsertion} onMove={(stepId, insertion) => { moveTo(stepId, insertion); setContext(null); }} onEditStep={(stepId) => { setEditingStep(stepId); setContext(null); }} onDeleteStep={removeStep} onClose={() => setContext(null)}/>} 
+    {notice && <div className="roadmap-message" role="status">{notice.text}{notice.action && <Button size="sm" variant="outline" onClick={() => { const jobId = notice.action!.jobId; setNotice(null); onOpenJob(jobId); }}>{notice.action.label} <ArrowUpRight/></Button>}<button aria-label="Dismiss message" onClick={() => setNotice(null)}><X/></button></div>}
     <ComponentEditor value={editor} bundle={bundle} savedBuffers={savedBuffers} onChange={setEditor} onClose={() => setEditor(null)} onSave={commitComponent}/>
     <StepEditor step={editingStep ? steps.find((value) => value.id === editingStep) ?? null : null} onClose={() => setEditingStep(null)} onSave={(value) => { change((items) => items.map((item) => item.id === value.id ? value : item)); setEditingStep(null); }}/>
     <StepInsertionDialog value={insertion} onClose={() => setInsertion(null)} onChoose={insertStep}/>
   </main>;
+}
+
+/** The insertion point between two columns: a visible "+" and the drop target while dragging. */
+function StepGap({ index, steps, active, onInsert, onDragOver }: { index: number; steps: RoadmapStep[]; active: boolean; onInsert: (index: number) => void; onDragOver: (event: DragEvent, insertion: number) => void }) {
+  const label = index === 0 ? "Add a step before step 1" : index === steps.length ? `Add a step after step ${index}` : `Add a step between steps ${index} and ${index + 1}`;
+  return <div className={`roadmap-step-gap ${active ? "drop-target" : ""}`} onDragOver={(event) => onDragOver(event, index)}><button aria-label={label} title={label} onClick={(event) => { event.stopPropagation(); onInsert(index); }}><Plus/></button></div>;
+}
+
+function StepBufferList({ buffers }: { buffers: StepBuffer[] }) {
+  if (!buffers.length) return null;
+  const missing = buffers.filter((buffer) => !buffer.ingredients.length).map((buffer) => buffer.label);
+  return <div className="roadmap-step-buffers"><strong>Buffers</strong>{buffers.filter((buffer) => buffer.ingredients.length).map((buffer) => <div key={buffer.id}><span><b>{buffer.label}</b><small>{buffer.pH ? `pH ${buffer.pH}` : "pH not set"}</small></span><p>{buffer.ingredients.map(ingredientLabel).join(" · ")}</p></div>)}{missing.length > 0 && <p className="missing">Not saved yet: {missing.join(", ")}. Open the job to set {missing.length > 1 ? "them" : "it"}.</p>}</div>;
 }
 
 function RoadmapItem({ value, onOpen, onContextMenu }: { value: RoadmapComponent; onOpen: () => void; onContextMenu: (event: MouseEvent) => void }) {
@@ -179,7 +228,7 @@ function menuPoint(event: MouseEvent) {
   return menuAnchor(event, event.currentTarget.getBoundingClientRect());
 }
 
-function RoadmapContextMenu({ value, steps, onAddComponent, onEditComponent, onDeleteComponent, onInsert, onEditStep, onDeleteStep, onClose }: { value: ContextMenu; steps: RoadmapStep[]; onAddComponent: (stepId: string, type: ComponentType) => void; onEditComponent: (stepId: string, componentId: string) => void; onDeleteComponent: (stepId: string, componentId: string) => void; onInsert: (index: number) => void; onEditStep: (stepId: string) => void; onDeleteStep: (stepId: string) => void; onClose: () => void }) {
+function RoadmapContextMenu({ value, steps, onAddComponent, onEditComponent, onDeleteComponent, onInsert, onMove, onEditStep, onDeleteStep, onClose }: { value: ContextMenu; steps: RoadmapStep[]; onAddComponent: (stepId: string, type: ComponentType) => void; onEditComponent: (stepId: string, componentId: string) => void; onDeleteComponent: (stepId: string, componentId: string) => void; onInsert: (index: number) => void; onMove: (stepId: string, insertion: number) => void; onEditStep: (stepId: string) => void; onDeleteStep: (stepId: string) => void; onClose: () => void }) {
   const index = value.stepId ? steps.findIndex((step) => step.id === value.stepId) : steps.length;
   const ref = useRef<HTMLDivElement>(null);
   // Keep the whole menu in the window and below the top bar: near the bottom
@@ -201,8 +250,8 @@ function RoadmapContextMenu({ value, steps, onAddComponent, onEditComponent, onD
   return <div ref={ref} className="roadmap-context-menu" style={{ left: value.x, top: value.y }} onClick={(event) => event.stopPropagation()}>
     {value.kind === "component" && value.stepId && value.componentId && <><strong>Roadmap record</strong><button onClick={() => onEditComponent(value.stepId!, value.componentId!)}><MoreHorizontal/> Edit record</button><button className="delete" onClick={() => onDeleteComponent(value.stepId!, value.componentId!)}><Trash2/> Delete record</button></>}
     {value.kind === "record" && value.stepId && <><strong>Add record or data</strong>{componentCatalog.map((item) => { const Icon = item.icon; return <button key={item.type} onClick={() => onAddComponent(value.stepId!, item.type)}><Icon/><span><b>{item.label}</b><small>{item.description}</small></span>{(item.type === "chromatogram" || item.type === "gel") && <ArrowUpRight/>}</button>; })}<hr/><button onClick={() => onEditStep(value.stepId!)}><MoreHorizontal/> Edit step text</button></>}
-    {value.kind === "step" && value.stepId && <><strong>Purification step {index + 1}</strong><button onClick={() => onInsert(Math.max(0, index))}><Plus/><span><b>Add step before</b><small>Choose any standard operation or create a custom step.</small></span></button><button onClick={() => onInsert(Math.max(0, index + 1))}><Plus/><span><b>Add step after</b><small>The new step is inserted here and all numbers update.</small></span></button><hr/><button onClick={() => onEditStep(value.stepId!)}><MoreHorizontal/> Edit step text</button><button onClick={onClose}><ChevronRight/><span><b>Move with Ctrl + select</b><small>Ctrl-select this step, then Ctrl-select its destination.</small></span></button><button className="delete" onClick={() => onDeleteStep(value.stepId!)}><Trash2/> Remove step</button></>}
-    {value.kind === "board" && <><strong>Purification roadmap</strong><button onClick={() => onInsert(steps.length)}><Plus/><span><b>Add purification step</b><small>Choose a standard operation or make a custom step.</small></span></button><small className="roadmap-menu-hint">You can also right-click any step to insert before or after it.</small></>}
+    {value.kind === "step" && value.stepId && <><strong>Purification step {index + 1}</strong><button onClick={() => onInsert(Math.max(0, index))}><Plus/><span><b>Add step before</b><small>Choose any standard operation or create a custom step.</small></span></button><button onClick={() => onInsert(Math.max(0, index + 1))}><Plus/><span><b>Add step after</b><small>The new step is inserted here and all numbers update.</small></span></button><hr/><button onClick={() => onEditStep(value.stepId!)}><MoreHorizontal/> Edit step text</button><button disabled={index <= 0} onClick={() => onMove(value.stepId!, index - 1)}><ArrowLeft/><span><b>Move earlier</b><small>Or drag the step by its handle.</small></span></button><button disabled={index >= steps.length - 1} onClick={() => onMove(value.stepId!, index + 2)}><ArrowRight/><span><b>Move later</b><small>Focus the handle and use ← / → from the keyboard.</small></span></button><button className="delete" onClick={() => onDeleteStep(value.stepId!)}><Trash2/> Remove step</button></>}
+    {value.kind === "board" && <><strong>Purification roadmap</strong><button onClick={() => onInsert(steps.length)}><Plus/><span><b>Add purification step</b><small>Choose a standard operation or make a custom step.</small></span></button><small className="roadmap-menu-hint">You can also press + between any two steps, or right-click a step to insert before or after it.</small></>}
   </div>;
 }
 
@@ -238,7 +287,6 @@ function savedBufferOptions(bundle: ProteinBundle): SavedBuffer[] {
   for (const appType of ["purification-lysis", "purification-subtractive", "purification-sec"]) { const job = bundle.projectJobs.find((item) => item.appType === appType); if (!job?.config.bufferName) continue; values.push({ key: `${appType}:selected`, jobId: job.id, title: String(job.config.bufferName), purpose: appType === "purification-lysis" ? "Cell lysis" : appType === "purification-sec" ? "SEC running buffer" : "Subtractive cleanup", pH: String(job.config.bufferPH ?? ""), ingredients: bufferIngredients(job.config.bufferComponents), source: job.name }); }
   return values.filter((value, index) => values.findIndex((other) => `${other.title}|${other.pH}|${JSON.stringify(other.ingredients)}` === `${value.title}|${value.pH}|${JSON.stringify(value.ingredients)}`) === index);
 }
-function bufferIngredients(value: unknown): BufferIngredient[] { return Array.isArray(value) ? value.filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((raw) => { const item = raw as JsonObject; return { name: String(item.name ?? ""), concentration: String(item.concentration ?? ""), unit: String(item.unit ?? ""), role: String(item.role ?? "") }; }) : []; }
 function applySavedBuffer(component: RoadmapComponent, buffer?: SavedBuffer): RoadmapComponent { if (!buffer) return component; return { ...component, title: buffer.title, purpose: buffer.purpose, pH: buffer.pH, ingredients: structuredClone(buffer.ingredients), sourceBufferKey: buffer.key, sourceJobId: buffer.jobId }; }
 function componentFromAnalysis(type: "chromatogram" | "gel", job: ProjectJob): RoadmapComponent { return { id: crypto.randomUUID(), type, title: type === "gel" ? String(job.config.filename ?? job.name) : String(job.config.projectName ?? job.name), notes: "", sourceJobId: job.id, ...(type === "gel" && job.config.previewBase64 ? { dataUrl: `data:image/png;base64,${String(job.config.previewBase64)}`, mimeType: "image/png" } : {}) }; }
 function newComponent(type: ComponentType): RoadmapComponent { const defaults: Record<ComponentType, Partial<RoadmapComponent>> = { buffer: { title: "Saved buffer", purpose: "", pH: "", ingredients: [] }, measurement: { title: "Yield and purity", yieldUnit: "mg", yieldMethod: yieldMethods[0], purityMethod: purityMethods[0] }, chromatogram: { title: "Chromatogram" }, gel: { title: "Gel densitometry" }, image: { title: "Experimental image" }, note: { title: "Experimental note" } }; return { id: crypto.randomUUID(), type, title: "Record", notes: "", ...defaults[type] }; }
