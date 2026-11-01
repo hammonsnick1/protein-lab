@@ -3,6 +3,8 @@
 import { CSSProperties, FormEvent, RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Atom, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Crosshair, Database, Download, ExternalLink, LoaderCircle, PanelRightClose, PanelRightOpen, RefreshCw, Search, SlidersHorizontal, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Cite, ReferenceList } from "@/components/ui/citations";
+import { citationScope } from "@/lib/citations";
 import { ensureProjectJob, proteinLabsApi, type JsonObject, type ProteinBundle } from "@/lib/protein-labs-api";
 import { readableMethod, regionSections, regionSelection, residueLabel, stepRegion, structureOptionLabel, type RegionsResponse, type StructureApiError, type StructureDetail, type StructureEntry, type StructureRegion } from "@/lib/structure-regions";
 import { CHOICE_GROUPS, choiceKey, mappedChainIds, nextChoiceKey, normalizePdbId, percentText, researchHits, structureChoices, type ResearchHit, type StructureChoice } from "@/lib/structure-hits";
@@ -18,6 +20,10 @@ type JobProps = { bundle: ProteinBundle; onChanged: () => Promise<void> };
 type Load<T> = { state: "idle" | "loading" | "ready" | "error"; value: T | null; message: string; /** The structure this result belongs to. */ key?: string };
 const idle = <T,>(): Load<T> => ({ state: "idle", value: null, message: "" });
 const MANUAL_LIMIT = 6;
+// Every source this job cites, in first-use order down the page.
+const REFS = citationScope("structure", ["molstar", "pdb2000", "alphafold2021"]);
+/** The binding-site cutoff Mol* uses for a selection's surrounding residues (its "Surrounding Residues (5 Å)" query). */
+const MOLSTAR_SURROUNDINGS_ANGSTROM = 5;
 
 /** The Structure Viewer job: pick the AlphaFold model, a Sequence research hit or any PDB entry, then step through regions of interest. */
 export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOpenJob?: (jobId: string) => void }) {
@@ -155,7 +161,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   }, [panelOpen, setPanelOpen]);
   return <div ref={workbench} className={`structure-layout structure-workbench ${panelOpen ? "panel-open" : "panel-closed"}`} style={fillHeight ? { "--structure-fill-height": `${fillHeight}px` } as CSSProperties : undefined}>
     <section className="lab-panel structure-view">
-      <div className="panel-heading"><div><h2>{facts ? structureOptionLabel(facts) : "Structure Viewer"}</h2><p>{legacy ? "Saved AlphaFold model. Experimental entries need the structure service of the local engine." : facts?.title || choice?.hit?.description || (selected?.source === "alphafold_db" ? "AlphaFold DB model of the reference UniProt entry" : "Choose an AlphaFold model or an experimental PDB entry")}</p></div></div>
+      <div className="panel-heading"><div><h2>{facts ? structureOptionLabel(facts) : "Structure Viewer"}<Cite scope={REFS} id="molstar"/></h2><p>{legacy ? "Saved AlphaFold model. Experimental entries need the structure service of the local engine." : facts?.title || choice?.hit?.description || (selected?.source === "alphafold_db" ? "AlphaFold DB model of the reference UniProt entry" : "Choose an AlphaFold model or an experimental PDB entry")}</p></div></div>
       {legacy ? <LegacyPreview bundle={bundle}/> : <div className={`structure-stage-row ${ligand2d && viewerShown ? "with-ligand" : ""} ${ligandWide ? "ligand-wide" : ""}`}>
         <div className="molecule-stage">
           {current.state === "ready" && geometry && selected
@@ -188,9 +194,10 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
         {current.state === "ready" && (detail.value?.errors ?? []).map((error, index) => <Notice key={`d${index}`} error message={`${error.source} is unavailable: ${error.message}`}/>)}
       </section>
       {viewerShown && <div ref={setControlsHost} className="structure-controls-slot"/>}
-      <RegionsPanel state={legacy ? { state: "error", value: null, message: "the local engine has no structure service yet." } : regions} sections={sections} region={region} selection={selection} showAdditives={showAdditives} disabled={!selected || current.state !== "ready"}
+      <RegionsPanel state={legacy ? { state: "error", value: null, message: "the local engine has no structure service yet." } : regions} contactCutoff={typeof regions.value?.parameters?.ligandContactCutoffAngstrom === "number" ? regions.value.parameters.ligandContactCutoffAngstrom : null} sections={sections} region={region} selection={selection} showAdditives={showAdditives} disabled={!selected || current.state !== "ready"}
         onChoose={chooseRegion} onStep={step} onToggleAdditives={setShowAdditives}/>
       <AlphaFoldActions bundle={bundle} onChanged={onChanged}/>
+      <ReferenceList scope={REFS} className="lab-panel structure-references"/>
     </div>
     </aside>
   </div>;
@@ -334,7 +341,7 @@ function StructureFacts({ entry, hit, loaded }: { entry: StructureEntry; hit: Re
   const ligandIds = [...new Map(ligands.map((ligand) => [ligand.ccdId, ligand.name ?? ""])).entries()];
   const pending = loaded ? "—" : "Shown once loaded";
   return <dl className="structure-facts">
-    <dt>Source</dt><dd>{entry.source === "pdb" ? <a href={entry.sourceUrl ?? `https://www.rcsb.org/structure/${entry.id}`} target="_blank" rel="noreferrer">RCSB PDB {entry.id} <ExternalLink/></a> : "AlphaFold DB"}</dd>
+    <dt>Source</dt><dd>{entry.source === "pdb" ? <><a href={entry.sourceUrl ?? `https://www.rcsb.org/structure/${entry.id}`} target="_blank" rel="noreferrer">RCSB PDB {entry.id} <ExternalLink/></a><Cite scope={REFS} id="pdb2000"/></> : <>AlphaFold DB<Cite scope={REFS} id="alphafold2021"/></>}</dd>
     {entry.method && <><dt>Method</dt><dd>{readableMethod(entry.method)}</dd></>}
     {typeof entry.resolutionAngstrom === "number" && <><dt>Resolution</dt><dd>{entry.resolutionAngstrom.toFixed(2)} Å</dd></>}
     {hit && <><dt>Match</dt><dd>{percentText(hit.identity)} identity · {percentText(hit.coverage)} coverage of your sequence</dd></>}
@@ -344,8 +351,8 @@ function StructureFacts({ entry, hit, loaded }: { entry: StructureEntry; hit: Re
   </dl>;
 }
 
-function RegionsPanel({ state, sections, region, selection, showAdditives, disabled, onChoose, onStep, onToggleAdditives }: {
-  state: Load<RegionsResponse>; sections: ReturnType<typeof regionSections>; region: StructureRegion | null; selection: ReturnType<typeof regionSelection> | null; showAdditives: boolean; disabled: boolean;
+function RegionsPanel({ state, contactCutoff, sections, region, selection, showAdditives, disabled, onChoose, onStep, onToggleAdditives }: {
+  state: Load<RegionsResponse>; contactCutoff: number | null; sections: ReturnType<typeof regionSections>; region: StructureRegion | null; selection: ReturnType<typeof regionSelection> | null; showAdditives: boolean; disabled: boolean;
   onChoose(id: string | null): void; onStep(delta: 1 | -1): void; onToggleAdditives(value: boolean): void;
 }) {
   const total = sections.reduce((sum, section) => sum + section.regions.length, 0);
@@ -366,18 +373,18 @@ function RegionsPanel({ state, sections, region, selection, showAdditives, disab
       </div>
       <div className="region-meta"><small>{region ? `${position} of ${total}` : `${total} regions`}</small>{region && <button type="button" className="region-clear" onClick={() => onChoose(null)}><X/> Clear</button>}</div>
       {hasAdditives && <label className="region-toggle"><input type="checkbox" checked={showAdditives} onChange={(event) => onToggleAdditives(event.target.checked)}/> List waters and crystallisation additives</label>}
-      {region && selection && <RegionDetail region={region} selection={selection}/>}
+      {region && selection && <RegionDetail region={region} selection={selection} contactCutoff={contactCutoff}/>}
     </> : <p className="structure-note">No regions of interest were found for this structure.</p>)}
     {(state.value?.errors ?? []).map((error, index) => <Notice key={index} error message={`${error.source} is unavailable: ${error.message}`}/>)}
   </section>;
 }
 
-function RegionDetail({ region, selection }: { region: StructureRegion; selection: ReturnType<typeof regionSelection> }) {
+function RegionDetail({ region, selection, contactCutoff }: { region: StructureRegion; selection: ReturnType<typeof regionSelection>; contactCutoff: number | null }) {
   const rows = region.residues.filter((row) => row.modeled !== false && row.labelChainId && typeof row.labelSeqId === "number");
   const meta = region.metadata ?? {};
   return <div className="region-detail" aria-live="polite">
     <strong>{region.label}</strong>
-    <p>{region.description}</p>
+    <p>{region.description}{region.type === "ligand_binding_site" && contactCutoff === MOLSTAR_SURROUNDINGS_ANGSTROM && <> This is the cutoff Mol*, the RCSB PDB&apos;s 3D viewer, uses for a ligand&apos;s surrounding residues.<Cite scope={REFS} id="molstar"/></>}</p>
     {region.type === "ligand_binding_site" && <p className="region-ligand">{String(meta.name ?? meta.ccdId)} · {String(meta.ccdId)} chain {String(meta.chainId)} residue {String(meta.authSeqId)}{meta.insertionCode ? String(meta.insertionCode) : ""}{typeof meta.minimumDistanceAngstrom === "number" ? ` · closest contact ${meta.minimumDistanceAngstrom.toFixed(2)} Å` : ""}</p>}
     {selection.status === "unmapped" && <Notice error message="Not mapped onto this structure. These positions are outside the model or fall in an alignment gap, so nothing is highlighted."/>}
     {selection.status === "partial" && <Notice error message={`${selection.unmappedCount} position${selection.unmappedCount === 1 ? " is" : "s are"} outside the model or in an alignment gap. Only the ${rows.length} mapped residue${rows.length === 1 ? " is" : "s are"} highlighted.`}/>}

@@ -13,7 +13,7 @@ import { StatusChip, type StatusTone } from "./status-chip.tsx";
 // The marker number and the list number both come from the scope, so they agree.
 
 const REUSE_TONES: Record<LicenseReuse, StatusTone> = { permissive: "pass", restricted: "attention", none: "review" };
-const KIND_LABELS: Record<CitationKind, string> = { article: "Paper", book: "Book", software: "Software", database: "Database", website: "Website" };
+const KIND_LABELS: Record<CitationKind, string> = { article: "Paper", book: "Book", software: "Software", database: "Database", website: "Website", rule: "App rule of thumb" };
 
 function jumpToReference(event: MouseEvent<HTMLAnchorElement>, anchor: string) {
   const target = document.getElementById(anchor);

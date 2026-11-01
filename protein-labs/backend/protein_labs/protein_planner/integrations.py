@@ -651,6 +651,22 @@ class RCSBClient:
         entry_info = entry.get("rcsb_entry_info") or {}
         struct = entry.get("struct") or {}
         symmetry = entry.get("symmetry") or {}
+        cell = entry.get("cell") or {}
+        unit_cell_fields = {
+            "a": "length_a",
+            "b": "length_b",
+            "c": "length_c",
+            "alpha": "angle_alpha",
+            "beta": "angle_beta",
+            "gamma": "angle_gamma",
+        }
+        # A partial cell is not useful to the crystallization UI.  Preserve a
+        # complete cell with RCSB's units: lengths in Å, angles in degrees.
+        unit_cell = (
+            {name: cell[source] for name, source in unit_cell_fields.items()}
+            if all(cell.get(source) is not None for source in unit_cell_fields.values())
+            else None
+        )
         polymer = entity.get("rcsb_polymer_entity") or {}
         identifiers = entity.get("rcsb_polymer_entity_container_identifiers") or {}
         chain_ids = identifiers.get("auth_asym_ids") or identifiers.get("asym_ids") or []
@@ -698,8 +714,11 @@ class RCSBClient:
             "resolution": min(_resolutions(entry_info.get("resolution_combined")), default=None),
             # RCSB's Hermann–Mauguin label is entry-level metadata, not
             # entity-level metadata. Retain it with the homologue so callers
-            # can distinguish a reported crystal form from a prediction.
-            "spaceGroup": str(symmetry.get("space_group_name_H_M") or "").strip() or None,
+            # can distinguish a reported crystal form from a prediction. The
+            # documented JSON field is lower-case ``hm``; live records use the
+            # legacy ``H_M`` spelling, so accept both.
+            "spaceGroup": str(symmetry.get("space_group_name_hm") or symmetry.get("space_group_name_H_M") or "").strip() or None,
+            "unitCell": unit_cell,
             "sourceOrganisms": _organism_names(sources),
             "crystallizationConditions": conditions["crystallizationConditions"],
             "purificationConditions": conditions["purificationConditions"],

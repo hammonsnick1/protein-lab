@@ -5,7 +5,8 @@ import { describe, it } from "vitest";
 import { citations, citationScope, type CitationId } from "./citations.ts";
 import {
   averageMassKDa, COMPONENT_ROLES, componentRolesFor, crystallizationProfile, DROP_CITATIONS, GUIDANCE_CITATIONS, ligandAdvice,
-  membraneNote, SCREENS, startingConcentration, suggestScreens, type CrystallizationProfile,
+  membraneNote, PUBLISHED_STARTING_RANGE, READ_THE_FIRST_PLATE, SCREENS, startingConcentration, suggestScreens, tailoringNotes,
+  type CrystallizationProfile,
 } from "./crystallization-guidance.ts";
 import type { FactJob, ProteinFacts, RegionFact } from "./protein-facts.ts";
 
@@ -24,7 +25,7 @@ function facts(overrides: Partial<ProteinFacts> = {}): ProteinFacts {
 }
 
 const profile = (overrides: Partial<CrystallizationProfile> = {}): CrystallizationProfile => ({
-  residues: 260, massKDa: 29.2, membrane: "no", disorder: "no", ligands: [], pdbConditions: [], ...overrides,
+  residues: 260, massKDa: 29.2, membrane: "no", disorder: "no", ligands: [], cofactorReview: { status: "known", required: "No" }, pdbConditions: [], ...overrides,
 });
 
 describe("crystallization profile", () => {
@@ -56,6 +57,15 @@ describe("crystallization profile", () => {
     assert.equal(result.massKDa, null);
     assert.match(membraneNote(result) ?? "", /Protein readiness check/);
   });
+
+  it("never reports a missing cofactor answer as none", () => {
+    const reason = "No cofactor is recorded. Choose a UniProt reference, or answer “Requires a cofactor?” in Protein readiness check.";
+    const ligands = (overrides: Partial<ProteinFacts>) => tailoringNotes(crystallizationProfile(facts(overrides))).find((note) => note.label === "Ligands and cofactors")?.value;
+    assert.equal(ligands({ cofactors: { ...missing, reason } }), `Not answered yet — ${reason}`);
+    assert.equal(ligands({ cofactors: { status: "known", value: { required: "No", cofactors: [] }, sources: [] } }), "None needed, by the scientist's review");
+    assert.match(ligands({ cofactors: { status: "known", value: { required: "Yes", cofactors: [] }, sources: [] } }) ?? "", /none is named/);
+    assert.equal(ligands({ cofactors: { status: "known", value: { required: "Not reviewed", cofactors: [{ name: "Zn(2+)", chebiId: null, key: "ion:ZN", sources: [] }] }, sources: [] } }), "Zn(2+)");
+  });
 });
 
 describe("screen suggestions", () => {
@@ -78,16 +88,19 @@ describe("screen suggestions", () => {
   it("promotes Morpheus and names the ligand when one is recorded", () => {
     const morpheus = suggestScreens(profile({ ligands: ["Heme"] })).find((item) => item.screen.id === "morpheus");
     assert.equal(morpheus?.priority, "first");
-    assert.match(morpheus?.why.join(" ") ?? "", /Heme/);
+    assert.match(morpheus?.why.map((line) => line.text).join(" ") ?? "", /Heme/);
     assert.match(ligandAdvice(profile({ ligands: ["Heme"] })) ?? "", /co-crystallization/);
     assert.match(ligandAdvice(profile({ ligands: ["Heme"] })) ?? "", /Add it to/);
     assert.match(ligandAdvice(profile({ ligands: ["Heme", "Mg(2+)"] })) ?? "", /Add them to/);
   });
 
-  it("gives every suggestion a reason and every screen a citation", () => {
-    for (const item of suggestScreens(profile({ membrane: "yes", ligands: ["Zn"] }))) {
-      assert.ok(item.why.length > 0, item.screen.id);
-      assert.ok(item.screen.citations.length > 0, item.screen.id);
+  it("gives every suggestion a reason, every reason a source and every screen a citation", () => {
+    for (const membrane of ["yes", "no", "unknown"] as const) {
+      for (const item of suggestScreens(profile({ membrane, ligands: membrane === "no" ? [] : ["Zn"] }))) {
+        assert.ok(item.why.length > 0, item.screen.id);
+        for (const line of item.why) assert.ok(line.citations.length > 0, line.text);
+        assert.ok(item.screen.citations.length > 0, item.screen.id);
+      }
     }
   });
 });
@@ -107,7 +120,14 @@ describe("starting concentration", () => {
     const advice = startingConcentration(profile({ massKDa: 8, membrane: "yes" }));
     assert.ok(advice.low <= advice.start && advice.start <= advice.high);
     assert.ok(advice.high <= 15);
-    assert.match(advice.why.join(" "), /micelle/);
+    assert.match(advice.why.map((line) => line.text).join(" "), /micelle/);
+  });
+
+  it("labels the size cut-offs as the app's own rule of thumb", () => {
+    for (const massKDa of [null, 8, 29, 150]) {
+      const [size] = startingConcentration(profile({ massKDa })).why;
+      assert.ok(size.citations.includes("pl-crystal-rules"), String(massKDa));
+    }
   });
 });
 
@@ -120,8 +140,18 @@ describe("drop components", () => {
   });
 
   it("reuses buffer-library entries where the component is the same", () => {
-    const linked = COMPONENT_ROLES.flatMap((role) => role.examples).filter((example) => example.library).map((example) => example.library!.id);
-    assert.deepEqual(linked.sort(), ["ddm", "glycerol", "hepes", "mes", "mgcl2", "nacl", "tcep", "tris"]);
+    const linked = COMPONENT_ROLES.flatMap((role) => role.examples).filter((example) => example.library).map((example) => example.library!.entry.id);
+    assert.deepEqual(linked.sort(), ["ddm", "glycerol", "hepes", "mes", "nacl", "tcep", "tris"]);
+  });
+
+  it("sources every typical amount, tip and reused library caution", () => {
+    for (const role of COMPONENT_ROLES) {
+      assert.ok(role.tip.citations.length > 0, role.id);
+      for (const example of role.examples) {
+        assert.ok(example.citations.length > 0, example.name);
+        if (example.library) assert.ok(example.library.citations.length > 0, example.name);
+      }
+    }
   });
 });
 
@@ -131,8 +161,11 @@ describe("citations", () => {
       ...Object.values(SCREENS).flatMap((screen) => screen.citations),
       ...COMPONENT_ROLES.flatMap((role) => role.citations),
       ...DROP_CITATIONS,
-      ...startingConcentration(profile({ membrane: "yes" })).citations,
-      "jancarik1991", "newman2005", "hassell2007", "dale2003", "asherie2004", "chayen2008",
+      ...COMPONENT_ROLES.flatMap((role) => [...role.tip.citations, ...role.examples.flatMap((example) => [...example.citations, ...example.library?.citations ?? []])]),
+      ...[profile({ membrane: "yes", disorder: "yes" }), profile({ massKDa: 8 }), profile({ massKDa: 150 })].flatMap((item) => startingConcentration(item).why.flatMap((line) => line.citations)),
+      ...[profile({ membrane: "yes", ligands: ["Zn"] }), profile({ membrane: "unknown" })].flatMap((item) => suggestScreens(item).flatMap((suggestion) => suggestion.why.flatMap((line) => line.citations))),
+      ...PUBLISHED_STARTING_RANGE.citations, ...READ_THE_FIRST_PLATE.citations,
+      "jancarik1991", "newman2005", "hassell2007", "dale2003", "asherie2004", "chayen2008", "pdb2000", "pl-crystal-rules",
     ]);
     const scope = citationScope("test", GUIDANCE_CITATIONS);
     for (const id of used) assert.doesNotThrow(() => scope.number(id), id);
