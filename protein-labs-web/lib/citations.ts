@@ -143,6 +143,37 @@ const entries = [
     title: "Biological Magnetic Resonance Data Bank",
     source: "Nucleic Acids Res 51:D368–D376", doi: "10.1093/nar/gkac1050", url: "https://bmrb.io",
   },
+  // Reading an HSQC spectrum (HOM-314).
+  {
+    id: "bodenhausen1980", kind: "article", name: "HSQC experiment", authors: "Bodenhausen G, Ruben DJ", year: "1980",
+    title: "Natural abundance nitrogen-15 NMR by enhanced heteronuclear spectroscopy",
+    source: "Chem Phys Lett 69:185–189", doi: "10.1016/0009-2614(80)80041-8",
+  },
+  {
+    id: "kay1992", kind: "article", name: "Sensitivity-enhanced HSQC", authors: "Kay L, Keifer P, Saarinen T", year: "1992",
+    title: "Pure absorption gradient enhanced heteronuclear single quantum correlation spectroscopy with improved sensitivity",
+    source: "J Am Chem Soc 114:10663–10665", doi: "10.1021/ja00052a088",
+  },
+  {
+    id: "cavanagh2007", kind: "book", name: "Protein NMR Spectroscopy", authors: "Cavanagh J, Fairbrother WJ, Palmer AG, Rance M, Skelton NJ", year: "2007",
+    title: "Multidimensional NMR spectroscopy",
+    source: "In: Protein NMR Spectroscopy: Principles and Practice, 2nd ed., Elsevier, pp. 271–332", doi: "10.1016/B978-012164491-8/50006-3",
+  },
+  {
+    id: "pervushin1997", kind: "article", name: "TROSY", authors: "Pervushin K, Riek R, Wider G, Wüthrich K", year: "1997",
+    title: "Attenuated T2 relaxation by mutual cancellation of dipole–dipole coupling and chemical shift anisotropy indicates an avenue to NMR structures of very large biological macromolecules in solution",
+    source: "Proc Natl Acad Sci USA 94:12366–12371", doi: "10.1073/pnas.94.23.12366",
+  },
+  {
+    id: "wishart1995", kind: "article", name: "Random-coil shifts", authors: "Wishart DS, Bigam CG, Holm A, Hodges RS, Sykes BD", year: "1995",
+    title: "1H, 13C and 15N random coil NMR chemical shifts of the common amino acids. I. Investigations of nearest-neighbor effects",
+    source: "J Biomol NMR 5:67–81", doi: "10.1007/BF00227471",
+  },
+  {
+    id: "nmrfam-sparky", kind: "software", name: "NMRFAM-SPARKY", authors: "Lee W, Tonelli M, Markley JL", year: "2015",
+    title: "NMRFAM-SPARKY: enhanced software for biomolecular NMR spectroscopy",
+    source: "Bioinformatics 31:1325–1327", doi: "10.1093/bioinformatics/btu830", url: "https://nmrfam.wisc.edu/nmrfam-sparky-distribution/",
+  },
   {
     id: "ccd", kind: "database", name: "Chemical Component Dictionary (CCD)", authors: "Westbrook JD, Shao C, Feng Z, Zhuravleva M, Velankar S, Young J", year: "2015",
     title: "The chemical component dictionary: complete descriptions of constituent molecules in experimentally determined 3D macromolecules in the Protein Data Bank",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Atom, BadgeCheck, Beaker, BookOpen, Boxes, Check, ChevronRight, CircleCheck, Dna, FlaskConical, Gem, GitBranch, Microscope, Search } from "lucide-react";
+import { Activity, Atom, BadgeCheck, Beaker, BookOpen, Boxes, Check, ChevronRight, CircleCheck, Dna, FlaskConical, Gem, GitBranch, Radar, Microscope, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
@@ -23,12 +23,14 @@ const jobIcons = {
   "purification-sec": Activity,
   "purification-workflow": GitBranch,
   crystallize: Gem,
+  hsqc: Radar,
 } as const;
 
 const workflowDefinitions = workflowJobs.filter((definition) => definition.stage === "understand" || definition.stage === "plan");
 const workflowSectionDefinitions = workflowSections.filter((section) => section.id === "understand" || section.id === "plan");
 // Crystallization follows the bench work, so its section sits after the roadmap.
 const crystallizeSection = workflowSections.find((section) => section.id === "crystallize")!;
+const nmrSection = workflowSections.find((section) => section.id === "nmr")!;
 
 export function ProjectDashboard({ bundle, onResume, onRoadmap, onReports }: { bundle: ProteinBundle; onResume: () => void; onRoadmap: () => void; onReports: () => void }) {
   const [page, setPage] = useState(0);
@@ -67,6 +69,7 @@ export function ProjectWorkflow({ bundle, onOpenJob, onRoadmap }: { bundle: Prot
         {workflowSectionDefinitions.map((section) => <WorkflowSection key={section.id} bundle={bundle} section={section} onOpenJob={onOpenJob}/>)}
         <section className="workflow-card-section roadmap-launch-section" style={{ "--section-color": "#ef8f47" } as React.CSSProperties}><header><span><strong>Purify your protein</strong><small>Carry the approved plan to the bench in its data-linked roadmap.</small></span><b>{workflowComplete ? "READY" : "LIVE"}</b></header><button className="workflow-roadmap-launch" onClick={onRoadmap}><span><FlaskConical/></span><strong>Open purification roadmap</strong><small>Run transformation, lysis, capture, cleavage, cleanup, SEC, and quality control. Workflow choices populate the steps automatically.</small><em className={workflowComplete ? "completed" : "available"}>{workflowComplete ? "plan ready" : "available now"}</em><ChevronRight/></button></section>
         <WorkflowSection bundle={bundle} section={crystallizeSection} onOpenJob={onOpenJob}/>
+        <WorkflowSection bundle={bundle} section={nmrSection} onOpenJob={onOpenJob}/>
       </div></section>
     </div>
   </main>;

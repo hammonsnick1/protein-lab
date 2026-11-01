@@ -164,6 +164,9 @@ export const proteinLabsApi = {
   // `readAssessment` in lib/crystallization.ts. See
   // protein-labs/backend/CRYSTALLIZATION_API.md.
   getCrystallization: (proteinId: string) => request<JsonObject>(`/v1/protein-planner/proteins/${proteinId}/crystallization`),
+  // ¹H–¹⁵N HSQC shift prediction; the raw body goes through `readHsqcPrediction`
+  // in lib/hsqc.ts. See protein-labs/backend/NMR_API.md.
+  predictHsqc: (body: JsonObject) => post<JsonObject>("/v1/nmr/hsqc/predict", body),
   createJob: (proteinId: string, name: string, appType: string, config: JsonObject = {}) => post<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs`, { name, appType, config }),
   updateJob: (proteinId: string, jobId: string, name: string, status: ProjectJob["status"], config: JsonObject) => patch<ProjectJob>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { name, status, config }),
   deleteJob: (proteinId: string, jobId: string) => request<{ deleted: string }>(`/v1/protein-planner/proteins/${proteinId}/jobs/${jobId}`, { method: "DELETE" }),

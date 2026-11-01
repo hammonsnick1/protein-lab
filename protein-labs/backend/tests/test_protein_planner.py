@@ -33,6 +33,7 @@ WORKFLOW_APP_TYPES = [
     "chromatogram-studio",
     "gel-analysis",
     "crystallization",
+    "hsqc-prediction",
 ]
 
 

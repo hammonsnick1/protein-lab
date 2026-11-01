@@ -7,7 +7,7 @@ import { completedByStage, jobStatusRows, niceMax, perWeek, projectsOverTime, ty
 import { workflowJobs, workflowSections } from "@/lib/workflow";
 
 const WEEKS = 8;
-const stageLabels: Record<string, string> = { understand: "Understand", plan: "Plan", purify: "Purify", analysis: "Analyse", crystallize: "Crystallize" };
+const stageLabels: Record<string, string> = { understand: "Understand", plan: "Plan", purify: "Purify", analysis: "Analyse", crystallize: "Crystallize", nmr: "NMR" };
 const stageOf = (appType: string) => workflowJobs.find((job) => job.appType === appType)?.stage;
 
 export type BundlesState = "loading" | "ready" | "error";

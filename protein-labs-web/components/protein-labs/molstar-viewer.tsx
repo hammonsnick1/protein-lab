@@ -40,6 +40,8 @@ export type MolstarViewerProps = {
   onLigandPick?: (atom: PickedLigandAtom) => void;
   /** The pointer moved onto (or off) a ligand atom in 3D. */
   onLigandHover?: (atom: PickedLigandAtom | null) => void;
+  /** A polymer residue was clicked in 3D or in the sequence strip. */
+  onResiduePick?: (residue: ResidueAddress) => void;
 };
 
 type Status = { state: "loading" | "ready" | "error"; message: string };
@@ -61,7 +63,7 @@ const toLegacy = (value: StageRepresentation) => value === "cartoon" ? "ribbon" 
 
 const OPACITY_KEY = "protein-labs-structure-surface-opacity";
 
-export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null, controlsHost, conservation, ligandAtom = null, hoveredLigandAtom = null, onLigandPick, onLigandHover }: MolstarViewerProps) {
+export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null, controlsHost, conservation, ligandAtom = null, hoveredLigandAtom = null, onLigandPick, onLigandHover, onResiduePick }: MolstarViewerProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<MolstarStage | null>(null);
   const [status, setStatus] = useState<Status>({ state: "loading", message: "Loading the 3D viewer…" });
@@ -83,7 +85,8 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   // The stage subscribes once; these refs hand it the latest callbacks.
   const ligandPick = useRef(onLigandPick);
   const ligandHover = useRef(onLigandHover);
-  useEffect(() => { ligandPick.current = onLigandPick; ligandHover.current = onLigandHover; }, [onLigandPick, onLigandHover]);
+  const residuePick = useRef(onResiduePick);
+  useEffect(() => { ligandPick.current = onLigandPick; ligandHover.current = onLigandHover; residuePick.current = onResiduePick; }, [onLigandPick, onLigandHover, onResiduePick]);
   const [saving, setSaving] = useState<string | null>(null);
   const [surfaceOpacity, setSurfaceOpacity] = useState(100);
   const [proteinAtoms, setProteinAtoms] = useState<InterfaceAtom[]>([]);
@@ -123,7 +126,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
       const stage = await MolstarStage.create(element, cssTheme());
       if (cancelled) { stage.dispose(); return; }
       stage.onHover((residue) => setHovered(residue ? residueKey(residue.labelAsymId, residue.labelSeqId) : null));
-      stage.onClick((residue) => setPicked(residue));
+      stage.onClick((residue) => { setPicked(residue); if (residue) residuePick.current?.({ labelAsymId: residue.labelAsymId, labelSeqId: residue.labelSeqId }); });
       stage.onLigandClick((atom) => { setPickedAtom(atom); if (atom) ligandPick.current?.(atom); });
       stage.onLigandHover((atom) => ligandHover.current?.(atom));
       stageRef.current = stage;
@@ -208,7 +211,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
     } catch (reason) { setSaving(`The image could not be saved. ${messageOf(reason)}`); }
   }
   function hoverFromStrip(residue: StageResidue | null) { setHovered(residue ? residueKey(residue.labelAsymId, residue.labelSeqId) : null); stageRef.current?.hoverResidue(residue); }
-  function pickFromStrip(residue: StageResidue) { setPicked(residue); setPickedAtom(null); stageRef.current?.focusResidue(residue); }
+  function pickFromStrip(residue: StageResidue) { setPicked(residue); setPickedAtom(null); stageRef.current?.focusResidue(residue); residuePick.current?.({ labelAsymId: residue.labelAsymId, labelSeqId: residue.labelSeqId }); }
 
   const chainCount = new Set(residues.map((item) => item.labelAsymId)).size;
   const controls = <>
