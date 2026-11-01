@@ -7,7 +7,9 @@ import { ensureProjectJob, proteinLabsApi, type JsonObject, type ProteinBundle }
 import { readableMethod, regionSections, regionSelection, residueLabel, stepRegion, structureOptionLabel, type RegionsResponse, type StructureApiError, type StructureDetail, type StructureEntry, type StructureRegion } from "@/lib/structure-regions";
 import { CHOICE_GROUPS, choiceKey, mappedChainIds, nextChoiceKey, normalizePdbId, percentText, researchHits, structureChoices, type ResearchHit, type StructureChoice } from "@/lib/structure-hits";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
-import type { ViewerRegion } from "@/components/protein-labs/molstar-viewer";
+import type { ViewerLigandAtom, ViewerRegion } from "@/components/protein-labs/molstar-viewer";
+import { Ligand2DPanel } from "@/components/protein-labs/ligand-2d-panel";
+import { drawableLigands, ligandForPick, ligandKey, regionForLigand, regionLigand, type LigandInstance, type PickedLigandAtom } from "@/lib/ligand-depiction";
 import { normalizeHits } from "@/lib/blast-alignment";
 import { jobSubtitle, preferredJob } from "@/lib/conservation";
 import { alignmentProfile, consurfProfile, MIN_ALIGNMENT_HITS, type ConservationSourceState, type ConservationSources } from "@/lib/conservation-coloring";
@@ -27,6 +29,11 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   const [regions, setRegions] = useState<Load<RegionsResponse>>(idle);
   const [regionId, setRegionId] = useState<string | null>(null);
   const [showAdditives, setShowAdditives] = useState(false);
+  // The ligand drawn in 2D, the atom picked in either view (focus: the camera turns to it), and the atom under the pointer in each view.
+  const [ligand2d, setLigand2d] = useState<LigandInstance | null>(null);
+  const [pickedAtom, setPickedAtom] = useState<{ name: string; focus: boolean } | null>(null);
+  const [hover2d, setHover2d] = useState<string | null>(null);
+  const [hover3d, setHover3d] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const savedModels = bundle.alphaFoldModels.length;
   const hits = useMemo(() => researchHits(bundle.pdbMatches), [bundle.pdbMatches]);
@@ -53,7 +60,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
     if (!selected) return;
     let active = true;
     const key = choiceKey(selected);
-    queueMicrotask(() => { if (!active) return; setDetail({ state: "loading", value: null, message: "", key }); setRegions({ state: "loading", value: null, message: "" }); setRegionId(null); });
+    queueMicrotask(() => { if (!active) return; setDetail({ state: "loading", value: null, message: "", key }); setRegions({ state: "loading", value: null, message: "" }); setRegionId(null); closeLigand(); });
     proteinLabsApi.getStructure(proteinId, selected.source, selected.id)
       .then((value) => { if (active) setDetail({ state: "ready", value, message: "", key }); })
       .catch((reason: unknown) => { if (active) setDetail({ state: "error", value: null, message: errorText(reason), key }); });
@@ -71,11 +78,44 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   const region = sections.flatMap((section) => section.regions).find((item) => item.id === regionId) ?? null;
   const selection = useMemo(() => region ? regionSelection(region) : null, [region]);
   const viewerRegion = useMemo<ViewerRegion | null>(() => region && selection && selection.status !== "unmapped" ? { id: region.id, residues: selection.residues, ligand: selection.ligand } : null, [region, selection]);
-  const step = useCallback((delta: 1 | -1) => setRegionId((current) => stepRegion(sections, current, delta)), [sections]);
+  const allRegions = useMemo(() => regions.value?.groups ?? [], [regions.value]);
   const geometry = useMemo<JsonObject | null>(() => current.state === "ready" && detail.value ? { structureText: detail.value.structureText, format: detail.value.format ?? "cif", source: selected?.source ?? null } : null, [current.state, detail.value, selected?.source]);
   // Research and typed-in entries arrive without chains or ligands; the loaded coordinates fill them in.
   const facts = useMemo(() => selected && current.state === "ready" && detail.value?.structure ? { ...selected, ...detail.value.structure, siftsAvailable: selected.siftsAvailable, mappedChains: selected.mappedChains ?? mappedChainIds(detail.value.mapping?.residues) } : selected, [selected, current.state, detail.value]);
 
+  const ligands = useMemo(() => selected?.source === "pdb" && facts ? drawableLigands(facts.ligands, { showAdditives }) : [], [selected?.source, facts, showAdditives]);
+  const ligandAddress = useMemo(() => ligand2d ? { labelAsymId: ligand2d.labelChainId, authSeqId: ligand2d.authSeqId, insertionCode: ligand2d.insertionCode, compId: ligand2d.ccdId } : null, [ligand2d]);
+  const viewerAtom = useMemo(() => ligandAddress && pickedAtom ? { ligand: ligandAddress, atomName: pickedAtom.name, focus: pickedAtom.focus } : null, [ligandAddress, pickedAtom]);
+  const viewerHover = useMemo<ViewerLigandAtom | null>(() => ligandAddress && hover2d ? { ligand: ligandAddress, atomName: hover2d } : null, [ligandAddress, hover2d]);
+
+  function closeLigand() { setLigand2d(null); setPickedAtom(null); setHover2d(null); setHover3d(null); }
+  function openLigand(ligand: LigandInstance | null) {
+    if (!ligand) { closeLigand(); return; }
+    if (ligand2d && ligandKey(ligand2d) === ligandKey(ligand)) return;
+    setLigand2d(ligand); setPickedAtom(null); setHover2d(null); setHover3d(null);
+  }
+  /** Choosing a ligand binding site opens its 2D drawing; any other region closes it. */
+  function chooseRegion(id: string | null) {
+    setRegionId(id);
+    openLigand(regionLigand(allRegions.find((item) => item.id === id) ?? null));
+  }
+  function step(delta: 1 | -1) { chooseRegion(stepRegion(sections, regionId, delta)); }
+  /** A ligand from the 2D panel's list: draw it, and highlight its binding site when the engine found one. */
+  function chooseLigand(ligand: LigandInstance) {
+    const site = regionForLigand(allRegions, ligand);
+    setRegionId(site && sections.some((section) => section.regions.includes(site)) ? site.id : null);
+    openLigand(ligand);
+  }
+  /** A ligand atom clicked in 3D: draw that ligand (if it is listed) and mark the atom in 2D. */
+  function pickFrom3d(atom: PickedLigandAtom) {
+    const ligand = ligandForPick(ligands, atom);
+    if (!ligand) return;
+    if (!ligand2d || ligandKey(ligand2d) !== ligandKey(ligand)) chooseLigand(ligand);
+    setPickedAtom({ name: atom.atomName, focus: false });
+  }
+  function hoverFrom3d(atom: PickedLigandAtom | null) {
+    setHover3d(atom && ligand2d && ligandKey(atom) === ligandKey(ligand2d) ? atom.atomName : null);
+  }
   function choose(key: string) { setSelectedKey(key); }
   function loadId(id: string) {
     const key = `pdb:${id}`;
@@ -115,10 +155,15 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   return <div ref={workbench} className={`structure-layout structure-workbench ${panelOpen ? "panel-open" : "panel-closed"}`} style={fillHeight ? { "--structure-fill-height": `${fillHeight}px` } as CSSProperties : undefined}>
     <section className="lab-panel structure-view">
       <div className="panel-heading"><div><h2>{facts ? structureOptionLabel(facts) : "Structure Viewer"}</h2><p>{legacy ? "Saved AlphaFold model. Experimental entries need the structure service of the local engine." : facts?.title || choice?.hit?.description || (selected?.source === "alphafold_db" ? "AlphaFold DB model of the reference UniProt entry" : "Choose an AlphaFold model or an experimental PDB entry")}</p></div></div>
-      {legacy ? <LegacyPreview bundle={bundle}/> : <div className="molecule-stage">
-        {current.state === "ready" && geometry && selected
-          ? <StructureViewer geometry={geometry} paletteKey={proteinId} label={selected.id} confidence={selected.source === "alphafold_db"} region={viewerRegion} controlsHost={controlsHost} conservation={conservation}/>
-          : <StageMessage list={list} detail={current} selected={selected} hasChoices={choices.length > 0} onRetry={() => setReload((value) => value + 1)} onOpenResearch={openResearch}/>}
+      {legacy ? <LegacyPreview bundle={bundle}/> : <div className={`structure-stage-row ${ligand2d && viewerShown ? "with-ligand" : ""}`}>
+        <div className="molecule-stage">
+          {current.state === "ready" && geometry && selected
+            ? <StructureViewer geometry={geometry} paletteKey={proteinId} label={selected.id} confidence={selected.source === "alphafold_db"} region={viewerRegion} controlsHost={controlsHost} conservation={conservation}
+              ligandAtom={viewerAtom} hoveredLigandAtom={viewerHover} onLigandPick={pickFrom3d} onLigandHover={hoverFrom3d}/>
+            : <StageMessage list={list} detail={current} selected={selected} hasChoices={choices.length > 0} onRetry={() => setReload((value) => value + 1)} onOpenResearch={openResearch}/>}
+        </div>
+        {ligand2d && viewerShown && selected && <Ligand2DPanel proteinId={proteinId} structureId={selected.id} ligands={ligands.some((item) => ligandKey(item) === ligandKey(ligand2d)) ? ligands : [ligand2d, ...ligands]} ligand={ligand2d}
+          atomName={pickedAtom?.name ?? null} hoveredAtomName={hover3d} onChooseLigand={chooseLigand} onPickAtom={(name) => setPickedAtom(name ? { name, focus: true } : null)} onHoverAtom={setHover2d} onClose={closeLigand}/>}
       </div>}
     </section>
     <aside ref={panel} className="structure-panel" aria-label="Structure tools">
@@ -143,7 +188,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
       </section>
       {viewerShown && <div ref={setControlsHost} className="structure-controls-slot"/>}
       <RegionsPanel state={legacy ? { state: "error", value: null, message: "the local engine has no structure service yet." } : regions} sections={sections} region={region} selection={selection} showAdditives={showAdditives} disabled={!selected || current.state !== "ready"}
-        onChoose={setRegionId} onStep={step} onToggleAdditives={setShowAdditives}/>
+        onChoose={chooseRegion} onStep={step} onToggleAdditives={setShowAdditives}/>
       <AlphaFoldActions bundle={bundle} onChanged={onChanged}/>
     </div>
     </aside>

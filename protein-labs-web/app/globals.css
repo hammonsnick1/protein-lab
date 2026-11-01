@@ -15882,6 +15882,58 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 @media (prefers-reduced-motion: reduce) {
   .structure-workbench * { scroll-behavior: auto; }
 }
+/* 2D ligand drawing beside the 3D view (HOM-307). The RDKit drawing keeps its
+   white paper in both themes, as on the RCSB ligand pages; the rings that link
+   it to the 3D view use the same accent (hover) and primary (picked) colours. */
+.structure-workbench .structure-stage-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; flex: 1; min-height: 0; }
+.structure-workbench .structure-stage-row.with-ligand { grid-template-columns: minmax(0, 1fr) clamp(300px, 34%, 420px); }
+.structure-workbench .structure-stage-row > .molecule-stage { height: auto; min-height: 0; }
+.ligand-2d { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 13px; line-height: 1.45; scrollbar-width: thin; }
+.ligand-2d-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.ligand-2d-head h3 { margin: 0; font-size: 15px; }
+.ligand-2d-head p { margin: 2px 0 0; color: var(--muted-foreground); font-size: 12px; }
+.ligand-2d-head a { display: inline-flex; align-items: center; gap: 3px; color: var(--foreground); font-weight: 650; }
+.ligand-2d-head a svg { width: 12px; height: 12px; }
+.ligand-2d-choice { margin: 0; }
+.ligand-2d-choice select { padding: 7px 10px; }
+.ligand-2d-status { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 12px; border: 1px dashed var(--border); border-radius: 10px; text-align: center; }
+.ligand-2d-status svg { width: 20px; height: 20px; }
+.ligand-2d-status small { color: var(--muted-foreground); font-size: 12px; }
+.ligand-2d-status.error strong { color: var(--destructive); }
+.ligand-2d-status .ligand-2d-detail { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; }
+.ligand-2d-figure { margin: 0; }
+.ligand-2d-drawing { position: relative; width: 100%; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #ffffff; }
+.ligand-2d-drawing img,
+.ligand-2d-drawing svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ligand-2d-drawing img { user-select: none; pointer-events: none; }
+.ligand-2d-drawing.pointing svg { cursor: pointer; }
+.ligand-2d-drawing circle { fill: none; stroke-width: 3; }
+.ligand-2d-drawing circle.hovered { stroke: var(--accent); fill: color-mix(in srgb, var(--accent) 22%, transparent); }
+.ligand-2d-drawing circle.picked { stroke: var(--primary); fill: color-mix(in srgb, var(--primary) 18%, transparent); }
+.ligand-2d-figure figcaption { margin-top: 6px; color: var(--muted-foreground); font-size: 12px; }
+.ligand-2d-selected { margin: 0; font-size: 12px; }
+.ligand-2d-stereo { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; margin: 0; font-size: 12px; }
+.ligand-2d-stereo dt { color: var(--muted-foreground); font-weight: 650; }
+.ligand-2d-stereo dd { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; }
+.ligand-2d-stereo .muted { color: var(--muted-foreground); }
+.ligand-2d-bond { padding: 2px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); font-variant-numeric: tabular-nums; }
+.ligand-2d-atom { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font-size: 12px; cursor: pointer; }
+.ligand-2d-atom strong { color: var(--primary); }
+.ligand-2d-atom:hover { border-color: var(--accent); }
+.ligand-2d-atom.active { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, var(--card)); }
+.ligand-2d-atom:focus-visible,
+.ligand-2d details summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.ligand-2d details { border: 1px solid var(--border); border-radius: 10px; background: var(--background); }
+.ligand-2d details summary { padding: 7px 10px; font-size: 12px; font-weight: 650; cursor: pointer; }
+.ligand-2d-atoms > div { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px 10px; }
+.ligand-2d-help dl { margin: 0; padding: 0 10px 10px; font-size: 12px; }
+.ligand-2d-help dt { margin-top: 8px; font-weight: 650; }
+.ligand-2d-help dd { margin: 2px 0 0; color: var(--muted-foreground); }
+.ligand-2d-refs { font-size: 12px; }
+@media (max-width: 1279px) {
+  /* Narrow windows: the drawing sits under the 3D view instead of beside it. */
+  .structure-workbench .structure-stage-row.with-ligand { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(320px, 1fr) minmax(0, 46%); }
+}
 .structure-workbench .structure-side,
 .structure-workbench .sequence-strip { scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent; }
 

@@ -137,6 +137,27 @@ const entries = [
     title: "The chemical component dictionary: complete descriptions of constituent molecules in experimentally determined 3D macromolecules in the Protein Data Bank",
     source: "Bioinformatics 31:1274–1278", doi: "10.1093/bioinformatics/btu789", url: "https://www.wwpdb.org/data/ccd",
   },
+  // Reading a 2D ligand drawing (HOM-307): wedges and hashes, R/S and E/Z.
+  {
+    id: "iupac2006stereo", kind: "article", name: "IUPAC wedge and hash bonds", authors: "Brecher J", year: "2006",
+    title: "Graphical representation of stereochemical configuration (IUPAC Recommendations 2006)",
+    source: "Pure Appl Chem 78:1897–1970", doi: "10.1351/pac200678101897",
+  },
+  {
+    id: "cip1966", kind: "article", name: "Cahn–Ingold–Prelog rules", authors: "Cahn RS, Ingold C, Prelog V", year: "1966",
+    title: "Specification of molecular chirality",
+    source: "Angew Chem Int Ed Engl 5:385–415", doi: "10.1002/anie.196603851",
+  },
+  {
+    id: "iupac2013", kind: "book", name: "IUPAC Blue Book", authors: "Favre HA, Powell WH", year: "2013",
+    title: "Nomenclature of Organic Chemistry: IUPAC Recommendations and Preferred Names 2013",
+    source: "Royal Society of Chemistry, Cambridge", doi: "10.1039/9781849733069",
+  },
+  {
+    id: "hanson2018cip", kind: "article", name: "CIP rules for software", authors: "Hanson RM, Musacchio S, Mayfield JW, Vainio MJ, Yerin A, Redkin D", year: "2018",
+    title: "Algorithmic analysis of Cahn–Ingold–Prelog rules of stereochemistry: proposals for revised rules and a guide for machine implementation",
+    source: "J Chem Inf Model 58:1755–1765", doi: "10.1021/acs.jcim.8b00324",
+  },
   {
     id: "opencloning", kind: "software", name: "OpenCloning", authors: "Lera-Ramirez M", year: "2022",
     title: "OpenCloning backend", source: "GitHub", url: "https://github.com/OpenCloning/OpenCloning_backend",
