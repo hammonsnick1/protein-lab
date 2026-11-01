@@ -240,3 +240,60 @@ author residue number plus chain (`pdbResidueNumber`, `pdbChain`), the same
 pair this contract uses, so a viewer can colour a structure by conservation
 without going back through sequence positions. Residues with
 `modelled: false` have a grade but no coordinates and must be skipped.
+
+## Readiness evidence
+
+`GET /v1/protein-planner/proteins/{proteinId}/readiness/evidence`
+
+Model confidence and conservation, numbered on the construct, for the protein
+readiness check's disorder answer. No external request is made; it reads the
+saved model and ConSurf run.
+
+```json
+{
+  "proteinId": "…",
+  "constructLength": 260,
+  "modelConfidence": {
+    "modelId": "AF-P00918-F1", "source": "AlphaFold DB", "accession": "P00918", "name": "…",
+    "numbering": "…",
+    "threshold": 50.0,
+    "minimumRunLength": 10,
+    "meanPlddt": 97.37,
+    "modelResidueCount": 260,
+    "lowConfidenceResidueCount": 1,
+    "lowConfidenceRegions": [
+      {"modelStart": 249, "modelEnd": 260, "length": 12, "constructStart": 269, "constructEnd": 270, "meanPlddt": 30.0}
+    ],
+    "shortLowConfidenceRuns": 1,
+    "constructResiduesNotInModel": [{"start": 1, "end": 20}],
+    "mismatches": 0,
+    "error": ""
+  },
+  "conservation": {
+    "jobId": "…", "source": "consurf-db", "pdbId": "1CA3", "chain": "A",
+    "identicalPdbId": "5Y2S", "identicalChain": "A",
+    "constructGrades": "9634…",
+    "gradedConstructResidues": 260
+  }
+}
+```
+
+- **Model choice.** An AlphaFold Server model (predicted from the construct)
+  first, then the AlphaFold DB model of the reference selected in Choose
+  reference match, then the newest model. `modelConfidence` is `null` when the
+  project has no model; a model that cannot be parsed keeps its identity and
+  sets `error`, without the confidence fields.
+- **Numbering.** All positions are one-based. `model*` positions count along
+  the model's first chain (UniProt positions for AlphaFold DB);
+  `construct*` positions come from the same construct-to-reference alignment
+  the structure mapping uses. A region with no aligned construct residue has
+  `constructStart`/`constructEnd` `null`.
+- **Thresholds.** A residue is low confidence below pLDDT 50 (Tunyasuvunakool
+  et al. 2021). Only runs of at least `minimumRunLength` residues are listed as
+  `lowConfidenceRegions`; shorter runs (typically a frayed terminus) are only
+  counted. Construct residues not in the model (tags, linkers) are listed in
+  `constructResiduesNotInModel` and are not assessed.
+- **Conservation.** `constructGrades` has one character per construct residue:
+  the ConSurf grade `1`–`9`, or `.` when no ConSurf row aligns or the row is
+  flagged as insufficient data. It comes from the newest complete run and is
+  `null` when there is none.
