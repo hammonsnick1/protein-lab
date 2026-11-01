@@ -115,6 +115,14 @@ def test_renumbering_keeps_the_first_chain_when_both_copies_are_predicted(monkey
     assert any("more than one chain" in warning for warning in result["warnings"])
 
 
+def test_renumbering_keeps_the_first_copy_when_unchained_rows_repeat_a_position(monkeypatch):
+    mapping = _mapping("A", 10, 1) + _mapping("B", 10, 1)
+    _predictor(monkeypatch, "SEQ_ID,ATOM_TYPE,CHEMICAL_SHIFT\n10,H,8.5\n10,N,118.0\n10,HN,8.6\n10,N,119.0")
+    result = predict_hsqc({"sequence": "G", "structureText": "ATOM", "residueMapping": mapping})
+    assert (result["residues"][0]["hShiftPpm"], result["residues"][0]["nShiftPpm"]) == (8.5, 118.0)
+    assert any("more than one chain" in warning for warning in result["warnings"])
+
+
 def test_without_residue_mapping_seq_id_is_still_the_construct_position(monkeypatch):
     _predictor(monkeypatch, "SEQ_ID,ATOM_TYPE,CHEMICAL_SHIFT\n2,H,8.8")
     result = predict_hsqc({"sequence": "GS", "structureText": "ATOM"})

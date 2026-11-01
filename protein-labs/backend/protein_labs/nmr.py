@@ -118,6 +118,7 @@ def _normalise_rows(rows: list[dict[str, Any]], mapping: list[dict[str, Any]] | 
     unmapped: set[tuple[str, str, str]] = set()
     sources: dict[int, str] = {}
     duplicates: set[int] = set()
+    seen_atoms: set[tuple[int, str]] = set()
     for row in rows:
         atom = str(row.get("ATOM_TYPE") or row.get("atomType") or row.get("atom") or "").upper()
         position_text = row.get("SEQ_ID") or row.get("sequencePosition") or row.get("residueNumber")
@@ -136,9 +137,12 @@ def _normalise_rows(rows: list[dict[str, Any]], mapping: list[dict[str, Any]] | 
                 unmapped.add((chain, _text(position_text), code))
                 continue
             # A homo-oligomer predicts every copy; the first chain seen for a position is kept.
-            if sources.setdefault(found, chain) != chain:
+            # Without a chain column the copies share chain "", so a repeated atom marks the next copy.
+            atom_key = (found, "H" if atom == "HN" else atom)
+            if sources.setdefault(found, chain) != chain or atom_key in seen_atoms:
                 duplicates.add(found)
                 continue
+            seen_atoms.add(atom_key)
             position = found
         if atom in {"H", "HN", "N"}:
             backbone.setdefault(position, {})["H" if atom in {"H", "HN"} else "N"] = value
