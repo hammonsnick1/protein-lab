@@ -16878,8 +16878,29 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .xtal-proscons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
 .xtal-proscons ul.pros li::marker { content: "+  "; color: #36ad89; font-weight: 700; }
 .xtal-proscons ul.cons li::marker { content: "−  "; color: #e56565; font-weight: 700; }
+/* Optimizing a hit (HOM-373) */
+.xtal-hit-form { display: grid; gap: 8px; }
+.xtal-hit-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; }
+.xtal-hit-fields .lab-field { margin-bottom: 8px; }
+.xtal-hit-fields .lab-field input, .xtal-hit-fields .lab-field select { padding: 7px 9px; font-weight: 500; }
+.xtal-hit-fields .lab-field.wide { grid-column: span 2; }
+.xtal-hit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.xtal-hit-actions small { color: var(--muted-foreground); }
+.xtal-plate { min-width: 560px; }
+.xtal-plate caption { caption-side: bottom; text-align: left; padding-top: 6px; color: var(--muted-foreground); font-size: 12px; }
+.xtal-plate th, .xtal-plate td { text-align: center; }
+.xtal-plate thead th:first-child, .xtal-plate tbody th { width: 1%; white-space: nowrap; text-align: left; }
+.xtal-well-id { display: block; font-size: 12px; font-weight: 700; color: var(--muted-foreground); letter-spacing: .04em; }
+.xtal-plate td.hit { background: color-mix(in srgb, var(--primary) 14%, var(--card)); outline: 2px solid color-mix(in srgb, var(--primary) 60%, var(--border)); outline-offset: -2px; }
+.xtal-hit-tag { display: block; font-size: 12px; letter-spacing: .06em; color: var(--primary); }
+.xtal-techniques { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px; }
+.xtal-techniques > li { border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 9px; padding: 9px 12px; }
+.xtal-techniques > li.suggested { border-left-color: #36ad89; }
+.xtal-technique-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 4px; }
+.xtal-technique-head strong { font-size: 14px; }
 @media (max-width: 760px) {
   .xtal-phase, .xtal-proscons { grid-template-columns: 1fr; }
+  .xtal-hit-fields .lab-field.wide { grid-column: auto; }
 }
 /* SVG parts */
 .xg-zone.under { fill: color-mix(in srgb, var(--muted-foreground) 6%, transparent); }

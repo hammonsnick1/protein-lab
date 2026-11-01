@@ -357,6 +357,58 @@ const entries = [
     title: "Searching for silver bullets: an alternative strategy for crystallizing macromolecules",
     source: "J Struct Biol 156:387–406", doi: "10.1016/j.jsb.2006.09.006",
   },
+  // Optimizing a crystal hit (HOM-373): grid refinement, seeding, drop
+  // geometry, vapour-diffusion rate and construct changes.
+  {
+    id: "mcpherson-cudney2014", kind: "article", authors: "McPherson A, Cudney B", year: "2014",
+    title: "Optimization of crystallization conditions for biological macromolecules",
+    source: "Acta Crystallogr F Struct Biol Commun 70:1445–1467", doi: "10.1107/S2053230X14019670",
+  },
+  {
+    id: "bergfors2003", kind: "article", authors: "Bergfors T", year: "2003",
+    title: "Seeds to crystals",
+    source: "J Struct Biol 142:66–76", doi: "10.1016/S1047-8477(03)00039-X",
+  },
+  {
+    id: "luft1999", kind: "article", name: "Seed Bead stock", authors: "Luft JR, DeTitta GT", year: "1999",
+    title: "A method to produce microseed stock for use in the crystallization of biological macromolecules",
+    source: "Acta Crystallogr D Biol Crystallogr 55:988–993", doi: "10.1107/S0907444999002085",
+  },
+  {
+    id: "stura1991", kind: "article", name: "Streak seeding", authors: "Stura EA, Wilson IA", year: "1991",
+    title: "Applications of the streak seeding technique in protein crystallization",
+    source: "J Cryst Growth 110:270–282", doi: "10.1016/0022-0248(91)90896-D",
+  },
+  {
+    id: "darcy2007", kind: "article", name: "Microseed matrix screening (rMMS)", authors: "D'Arcy A, Villard F, Marsh M", year: "2007",
+    title: "An automated microseed matrix-screening method for protein crystallization",
+    source: "Acta Crystallogr D Biol Crystallogr 63:550–554", doi: "10.1107/S0907444907007652",
+  },
+  {
+    id: "luft2007", kind: "article", authors: "Luft JR, Wolfley JR, Said MI, Nagel RM, Lauricella AM, Smith JL, et al.", year: "2007",
+    title: "Efficient optimization of crystallization conditions by manipulation of drop volume ratio and temperature",
+    source: "Protein Sci 16:715–722", doi: "10.1110/ps.062699707",
+  },
+  {
+    id: "chayen1997", kind: "article", name: "Oil over the reservoir", authors: "Chayen NE", year: "1997",
+    title: "A novel technique to control the rate of vapour diffusion, giving larger protein crystals",
+    source: "J Appl Crystallogr 30:198–202", doi: "10.1107/S0021889896013532",
+  },
+  {
+    id: "dong2007", kind: "article", name: "In situ proteolysis", authors: "Dong A, Xu X, Edwards AM, et al.", year: "2007",
+    title: "In situ proteolysis for protein crystallization and structure determination",
+    source: "Nat Methods 4:1019–1021", doi: "10.1038/nmeth1118",
+  },
+  {
+    id: "derewenda2004", kind: "article", name: "Surface entropy reduction", authors: "Derewenda ZS", year: "2004",
+    title: "Rational protein crystallization by mutational surface engineering",
+    source: "Structure 12:529–535", doi: "10.1016/j.str.2004.03.008",
+  },
+  {
+    id: "goldschmidt2007", kind: "article", name: "SERp server", authors: "Goldschmidt L, Cooper DR, Derewenda ZS, Eisenberg D", year: "2007",
+    title: "Toward rational protein crystallization: a Web server for the design of crystallizable protein variants",
+    source: "Protein Sci 16:1569–1576", doi: "10.1110/ps.072914007",
+  },
   {
     id: "hampton-index", kind: "website", name: "Index", authors: "Hampton Research", year: "2026",
     title: "Index • Index HT: product description and reagent formulation",

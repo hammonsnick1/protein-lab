@@ -648,7 +648,7 @@ The job has four tabs. Use the mouse, or <kbd>←</kbd> <kbd>→</kbd> when a ta
 | **Propensity and advice** | How likely crystals are, and why |
 | **Space groups** | The symmetry the crystal could have |
 | **Lattice and packing** | How copies of the protein pack in a crystal |
-| **Practical guidance** | Screens, drops and buffers to start with |
+| **Practical guidance** | Screens, drops and buffers to start with, then how to optimize a hit |
 
 Every tab ends with a numbered reference list. A small number next to a statement, for example [1], points to its reference.
 
@@ -703,11 +703,12 @@ For an AlphaFold model, tick the option to leave out residues with low pLDDT con
 
 ### Practical guidance
 
-The **Practical guidance** tab helps you set up the first crystallization trials. Its advice is tailored from what earlier jobs recorded about the protein. It has three tabs.
+The **Practical guidance** tab helps you set up the first crystallization trials and improve the first crystals. Its advice is tailored from what earlier jobs recorded about the protein. It has four tabs.
 
 - **Screens and concentration.** **What this advice is based on** lists the size, membrane, disorder and ligand facts used. **Starting protein concentration** gives a starting value and a range in mg/mL. **Conditions that already worked for related structures** copies the crystal-growth records of PDB entries that Sequence research found. **Suggested commercial screens** lists screens in order of priority, each with the reasons for it.
 - **What goes in the drop.** A schematic phase diagram explains why a precipitant is needed. Cards explain the role of the precipitant, the buffer and pH, salt, additives and, for membrane proteins, detergent.
 - **Hanging vs sitting drop.** How vapour diffusion works, and the pros and cons of the two drop set-ups.
+- **Optimizing a hit.** Fine-grid plates built from the condition that gave crystals, then seeding, drop and protein changes to try next.
 
 ![The Practical guidance tab with the facts the advice is based on, the starting protein concentration, and crystallization conditions copied from related PDB entries](manual/crystallize-guidance.webp)
 *For carbonic anhydrase II, five related PDB entries already record a hanging-drop condition.*
@@ -715,6 +716,27 @@ The **Practical guidance** tab helps you set up the first crystallization trials
 > **Tip:** A condition that worked for a close relative is the strongest starting point. Set it up beside the commercial screens.
 
 > **Note:** If no earlier job says whether the protein is a membrane protein, the guidance asks you to answer it in the [Protein readiness check](#protein-readiness-check). The advice changes for membrane proteins.
+
+#### Optimizing a hit
+
+A hit is a screen condition that gave crystals, even small or poor ones. The best condition is usually close to it.
+
+1. Open **Practical guidance**, then **Optimizing a hit**. Until you enter your own hit, the form shows example values and says so.
+2. Enter the hit: **Precipitant**, **Concentration in the hit** and its **Unit** (% (w/v), % (v/v) or M), the **Stock you pipette from**, the **Buffer**, the **pH (optional)**, the **Protein (mg/mL)** and any **Other components (optional)**.
+3. Click **Generate plates**. The hit is saved with the job.
+4. Read the two 24-well plates (rows A–D, columns 1–6):
+   - **Plate 1: precipitant against pH.** The precipitant runs from 70 % to 120 % of the hit across the columns. The pH runs in 0.2-unit steps down the rows. Make one buffer stock for each row.
+   - **Plate 2: precipitant against protein concentration.** The same columns. The protein runs from half to 1.5 times the hit down the rows.
+
+   Each well shows the volume of precipitant stock to add to a 500 µL reservoir. **HIT** marks the well that repeats your hit (C4). The list under each plate says what is the same in every well.
+5. Read the cards under **Seeding**, **Drops and chemistry** and **The protein itself**. Each card says when to use a technique and gives the bench steps and the references. The cards cover microseeding, streak seeding, macroseeding, cross-seeding, random microseed matrix screening (rMMS), drop ratio and volume, temperature, sitting or hanging drop, oil over the reservoir (Al's oil), additive screens, Silver Bullets, detergents, protein concentration, ligand co-crystallization, in situ proteolysis and surface entropy reduction. **Suggested for this protein** marks a card that fits what earlier jobs recorded, for example in situ proteolysis when disordered regions are recorded.
+
+![The Optimizing a hit tab: the hit form and Plate 1, a 4 × 6 grid of precipitant against pH with the hit in well C4](manual/crystallize-optimize.webp)
+*Plate 1 for an example hit of 20 % (w/v) PEG 3,350 at pH 7.5.*
+
+> **Note:** If the hit has no pH, Plate 1 is not shown. Enter the buffer's pH to get it.
+
+> **Tip:** The step sizes are the app's own rule of thumb. If every drop on a plate precipitates, or every drop stays clear, enter a new hit at the edge of the plate and generate again.
 
 ## HSQC spectrum prediction
 
