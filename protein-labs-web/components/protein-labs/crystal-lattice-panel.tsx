@@ -137,6 +137,17 @@ export function CrystalLatticePanel({ bundle, selectedSpaceGroup: chosenSymbol, 
   // ── Lattice and packing ───────────────────────────────────────────────────
   const savedCutoff = typeof saved.cutoff === "number" ? clampCutoff(saved.cutoff) : DEFAULT_INTERFACE_CUTOFF;
   const [cutoff, setCutoff] = useState(savedCutoff);
+  // The slider moves `cutoffDraft` at once; the analysis (seconds on a large entry) reruns only once it rests.
+  const [cutoffDraft, setCutoffDraft] = useState(savedCutoff);
+  const cutoffTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(cutoffTimer.current), []);
+  const changeCutoff = (value: number) => {
+    const next = clampCutoff(value);
+    setCutoffDraft(next);
+    window.clearTimeout(cutoffTimer.current);
+    // Copies are renumbered by the new analysis, so a kept selection would point at another neighbour.
+    cutoffTimer.current = window.setTimeout(() => { setCutoff(next); setSelectedCopy(null); persist({ cutoff: next }); }, 350);
+  };
   const display: Display = saved.display === "cell" ? "cell" : "neighbours";
   const built = useMemo(() => {
     if (!cell || !baseAtoms.length) return null;
@@ -242,8 +253,8 @@ export function CrystalLatticePanel({ bundle, selectedSpaceGroup: chosenSymbol, 
             : <div className="structure-empty" role="status"><LoaderCircle className="spin"/><strong>{suggesting ? "Searching for a cell that fits…" : "Building the lattice…"}</strong></div>}
         </div>
       </div>
-      <PackingPanel built={built} cutoff={cutoff} hypothetical={cellMode === "hypothetical"} refs={refs} selected={selected} names={residueNames}
-        onCutoff={(value) => { const next = clampCutoff(value); setCutoff(next); persist({ cutoff: next }); }}
+      <PackingPanel built={built} cutoff={cutoff} cutoffDraft={cutoffDraft} hypothetical={cellMode === "hypothetical"} refs={refs} selected={selected} names={residueNames}
+        onCutoff={changeCutoff}
         onSelect={(index) => { setSelectedCopy(index); if (display !== "neighbours") persist({ display: "neighbours" }); }}/>
     </section>}
 
@@ -347,7 +358,7 @@ function CellControls({ loaded, cellMode, hasExperimental, fileGroup, group, cel
 
 type Built = { atoms: LatticeAtom[]; summary: ReturnType<typeof analysePacking> } | null;
 
-function PackingPanel({ built, cutoff, hypothetical, refs, selected, names, onCutoff, onSelect }: { built: Built; cutoff: number; hypothetical: boolean; refs: ReturnType<typeof citationScope>; selected: PackingContact | null; names: ResidueLabeller; onCutoff(value: number): void; onSelect(index: number): void }) {
+function PackingPanel({ built, cutoff, cutoffDraft, hypothetical, refs, selected, names, onCutoff, onSelect }: { built: Built; cutoff: number; cutoffDraft: number; hypothetical: boolean; refs: ReturnType<typeof citationScope>; selected: PackingContact | null; names: ResidueLabeller; onCutoff(value: number): void; onSelect(index: number): void }) {
   if (!built) return <div className="lattice-packing"><p className="crystallize-empty" role="status"><LoaderCircle className="spin"/> Measuring contacts…</p></div>;
   const { totals, contacts } = built.summary;
   return <div className="lattice-packing">
@@ -359,8 +370,8 @@ function PackingPanel({ built, cutoff, hypothetical, refs, selected, names, onCu
       <div className={totals.clashes ? "bad" : ""}><dt>Clashes<CiteGroup scope={refs} ids={["word1999", "bondi1964"]}/></dt><dd>{totals.clashes}</dd></div>
       <div><dt>Interface residues</dt><dd>{totals.interfaceResidues}</dd></div>
     </dl>
-    <label className="lattice-cutoff"><span>Contact distance <b>{formatCutoff(cutoff)}</b></span>
-      <input type="range" min={INTERFACE_CUTOFF_RANGE.min} max={INTERFACE_CUTOFF_RANGE.max} step={INTERFACE_CUTOFF_RANGE.step} value={cutoff} aria-valuetext={formatCutoff(cutoff)} onChange={(event) => onCutoff(Number(event.target.value))}/>
+    <label className="lattice-cutoff"><span>Contact distance <b>{formatCutoff(cutoffDraft)}</b>{cutoffDraft !== cutoff && <small role="status"> · measuring…</small>}</span>
+      <input type="range" min={INTERFACE_CUTOFF_RANGE.min} max={INTERFACE_CUTOFF_RANGE.max} step={INTERFACE_CUTOFF_RANGE.step} value={cutoffDraft} aria-valuetext={formatCutoff(cutoffDraft)} onChange={(event) => onCutoff(Number(event.target.value))}/>
     </label>
     <p className="crystallize-note">A <b>contact</b> is any pair of atoms closer than the contact distance. A <b>possible H-bond</b> is a nitrogen and an oxygen 2.2–3.5 Å apart, close enough to share a hydrogen; the geometry is not checked further. A <b>clash</b> is two atoms whose van der Waals spheres overlap by 0.4 Å or more, or N/O atoms closer than 2.2 Å.{!hypothetical && contacts.some((contact) => contact.clashes.length) ? " In a real crystal a few clashes usually mean a side chain with two positions, a short salt bridge, or an atom the file models only partly." : ""}</p>
     {hypothetical && totals.clashes > 0 && <p className="xtal-callout warning"><TriangleAlert aria-hidden="true"/><span>{totals.clashes} clashing atom pairs: copies overlap, so no real crystal could have this cell. Make the cell bigger or let the app suggest one.</span></p>}

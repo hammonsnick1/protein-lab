@@ -293,7 +293,7 @@ export function referenceCopy(lattice: Lattice): LatticeCopy {
  */
 export function nearbyCopies(lattice: Lattice, atoms: readonly LatticeAtom[], reach = DEFAULT_INTERFACE_CUTOFF): LatticeCopy[] {
   const center = centroid(atoms);
-  const radius = Math.sqrt(Math.max(0, ...atoms.map((atom) => (atom.x - center[0]) ** 2 + (atom.y - center[1]) ** 2 + (atom.z - center[2]) ** 2)));
+  const radius = Math.sqrt(atoms.reduce((largest, atom) => Math.max(largest, (atom.x - center[0]) ** 2 + (atom.y - center[1]) ** 2 + (atom.z - center[2]) ** 2), 0));
   const limit = 2 * radius + reach;
   const centerFrac = multiply(lattice.frac, center);
   const out: LatticeCopy[] = [];
@@ -421,7 +421,7 @@ export function analysePacking(atoms: readonly LatticeAtom[], copies: readonly L
     contacts.push({
       copy, atomContacts, residuePairs: pairs.size, clashes, hbonds,
       referenceResidues: residuesOf(atoms, refSide), mateResidues: residuesOf(atoms, mateSide),
-      minDistance: min === Infinity ? Math.min(...[...clashes, ...hbonds].map((pair) => pair.distance)) : min,
+      minDistance: min === Infinity ? [...clashes, ...hbonds].reduce((low, pair) => Math.min(low, pair.distance), Infinity) : min,
     });
   }
 
@@ -517,7 +517,13 @@ export function freeCellFields(system: SpaceGroup["system"]): (keyof UnitCell)[]
  * answer is one possibility for teaching, not a prediction of the real crystal.
  */
 export function suggestCell(atoms: readonly LatticeAtom[], group: SpaceGroup, iterations = 14): { cell: UnitCell; clashes: number; steps: number } {
-  const span = (axis: "x" | "y" | "z") => atoms.length ? Math.max(...atoms.map((atom) => atom[axis])) - Math.min(...atoms.map((atom) => atom[axis])) : 30;
+  // A loop, not Math.max(...atoms): spreading a very large entry overflows the argument limit.
+  const span = (axis: "x" | "y" | "z") => {
+    if (!atoms.length) return 30;
+    let low = Infinity, high = -Infinity;
+    for (const atom of atoms) { low = Math.min(low, atom[axis]); high = Math.max(high, atom[axis]); }
+    return high - low;
+  };
   const box = { a: span("x") + 3, b: span("y") + 3, c: span("z") + 3 };
   const widest = Math.max(box.a, box.b);
   const shape = constrainCell(group.system === "trigonal" || group.system === "hexagonal" ? { ...box, a: widest * 1.15, alpha: 90, beta: 90, gamma: 120 }

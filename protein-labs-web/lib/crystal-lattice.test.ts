@@ -90,6 +90,11 @@ describe("symmetry copies", () => {
     }
   });
 
+  it("handles entries too large to spread into Math.max", () => {
+    const big = Array.from({ length: 300_000 }, (_, index) => atom({ x: index % 50, y: (index * 7) % 60, z: (index * 13) % 70 }));
+    assert.ok(nearbyCopies(makeLattice({ a: 120, b: 130, c: 140, alpha: 90, beta: 90, gamma: 90 }, findSpaceGroup("P 21 21 21")!), big).length > 0);
+  });
+
   it("moves atoms as the symmetry operation says", () => {
     const lattice = makeLattice(crambin.cell!, P21);
     const screw = nearbyCopies(lattice, crambin.atoms).find((copy) => copy.triplet === "-x,y+1/2,-z")!;
