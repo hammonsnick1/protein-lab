@@ -82,6 +82,11 @@ const entries = [
     source: "Nature 596:583–589", doi: "10.1038/s41586-021-03819-2",
   },
   {
+    id: "tunyasuvunakool2021", kind: "article", name: "AlphaFold pLDDT bands", authors: "Tunyasuvunakool K, Adler J, Wu Z, et al.", year: "2021",
+    title: "Highly accurate protein structure prediction for the human proteome",
+    source: "Nature 596:590–596", doi: "10.1038/s41586-021-03828-1",
+  },
+  {
     id: "consurf2023", kind: "software", name: "ConSurf", authors: "Yariv B, Yariv E, Kessel A, et al.", year: "2023",
     title: "Using evolutionary data to make sense of macromolecules with a “face-lifted” ConSurf",
     source: "Protein Sci 32:e4582", doi: "10.1002/pro.4582", url: "https://consurf.tau.ac.il",
@@ -317,6 +322,21 @@ const entries = [
     id: "bondi1964", kind: "article", name: "Van der Waals radii", authors: "Bondi A", year: "1964",
     title: "van der Waals volumes and radii",
     source: "J Phys Chem 68:441–451", doi: "10.1021/j100785a001",
+  },
+  {
+    id: "carugo2017", kind: "article", name: "Crystal-contact distance", authors: "Carugo O, Blatova OA, Medrish EO, Blatov VA, Proserpio DM", year: "2017",
+    title: "Packing topology in crystals of proteins and small molecules: a comparison",
+    source: "Sci Rep 7:13209", doi: "10.1038/s41598-017-12699-4",
+  },
+  {
+    id: "jeffrey1997", kind: "book", name: "Hydrogen-bond distances", authors: "Jeffrey GA", year: "1997",
+    title: "An introduction to hydrogen bonding",
+    source: "Oxford University Press, New York", url: "https://archive.org/details/introductiontohy0000jeff",
+  },
+  {
+    id: "wwpdb-valsym", kind: "website", name: "wwPDB close symmetry contacts", authors: "wwPDB", year: "2026",
+    title: "PDBx/mmCIF dictionary: category pdbx_val_sym_contact",
+    source: "Worldwide Protein Data Bank", url: "https://mmcif.wwpdb.org/dictionaries/mmcif_pdbx_v50.dic/Categories/pdbx_val_sym_contact.html",
   },
   {
     id: "vijaykumar1987", kind: "article", name: "PDB 1UBQ", authors: "Vijay-Kumar S, Bugg CE, Cook WJ", year: "1987",

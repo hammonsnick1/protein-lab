@@ -12,7 +12,7 @@ import { structureOptionLabel, type StructureEntry, type ResidueAddress } from "
 import { clampCutoff, DEFAULT_INTERFACE_CUTOFF, formatCutoff, INTERFACE_CUTOFF_RANGE } from "@/lib/structure-interface";
 import { findSpaceGroup, multiplicity, SOHNCKE_GROUPS, type SpaceGroup, type UnitCell } from "@/lib/space-groups";
 import {
-  analysePacking, confidentAtoms, constrainCell, copyLabel, freeCellFields, latticeMmcif, LOW_CONFIDENCE_PLDDT, makeLattice, nearbyCopies,
+  analysePacking, CLASH_OVERLAP, confidentAtoms, constrainCell, copyLabel, freeCellFields, HBOND_RANGE, latticeMmcif, LOW_CONFIDENCE_PLDDT, makeLattice, nearbyCopies,
   parseCopyChain, parseMmcif, placeInCell, referenceCopy, suggestCell, unitCellCopies, viewerResidues,
   type AtomPair, type LatticeAtom, type LatticeCopy, type PackingContact, type ParsedStructure,
 } from "@/lib/crystal-lattice";
@@ -21,7 +21,8 @@ import type { CrystallizePanelProps } from "@/lib/crystallize-panels";
 
 // Every source this panel cites, in first-use order down the page.
 const REFERENCES: CitationId[] = [
-  "ita2016", "wukovitz1995", "pdb2000", "alphafold2021", "carugo1997", "bakerhubbard1984", "word1999", "bondi1964", "molstar",
+  "ita2016", "wukovitz1995", "pdb2000", "alphafold2021", "tunyasuvunakool2021", "carugo1997", "bakerhubbard1984", "word1999", "bondi1964",
+  "carugo2017", "jeffrey1997", "wwpdb-valsym", "molstar",
   ...CRYSTAL_EXAMPLES.map((example) => example.citation),
 ];
 
@@ -348,7 +349,7 @@ function CellControls({ loaded, cellMode, hasExperimental, fileGroup, group, cel
         <small>{dirty && !draftValid ? "Edges must be 10–1000 Å and angles 30–150°." : suggestedClashes === 0 ? "The suggested cell is the smallest the search found with no clashes." : suggestedClashes ? `Even the largest cell tried still has ${suggestedClashes} clashes.` : "Edit the free values and build, or let the app search for a cell."}</small>
       </div>
       {loaded.isModel && <label className="lattice-trim"><input type="checkbox" checked={trim} onChange={(event) => onTrim(event.target.checked)}/>
-        <span>Leave out residues AlphaFold is unsure of (pLDDT below {LOW_CONFIDENCE_PLDDT})<Cite scope={refs} id="alphafold2021"/>{trimmed > 0 && trim ? ` · ${trimmed} atoms left out` : ""}. Floppy ends would otherwise swell the cell; they are often trimmed from crystallisation constructs for the same reason.</span>
+        <span>Leave out residues AlphaFold is unsure of (pLDDT below {LOW_CONFIDENCE_PLDDT})<CiteGroup scope={refs} ids={["alphafold2021", "tunyasuvunakool2021"]}/>{trimmed > 0 && trim ? ` · ${trimmed} atoms left out` : ""}. Floppy ends would otherwise swell the cell; they are often trimmed from crystallisation constructs for the same reason.</span>
       </label>}
     </div>}
   </div>;
@@ -373,7 +374,7 @@ function PackingPanel({ built, cutoff, cutoffDraft, hypothetical, refs, selected
     <label className="lattice-cutoff"><span>Contact distance <b>{formatCutoff(cutoffDraft)}</b>{cutoffDraft !== cutoff && <small role="status"> · measuring…</small>}</span>
       <input type="range" min={INTERFACE_CUTOFF_RANGE.min} max={INTERFACE_CUTOFF_RANGE.max} step={INTERFACE_CUTOFF_RANGE.step} value={cutoffDraft} aria-valuetext={formatCutoff(cutoffDraft)} onChange={(event) => onCutoff(Number(event.target.value))}/>
     </label>
-    <p className="crystallize-note">A <b>contact</b> is any pair of atoms closer than the contact distance. A <b>possible H-bond</b> is a nitrogen and an oxygen 2.2–3.5 Å apart, close enough to share a hydrogen; the geometry is not checked further. A <b>clash</b> is two atoms whose van der Waals spheres overlap by 0.4 Å or more, or N/O atoms closer than 2.2 Å.{!hypothetical && contacts.some((contact) => contact.clashes.length) ? " In a real crystal a few clashes usually mean a side chain with two positions, a short salt bridge, or an atom the file models only partly." : ""}</p>
+    <p className="crystallize-note">A <b>contact</b> is any pair of atoms closer than the contact distance ({formatCutoff(DEFAULT_INTERFACE_CUTOFF)} unless you change it).<Cite scope={refs} id="carugo2017"/> A <b>possible H-bond</b> is a nitrogen and an oxygen {HBOND_RANGE.min}–{HBOND_RANGE.max} Å apart, close enough to share a hydrogen; the geometry is not checked further.<CiteGroup scope={refs} ids={["jeffrey1997", "bakerhubbard1984"]}/> A <b>clash</b> is two atoms whose van der Waals spheres overlap by {CLASH_OVERLAP} Å or more,<CiteGroup scope={refs} ids={["word1999", "bondi1964"]}/> or N/O atoms closer than {HBOND_RANGE.min} Å, the limit below which the PDB flags any two atoms in neighbouring copies.<Cite scope={refs} id="wwpdb-valsym"/>{!hypothetical && contacts.some((contact) => contact.clashes.length) ? " In a real crystal a few clashes usually mean a side chain with two positions, a short salt bridge, or an atom the file models only partly." : ""}</p>
     {hypothetical && totals.clashes > 0 && <p className="xtal-callout warning"><TriangleAlert aria-hidden="true"/><span>{totals.clashes} clashing atom pairs: copies overlap, so no real crystal could have this cell. Make the cell bigger or let the app suggest one.</span></p>}
     {contacts.length ? <div className="lattice-table-wrap"><table className="crystallize-groups lattice-contacts">
       <thead><tr><th scope="col">Copy</th><th scope="col">How it is made</th><th scope="col" className="num">Residue pairs</th><th scope="col" className="num">H-bonds</th><th scope="col" className="num">Clashes</th><th scope="col" className="num">Closest</th></tr></thead>
