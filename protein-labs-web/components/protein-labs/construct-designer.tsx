@@ -12,6 +12,7 @@ import {
   findTagModule,
   junctionOptions,
   linkerOptions,
+  relayoutPlan,
   tagCandidatesFromVector,
   tagModules,
   type AssembledConstruct,
@@ -185,13 +186,13 @@ export function ConstructDesigner({
 
     {stage === "tag" && <div className="construct-controls">
       <label>Tag position
-        <select value={plan.terminus} onChange={(event) => update({ terminus: event.target.value as "N" | "C" })}>
+        <select value={plan.terminus} onChange={(event) => onPlanChange(relayoutPlan(plan, { terminus: event.target.value as "N" | "C" }, proteaseId))}>
           <option value="N">N-terminal</option>
           <option value="C">C-terminal</option>
         </select>
       </label>
       <label>Affinity tag
-        <select value={plan.tagId} onChange={(event) => update({ tagId: event.target.value, resolvedTagSequence: "", resolvedTagSource: "" })}>
+        <select value={plan.tagId} onChange={(event) => onPlanChange(relayoutPlan(plan, { tagId: event.target.value }, proteaseId))}>
           <option value="">No tag</option>
           {tagModules.map((option) => <option key={option.id} value={option.id}>{option.name}{option.requiresSource ? " (needs sequence)" : ""}</option>)}
         </select>

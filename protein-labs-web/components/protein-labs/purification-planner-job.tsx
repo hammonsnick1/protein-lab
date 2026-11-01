@@ -9,7 +9,7 @@ import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
 import { affinityCategories, affinityColumns, bufferPresets, bufferStepLabels, cloneSteps, normalizeBufferSteps, type BufferStep } from "@/lib/purification-catalog";
 import { ConstructDesigner, type ConstructReport } from "@/components/protein-labs/construct-designer";
-import { tagModuleForAffinityTag, type ConstructPlan } from "@/lib/construct-catalog";
+import { relayoutPlan, tagModuleForAffinityTag, type ConstructPlan } from "@/lib/construct-catalog";
 import { constructSummary, initialPlan, planConfig } from "@/lib/construct-records";
 import { saveBufferSteps } from "@/lib/purification-buffers";
 import { BufferComposer } from "@/components/protein-labs/buffer-composer";
@@ -41,7 +41,7 @@ export function PurificationPlannerJob({ bundle, onChanged, section }: { bundle:
   const affinity=affinityColumns.find(value=>value.id===affinityId)??affinityColumns[0];
   const derivedTagId=tagModuleForAffinityTag(affinity.tag)?.id??"";
   const lastDerivedTag=useRef(derivedTagId);
-  useEffect(()=>{if(derivedTagId===lastDerivedTag.current)return;const wasFollowingAffinity=plan.tagId===lastDerivedTag.current;lastDerivedTag.current=derivedTagId;if(wasFollowingAffinity)setPlan(current=>({...current,tagId:derivedTagId,resolvedTagSequence:"",resolvedTagSource:""}));},[derivedTagId,plan.tagId]);
+  useEffect(()=>{if(derivedTagId===lastDerivedTag.current)return;const wasFollowingAffinity=plan.tagId===lastDerivedTag.current;lastDerivedTag.current=derivedTagId;if(wasFollowingAffinity)setPlan(current=>relayoutPlan(current,{tagId:derivedTagId},proteaseId));},[derivedTagId,plan.tagId,proteaseId]);
   const visibleAffinity=affinityColumns.filter(value=>(affinityCategory==="All"||value.category===affinityCategory)&&searchText(value).includes(affinitySearch.toLowerCase()));
   const affinityChoiceChecks=useMemo(()=>affinitySelectionChecks(vectors,affinity),[vectors,affinity]);
   const checks=useMemo(()=>compileChecks(bundle,vectors,lysisSaved,affinitySaved,cleavageSaved,subtractiveSaved,secSaved,bufferSaved),[bundle,vectors,lysisSaved,affinitySaved,cleavageSaved,subtractiveSaved,secSaved,bufferSaved]);

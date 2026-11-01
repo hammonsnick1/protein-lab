@@ -9,9 +9,13 @@ export function initialPlan(saved: JsonObject, affinityTag: string): ConstructPl
   const derived = tagModuleForAffinityTag(affinityTag);
   const tagId = String(stored?.tagId ?? derived?.id ?? "");
   const cleavageId = String(stored?.cleavageId ?? "");
-  const layout = defaultLayoutFor(tagId, cleavageId);
+  const terminus = stored?.terminus === "C" ? "C" : stored?.terminus === "N" ? "N" : derived?.terminus ?? "N";
+  // A saved plan reopens exactly as it was built. Plans saved before the
+  // junction existed had none, and "gs" was the old default linker; only a
+  // project with no saved plan starts from the house layout.
+  const layout = stored ? { linkerId: "gs", junctionId: "none" } : defaultLayoutFor(tagId, cleavageId, terminus);
   return {
-    terminus: stored?.terminus === "C" ? "C" : stored?.terminus === "N" ? "N" : derived?.terminus ?? "N",
+    terminus,
     initiatorMet: stored?.initiatorMet === undefined ? true : stored.initiatorMet === true,
     tagId,
     linkerId: String(stored?.linkerId ?? layout.linkerId),

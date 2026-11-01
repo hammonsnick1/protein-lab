@@ -442,7 +442,9 @@ The **Plan your purification** jobs choose the columns, buffers, host, vector an
 2. Select a resin and click **Use this option**. The binding, wash and elution buffers change to the presets of that resin.
 3. Set the tag position, the linker and the **Vector junction**. The construct preview shows the expressed fusion and the protein after tag cleavage.
 
-   A poly-His tag starts from the house layout **M – His tag – DYDIPTT – ENLYFQ↓G (rTEV) – GA – protein of interest**. The DYDIPTT spacer sits between the His tag and the rTEV site, and the **GA** vector junction sits directly before the protein. Both are selectable: pick a different linker, or set the junction to **No junction residues**, when your backbone differs.
+   An N-terminal poly-His tag starts from the house layout **M – His tag – DYDIPTT – ENLYFQ↓G (rTEV) – GA – protein of interest**. The DYDIPTT spacer sits between the His tag and the rTEV site, and the **GA** vector junction sits directly before the protein. Both are selectable: pick a different linker, or set the junction to **No junction residues**, when your backbone differs.
+
+   Changing the resin, the tag or the tag position moves the linker and the junction to the default for the new tag, so switching a His resin for GST or MBP drops the DYDIPTT spacer and the GA junction. A linker or junction you picked yourself is left alone. Reopening a saved job always shows the construct as you saved it.
 
    The junction residues come from the backbone rather than the protease, so they stay on the protein after cleavage. With the house layout, rTEV leaves its own Gly plus the vector's Gly-Ala, so the purified protein begins **GGA**. The construct preview reports that scar, and the mass and pI of the cleaved product include it.
 4. Under **Binding, wash and elution buffers**, choose a **Starting preset**. Then edit each buffer in the buffer composer.

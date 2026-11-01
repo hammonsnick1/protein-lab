@@ -5,6 +5,7 @@ import {
   defaultLayoutFor,
   junctionOptions,
   linkerOptions,
+  relayoutPlan,
   type ConstructPlan,
 } from "@/lib/construct-catalog";
 
@@ -73,6 +74,13 @@ describe("house His construct layout", () => {
     assert.deepEqual(defaultLayoutFor("his6", "retain"), { linkerId: "none", junctionId: "none" });
   });
 
+  it("uses the house layout only for an N-terminal His tag", () => {
+    // A C-terminal His tag is not the house construct, so it gets neither the
+    // spacer nor a junction that would otherwise land at the far end.
+    assert.deepEqual(defaultLayoutFor("his6", "tev", "C"), { linkerId: "none", junctionId: "none" });
+    assert.deepEqual(defaultLayoutFor("his6", "tev", "N"), { linkerId: "dydiptt", junctionId: "ga" });
+  });
+
   it("no longer defaults to a Gly-Ser linker, but keeps it selectable", () => {
     assert.notEqual(defaultLayoutFor("his6", "tev").linkerId, "gs");
     assert.ok(linkerOptions.some((option) => option.id === "gs" && option.sequence === "GS"));
@@ -114,9 +122,67 @@ describe("other construct layouts still build", () => {
     assert.equal(construct.cleaved, "GA" + target);
   });
 
+  it("drops the junction from a C-terminal His construct built from the default", () => {
+    // The scar must not mix residues from both ends of the protein.
+    const layout = defaultLayoutFor("his6", "tev", "C");
+    const construct = assembleConstruct(target, plan({ terminus: "C", ...layout }));
+    // TEV cuts between Q and G, so a C-terminal site leaves ENLYFQ behind and
+    // the Gly leaves with the tag. Nothing from the N-terminus joins that.
+    assert.equal(construct.scar, "ENLYFQ");
+    assert.equal(construct.cleaved, target + "ENLYFQ");
+    assert.ok(!construct.scar.includes("GA"));
+  });
+
   it("drops an initiator Met that the tag already supplies", () => {
     const construct = assembleConstruct(target, plan({ tagId: "t7-tag", linkerId: "none", junctionId: "none", cleavageId: "retain" }));
     assert.equal(construct.fusion, "MASMTGGQQMG" + target);
     assert.equal(construct.segments[0].kind, "tag");
+  });
+});
+
+describe("changing the tag carries the layout with it", () => {
+  it("drops DYDIPTT and GA when a His resin is swapped for GST", () => {
+    const next = relayoutPlan(plan(), { tagId: "gst" }, "tev");
+    assert.equal(next.tagId, "gst");
+    assert.equal(next.linkerId, "none");
+    assert.equal(next.junctionId, "none");
+    // The resolved sequence of the old tag must not follow the new one.
+    assert.equal(next.resolvedTagSequence, "");
+    const construct = assembleConstruct(target, { ...next, resolvedTagSequence: "SPILGYWKIK" });
+    assert.ok(!construct.fusion.includes("DYDIPTT"));
+    assert.equal(construct.scar, "G");
+  });
+
+  it("restores the house layout when the tag goes back to poly-His", () => {
+    const gst = relayoutPlan(plan(), { tagId: "gst" }, "tev");
+    const his = relayoutPlan(gst, { tagId: "his8" }, "tev");
+    assert.equal(his.linkerId, "dydiptt");
+    assert.equal(his.junctionId, "ga");
+  });
+
+  it("keeps a linker the researcher chose by hand", () => {
+    const next = relayoutPlan(plan({ linkerId: "ggggs" }), { tagId: "gst" }, "tev");
+    assert.equal(next.linkerId, "ggggs");
+    // The junction was still the house default, so it follows the new tag.
+    assert.equal(next.junctionId, "none");
+  });
+
+  it("keeps a junction the researcher chose by hand", () => {
+    const next = relayoutPlan(plan({ junctionId: "none" }), { tagId: "his6", terminus: "C" }, "tev");
+    assert.equal(next.junctionId, "none");
+  });
+
+  it("drops the house layout when the His tag moves to the C terminus", () => {
+    const next = relayoutPlan(plan(), { terminus: "C" }, "tev");
+    assert.equal(next.terminus, "C");
+    assert.equal(next.linkerId, "none");
+    assert.equal(next.junctionId, "none");
+  });
+
+  it("leaves a non-TEV construct's layout alone when the tag changes", () => {
+    const thrombin = plan({ cleavageId: "thrombin", linkerId: "none", junctionId: "none" });
+    const next = relayoutPlan(thrombin, { tagId: "his10" }, "thrombin");
+    assert.equal(next.linkerId, "none");
+    assert.equal(next.junctionId, "none");
   });
 });

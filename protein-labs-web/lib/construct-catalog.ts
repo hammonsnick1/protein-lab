@@ -127,22 +127,6 @@ export const junctionOptions: JunctionOption[] = [
 /** Poly-His tags, for which the house DYDIPTT–TEV–GA layout is the default. */
 const polyHisTagIds = new Set(["his6", "his8", "his10"]);
 
-/**
- * The layout a new construct starts from.
- *
- * A poly-His tag cleaved with TEV gets the house layout
- * `M–His–DYDIPTT–ENLYFQ↓G–GA–target`. Anything else starts with no linker and
- * no junction residues rather than a Gly-Ser spacer nobody asked for; both
- * remain selectable.
- *
- * An empty `cleavageId` means the protease stage has not been visited yet. The
- * tag is chosen first, so a poly-His construct still starts from the house
- * layout; choosing a protease other than TEV is what drops it.
- */
-export function defaultLayoutFor(tagId: string, cleavageId: string): { linkerId: string; junctionId: string } {
-  const house = polyHisTagIds.has(tagId) && (cleavageId === "tev" || cleavageId === "");
-  return house ? { linkerId: "dydiptt", junctionId: "ga" } : { linkerId: "none", junctionId: "none" };
-}
 
 export type ConstructPlan = {
   terminus: TagTerminus;
@@ -157,6 +141,52 @@ export type ConstructPlan = {
   resolvedTagSequence?: string;
   resolvedTagSource?: string;
 };
+
+/**
+ * The linker and junction a construct starts from.
+ *
+ * An N-terminal poly-His tag cleaved with TEV gets the house layout
+ * `M–His–DYDIPTT–ENLYFQ↓G–GA–target`. Anything else, including a C-terminal
+ * His tag, starts with no linker and no junction residues rather than a
+ * Gly-Ser spacer nobody asked for; both remain selectable.
+ *
+ * An empty `cleavageId` means the protease stage has not been visited yet. The
+ * tag is chosen first and TEV is the house protease, so a poly-His construct
+ * starts from the house layout. This only decides the starting point: once a
+ * plan is saved its linker and junction are kept as saved.
+ */
+export function defaultLayoutFor(
+  tagId: string,
+  cleavageId: string,
+  terminus: TagTerminus = "N",
+): { linkerId: string; junctionId: string } {
+  const house = terminus === "N" && polyHisTagIds.has(tagId) && (cleavageId === "tev" || cleavageId === "");
+  return house ? { linkerId: "dydiptt", junctionId: "ga" } : { linkerId: "none", junctionId: "none" };
+}
+
+/**
+ * Change the tag or its terminus and carry the layout along with it.
+ *
+ * The linker and junction move to the new default only while they still match
+ * the old one, so switching a His resin to GST drops DYDIPTT and GA, but a
+ * linker or junction the researcher picked by hand is left alone.
+ */
+export function relayoutPlan(
+  plan: ConstructPlan,
+  patch: Partial<Pick<ConstructPlan, "tagId" | "terminus">>,
+  cleavageId: string,
+): ConstructPlan {
+  const next = { ...plan, ...patch };
+  if (patch.tagId !== undefined && patch.tagId !== plan.tagId) {
+    next.resolvedTagSequence = "";
+    next.resolvedTagSource = "";
+  }
+  const before = defaultLayoutFor(plan.tagId, cleavageId, plan.terminus);
+  const after = defaultLayoutFor(next.tagId, cleavageId, next.terminus);
+  if (plan.linkerId === before.linkerId) next.linkerId = after.linkerId;
+  if ((plan.junctionId ?? "none") === before.junctionId) next.junctionId = after.junctionId;
+  return next;
+}
 
 export type ConstructSegment = {
   kind: "met" | "tag" | "linker" | "site" | "target" | "scar" | "junction";
