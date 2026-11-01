@@ -27,7 +27,7 @@ const reference: ProteinBundle = {
     job("purification-cleavage", {
       proteaseName: "TEV protease",
       // Illustrative saved construct; the export must carry it verbatim.
-      construct: { tagName: "His6-TEV", fusionLength: 163, fusionMassDa: 18321.7, fusionExtinction: 15470, cleavedLength: 144, cleavedMassDa: 16141.38, cleavedExtinction: 15470 },
+      construct: { tagName: "His6-TEV", linkerName: "DYDIPTT spacer", junctionSequence: "GA", scar: "GGA", fusionLength: 163, fusionMassDa: 18321.7, fusionExtinction: 15470, cleavedLength: 144, cleavedMassDa: 16141.38, cleavedExtinction: 15470 },
     }),
   ],
   projectNotebook: null,
@@ -37,7 +37,7 @@ function page(templateId: string, patch: Partial<ReportPage> = {}): ReportPage {
   return { id: templateId, templateId, title: templateId === "properties" ? "Protein properties" : "Affinity capture", subtitle: "", content: "", hidden: false, showFacts: true, figures: [], ...patch };
 }
 
-const expected = ["15,998.21 Da", "15,470 M⁻¹cm⁻¹", "15,595 M⁻¹cm⁻¹", "6.74", "Expressed construct", "Uncleaved fusion", "After tag cleavage", "18,321.70", "16,141.38", "His6-TEV", "TEV protease", "pET-28a(+)"];
+const expected = ["15,998.21 Da", "15,470 M⁻¹cm⁻¹", "15,595 M⁻¹cm⁻¹", "6.74", "Expressed construct", "Uncleaved fusion", "After tag cleavage", "18,321.70", "16,141.38", "His6-TEV", "TEV protease", "pET-28a(+)", "DYDIPTT spacer", "GGA"];
 
 describe("report exports", () => {
   it("writes the properties and construct table to Markdown", () => {
@@ -49,6 +49,22 @@ describe("report exports", () => {
     assert.match(markdown, /\| Theoretical pI \| 6\.74 \|/);
     assert.match(markdown, /\| Uncleaved fusion \| 163 \| 18,321\.70 \| 15,470 \|/);
     assert.match(markdown, /\| After tag cleavage \| 144 \| 16,141\.38 \| 15,470 \|/);
+  });
+
+  it("names the linker and the junction residues the protein keeps", () => {
+    const facts = new Map(proteinProperties(reference).constructFacts);
+    assert.equal(facts.get("Linker"), "DYDIPTT spacer");
+    assert.equal(facts.get("Vector junction"), "GA");
+    assert.equal(facts.get("Retained after cleavage"), "GGA");
+    assert.match(reportMarkdown(reference, "Report", "Summary", [page("properties")]), /- \*\*Retained after cleavage:\*\* GGA/);
+  });
+
+  it("falls back to plain words when no linker or junction was chosen", () => {
+    const bare = { ...reference, projectJobs: reference.projectJobs.filter((value) => value.appType !== "purification-cleavage") };
+    const facts = new Map(proteinProperties(bare).constructFacts);
+    assert.equal(facts.get("Linker"), "None");
+    assert.equal(facts.get("Vector junction"), "None");
+    assert.equal(facts.get("Retained after cleavage"), "No residual residues");
   });
 
   it("writes the properties and a styled construct table to HTML", () => {

@@ -10,6 +10,7 @@ import {
   cleanPeptide,
   cleavageSiteForProtease,
   findTagModule,
+  junctionOptions,
   linkerOptions,
   tagCandidatesFromVector,
   tagModules,
@@ -24,6 +25,7 @@ const segmentColors: Record<ConstructSegment["kind"], string> = {
   linker: "#9aa7b0",
   site: "#e5533d",
   scar: "#f0a43a",
+  junction: "#c08a4a",
   target: "#35b99a",
 };
 
@@ -158,6 +160,8 @@ export function ConstructDesigner({
     setTimeout(() => setCopied(""), 1500);
   }
 
+  const junctionSequence = junctionOptions.find((option) => option.id === (plan.junctionId ?? "none"))?.sequence ?? "";
+
   const native = metrics.fusion && metrics.cleaved
     ? metrics.fusion.massDa - metrics.cleaved.massDa
     : 0;
@@ -169,14 +173,14 @@ export function ConstructDesigner({
         <small>
           {stage === "tag"
             ? `${affinityTagLabel ? `Tag from the selected resin: ${affinityTagLabel}. ` : ""}Adding the tag and linker changes the sequence, mass and extinction coefficient.`
-            : "The protease's site is inserted after the tag and linker from Affinity capture; cleavage leaves its scar on the target."}
+            : "The protease's site is inserted after the tag and linker from Affinity capture; cleavage leaves its scar, plus any vector junction residues, on the target."}
         </small>
       </span>
       {busy && <LoaderCircle className="spin" />}
     </header>
 
     {stage === "cleavage" && <p className="construct-source">
-      Set in Affinity capture: {plan.terminus === "N" ? "N-terminal" : "C-terminal"} {tag?.name ?? "no tag"} · {linkerOptions.find((option) => option.id === plan.linkerId)?.name ?? "no linker"}{plan.initiatorMet ? " · initiator Met" : ""}.
+      Set in Affinity capture: {plan.terminus === "N" ? "N-terminal" : "C-terminal"} {tag?.name ?? "no tag"} · {linkerOptions.find((option) => option.id === plan.linkerId)?.name ?? "no linker"}{junctionSequence ? ` · ${junctionSequence} vector junction` : ""}{plan.initiatorMet ? " · initiator Met" : ""}.
     </p>}
 
     {stage === "tag" && <div className="construct-controls">
@@ -195,6 +199,11 @@ export function ConstructDesigner({
       <label>Linker
         <select value={plan.linkerId} onChange={(event) => update({ linkerId: event.target.value })}>
           {linkerOptions.map((option) => <option key={option.id} value={option.id}>{option.name}{option.sequence ? ` · ${option.sequence}` : ""}</option>)}
+        </select>
+      </label>
+      <label>Vector junction
+        <select value={plan.junctionId ?? "none"} onChange={(event) => update({ junctionId: event.target.value })}>
+          {junctionOptions.map((option) => <option key={option.id} value={option.id}>{option.name}{option.sequence ? ` · ${option.sequence}` : ""}</option>)}
         </select>
       </label>
       <label className="construct-checkbox">

@@ -440,7 +440,11 @@ The **Plan your purification** jobs choose the columns, buffers, host, vector an
 
 1. Open **Affinity capture**. Search the resins or filter them by category.
 2. Select a resin and click **Use this option**. The binding, wash and elution buffers change to the presets of that resin.
-3. Set the tag position and the linker. The construct preview shows the expressed fusion and the protein after tag cleavage.
+3. Set the tag position, the linker and the **Vector junction**. The construct preview shows the expressed fusion and the protein after tag cleavage.
+
+   A poly-His tag starts from the house layout **M – His tag – DYDIPTT – ENLYFQ↓G (rTEV) – GA – protein of interest**. The DYDIPTT spacer sits between the His tag and the rTEV site, and the **GA** vector junction sits directly before the protein. Both are selectable: pick a different linker, or set the junction to **No junction residues**, when your backbone differs.
+
+   The junction residues come from the backbone rather than the protease, so they stay on the protein after cleavage. With the house layout, rTEV leaves its own Gly plus the vector's Gly-Ala, so the purified protein begins **GGA**. The construct preview reports that scar, and the mass and pI of the cleaved product include it.
 4. Under **Binding, wash and elution buffers**, choose a **Starting preset**. Then edit each buffer in the buffer composer.
 5. Click **Save tag, resin and buffers**.
 

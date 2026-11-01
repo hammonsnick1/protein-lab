@@ -148,7 +148,12 @@ export function proteinProperties(bundle: ProteinBundle): ProteinProperties {
     ],
     constructFacts: [
       ["Affinity tag", text(construct.tagName ?? affinity.tag, "Not selected")],
+      ["Linker", text(construct.linkerName, "None")],
+      ["Vector junction", text(construct.junctionSequence, "None")],
       ["Cleavage", text(cleavage.proteaseName, "Not selected")],
+      // The scar is what the researcher actually ends up with: the protease's
+      // P1' residues plus whatever the backbone's junction leaves behind.
+      ["Retained after cleavage", text(construct.scar, "No residual residues")],
       ["Expression vector", text(vector.vectorName, text(host.vectorFamilyName, "Not selected"))],
       ["Vector length", vector.featureCount ? `${text(vector.featureCount)} annotated features` : "—"],
     ],
