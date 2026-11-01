@@ -6,15 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ensureProjectJob, fileToBase64, type JsonObject, type ProjectJob, type ProteinBundle } from "@/lib/protein-labs-api";
 import { bandQuantification, formatSignalFraction, gelReportLanes, readGelJobConfig, SIGNAL_FRACTION_CAVEAT } from "@/lib/gel-quantification";
-import { type BufferIngredient, bufferIngredients, type ComponentType, config, ingredientLabel, liveSteps, mergeSavedSteps, moveStep, object, type RoadmapComponent, type RoadmapStep, type StepBuffer, stepBuffers } from "@/lib/roadmap-steps";
+import { type BufferIngredient, bufferIngredients, type ComponentType, ingredientLabel, liveSteps, mergeSavedSteps, moveStep, type RoadmapComponent, type RoadmapStep, type StepBuffer, stepBuffers } from "@/lib/roadmap-steps";
 import { dismissesMenu, menuAnchor, placeMenu } from "@/lib/context-menu";
+import type { ConstructNumbers, SpeciesNumbers } from "@/lib/construct-numbers";
+import { useConstructNumbers } from "@/lib/use-construct-numbers";
 import { bufferStepOwners, savedBufferSteps } from "@/lib/purification-buffers";
 
 type SavedBuffer = { key: string; jobId: string; title: string; purpose: string; pH: string; ingredients: BufferIngredient[]; source: string };
 type ContextMenu = { kind: "board" | "step" | "record" | "component"; stepId?: string; componentId?: string; x: number; y: number };
 type StepInsertion = { index: number };
 type PendingAnalysis = { proteinId: string; stepId: string; type: "chromatogram" | "gel"; previousUpdatedAt: string };
-type TagProfile = { label: string; sequence: string; source: string };
 type Notice = { text: string; action?: { label: string; jobId: string } };
 
 const componentCatalog: { type: ComponentType; label: string; description: string; icon: typeof Beaker; color: string }[] = [
@@ -59,7 +60,8 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
   const [editor, setEditor] = useState<{ stepId: string; component: RoadmapComponent } | null>(null);
   const [insertion, setInsertion] = useState<StepInsertion | null>(null), [movingStep, setMovingStep] = useState<string | null>(null);
   const lastSource = useRef(sourceSignature), board = useRef<HTMLElement>(null);
-  const proteinTransition = useMemo(() => cleavageTransition(bundle), [bundle]);
+  const { numbers, analysing, failed } = useConstructNumbers(bundle);
+  const proteinTransition = useMemo(() => cleavageTransition(numbers, { analysing, failed }), [numbers, analysing, failed]);
 
   useEffect(() => {
     if (lastSource.current === sourceSignature || dirty) return;
@@ -176,10 +178,10 @@ export function PurificationRoadmapWorkspace({ bundle, onOpenJob, onBackToWorkfl
     catch (reason) { setMessage(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusy(false); }
   }
-  function exportDocument() { downloadBlob(reportFilename(bundle), new Blob([roadmapReport(bundle, steps)], { type: "text/html;charset=utf-8" })); setMessage("A self-contained roadmap report was exported with the currently visible notes, gels, and chromatograms."); }
-  function printDocument() { const report = window.open("", "_blank"); if (!report) { setMessage("The print window could not be opened. Use Export report instead."); return; } report.opener = null; report.document.write(roadmapReport(bundle, steps)); report.document.close(); report.focus(); window.setTimeout(() => report.print(), 300); }
+  function exportDocument() { downloadBlob(reportFilename(bundle), new Blob([roadmapReport(bundle, steps, proteinTransition)], { type: "text/html;charset=utf-8" })); setMessage("A self-contained roadmap report was exported with the currently visible notes, gels, and chromatograms."); }
+  function printDocument() { const report = window.open("", "_blank"); if (!report) { setMessage("The print window could not be opened. Use Export report instead."); return; } report.opener = null; report.document.write(roadmapReport(bundle, steps, proteinTransition)); report.document.close(); report.focus(); window.setTimeout(() => report.print(), 300); }
   async function shareDocument() {
-    const html = roadmapReport(bundle, steps), filename = reportFilename(bundle), file = new File([html], filename, { type: "text/html" });
+    const html = roadmapReport(bundle, steps, proteinTransition), filename = reportFilename(bundle), file = new File([html], filename, { type: "text/html" });
     try {
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) await navigator.share({ title: `${bundle.protein.name} purification roadmap`, text: "Protein Lab purification roadmap", files: [file] });
       else { await navigator.clipboard.writeText(`${bundle.protein.name} purification roadmap\n${steps.length} steps · ${steps.reduce((sum, step) => sum + step.components.length, 0)} linked records\nExported from Protein Lab`); downloadBlob(filename, file); setMessage("The share summary was copied and the portable report was exported."); }
@@ -261,7 +263,7 @@ function StepInsertionDialog({ value, onClose, onChoose }: { value: StepInsertio
 }
 
 function ProteinTransitionSummary({ value }: { value: ReturnType<typeof cleavageTransition> }) {
-  return <section className="roadmap-protein-transition"><header><span><Activity/><span><strong>Protein measurements through tag cleavage</strong><small>Keep these expected values visible when identifying bands, pooling fractions, and calculating concentration.</small></span></span><em>{value.cleavagePlanned ? "CLEAVAGE PLANNED" : "TAG RETAINED / NOT SET"}</em></header><div className="roadmap-transition-grid"><article><span>Before cleavage</span><strong>{value.beforeMass}</strong><small>Molecular weight</small><b>{value.beforeExtinction}</b><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><i>→</i><article><span>After cleavage</span><strong>{value.afterMass}</strong><small>Molecular weight</small><b>{value.afterExtinction}</b><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><aside><b>{value.tagLabel}</b><p>{value.note}</p>{value.oxidized && <small>Oxidized-cystine ε₂₈₀ after cleavage: {value.oxidized} M⁻¹ cm⁻¹</small>}</aside></div></section>;
+  return <section className="roadmap-protein-transition"><header><span><Activity/><span><strong>Protein measurements through tag cleavage</strong><small>Keep these expected values visible when identifying bands, pooling fractions, and calculating concentration.</small></span></span><em>{value.cleavagePlanned ? "CLEAVAGE PLANNED" : "TAG RETAINED / NOT SET"}</em></header><div className="roadmap-transition-grid"><article><span>Before cleavage</span><strong>{value.beforeMass}</strong><small>Molecular weight</small><b>{value.beforeExtinction}</b><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><i>→</i><article><span>After cleavage</span><strong>{value.afterMass}</strong><small>Molecular weight</small><b>{value.afterExtinction}</b><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><aside><b>{value.tagLabel}</b><p>{value.note}</p>{value.oxidized && <small>Oxidized-cystine ε₂₈₀ after cleavage: {value.oxidized} M⁻¹ cm⁻¹</small>}{value.assembly && <small>{value.assembly}</small>}</aside></div></section>;
 }
 
 function ComponentEditor({ value, bundle, savedBuffers, onChange, onClose, onSave }: { value: { stepId: string; component: RoadmapComponent } | null; bundle: ProteinBundle; savedBuffers: SavedBuffer[]; onChange: (value: { stepId: string; component: RoadmapComponent } | null) => void; onClose: () => void; onSave: () => void }) {
@@ -302,41 +304,30 @@ function newRoadmapStep(templateId: string): RoadmapStep {
 }
 function itemSummary(value: RoadmapComponent) { if (value.type === "buffer") return `${value.purpose || "Saved buffer"}${value.pH ? ` · pH ${value.pH}` : ""} · ${(value.ingredients ?? []).filter((item) => item.name).length} components`; if (value.type === "measurement") return `Yield ${value.yieldValue || "—"} ${value.yieldUnit || ""} · Purity ${value.purityValue || "—"}%`; if (value.sourceJobId) return "Linked to a saved project analysis"; return value.notes || value.fileName || "Click or right-click to edit"; }
 
-function cleavageTransition(bundle: ProteinBundle) {
-  const result = bundle.protparam?.result ?? {}, extinction = object(result.extinctionCoefficient280), affinity = config(bundle, "purification-affinity"), subtractive = config(bundle, "purification-subtractive"), cleavage = config(bundle, "purification-cleavage");
-  const afterDa = finiteNumber(result.molecularWeightDa) ?? bundle.protein.sequence.length * 110;
-  const afterReduced = finiteNumber(extinction.reducedMolarM1Cm1), afterOxidized = finiteNumber(extinction.oxidizedMolarM1Cm1);
-  const tagName = String(affinity.tag ?? subtractive.tag ?? "").trim(), profile = affinityTagProfile(tagName), cleavageId = String(cleavage.proteaseId ?? "");
-  const cleavagePlanned = Boolean(cleavageId && cleavageId !== "retain");
-  if (!profile) return {
-    cleavagePlanned, tagLabel: tagName || "Affinity tag not selected", beforeMass: tagName ? "Exact tag sequence needed" : formatMass(afterDa), afterMass: formatMass(afterDa), beforeExtinction: tagName ? "Exact tag sequence needed" : formatCoefficient(afterReduced), afterExtinction: formatCoefficient(afterReduced), oxidized: formatCoefficient(afterOxidized, false), note: tagName ? `The saved strategy uses ${tagName}. Add or annotate the exact fusion-tag and linker sequence in Expression vector design to calculate the tagged precursor.` : "Choose an affinity strategy to calculate the before-cleavage precursor. The after-cleavage values come from Protein properties.",
+type TransitionStatus = { analysing: boolean; failed: boolean };
+/** The before/after-cleavage panel, from the same numbers Affinity capture, SEC and the report use. */
+function cleavageTransition(numbers: ConstructNumbers, status: TransitionStatus) {
+  const { native, fusion, cleaved, cleaves } = numbers, after = cleaves ? cleaved : fusion;
+  const nativeOxidized = native && native.extinctionOxidized !== native.extinctionReduced ? formatCoefficient(native.extinctionOxidized, false) : "";
+  const assembly = numbers.assembly && numbers.purified ? `${numbers.assemblyLabel}: ${formatMass(numbers.assembly.massDa)} (${numbers.subunits} × ${formatMass(numbers.purified.massDa)})${numbers.assembly.extinctionReduced === null ? "" : `, ε₂₈₀ ${formatCoefficient(numbers.assembly.extinctionReduced)}`}` : "";
+  if (numbers.constructSource === "none") return {
+    cleavagePlanned: false, tagLabel: numbers.unresolvedTag ?? "Affinity tag not selected", beforeMass: numbers.unresolvedTag ? "Exact tag sequence needed" : formatSpeciesMass(native), afterMass: formatSpeciesMass(native), beforeExtinction: numbers.unresolvedTag ? "Exact tag sequence needed" : formatSpeciesExtinction(native), afterExtinction: formatSpeciesExtinction(native), oxidized: nativeOxidized, assembly,
+    note: numbers.unresolvedTag ? `${numbers.unresolvedTag} is a large fusion partner. Load or paste its sequence in Affinity capture to calculate the tagged precursor.` : "Choose an affinity tag in Affinity capture to calculate the tagged precursor. These values come from Protein properties.",
   };
-  const tagDa = peptideFusionMass(profile.sequence), tagExtinction = extinctionForSequence(profile.sequence);
+  // A planned construct is analysed by the engine on first view; say so until the numbers arrive.
+  const waiting = status.failed ? "Engine unavailable" : "Calculating…";
+  const species = (value: typeof fusion, format: (value: typeof fusion) => string) => value ? format(value) : waiting;
+  const oxidized = after && after.extinctionOxidized !== after.extinctionReduced ? formatCoefficient(after.extinctionOxidized, false) : "";
+  const residues = fusion ? `${fusion.residues} aa expressed${cleaves && cleaved ? `, ${cleaved.residues} aa after cleavage` : ""}` : "";
+  const origin = numbers.constructSource === "saved" ? "the construct saved in Affinity capture" : "the construct Affinity capture shows for this plan (not saved yet)";
   return {
-    cleavagePlanned, tagLabel: `${profile.label} · ${profile.sequence.length} aa reference tag`, beforeMass: formatMass(afterDa + tagDa), afterMass: formatMass(afterDa), beforeExtinction: formatCoefficient(afterReduced === null ? null : afterReduced + tagExtinction), afterExtinction: formatCoefficient(afterReduced), oxidized: formatCoefficient(afterOxidized, false), note: `Before-cleavage estimate adds the ${profile.source} sequence to the saved target. Linkers, cleavage-site residues, construct mutations, and oligomerization are not included.`,
+    cleavagePlanned: cleaves, tagLabel: `${numbers.tagName ?? "Affinity tag"}${residues ? ` · ${residues}` : ""}`,
+    beforeMass: species(fusion, formatSpeciesMass), afterMass: species(after, formatSpeciesMass), beforeExtinction: species(fusion, formatSpeciesExtinction), afterExtinction: species(after, formatSpeciesExtinction), oxidized, assembly,
+    note: status.failed && !fusion ? "The engine could not calculate the construct. Open Affinity capture to recalculate it." : `Calculated from ${origin}: tag, linker, cleavage site and junction included.${cleaves ? numbers.scar ? ` Cleavage leaves ${numbers.scar} on the protein.` : " Cleavage leaves no residual residues." : " No protease is chosen, so the tag stays on."}`,
   };
 }
-function affinityTagProfile(value: string): TagProfile | null {
-  const tag = value.toLowerCase();
-  const profiles: [RegExp, TagProfile][] = [
-    [/twin.?strep/, { label: "Twin-Strep-tag", sequence: "WSHPQFEKGGGSGGGSGGSAWSHPQFEK", source: "common Twin-Strep reference" }],
-    [/(?:rho)?1d4/, { label: "Rho1D4 tag", sequence: "TETSQVAPA", source: "canonical 1D4 epitope" }],
-    [/polyhistidine|\bhis(?:6|[- ]?tag)?\b/, { label: "6×His tag", sequence: "HHHHHH", source: "six-histidine reference" }],
-    [/strep/, { label: "Strep-tag II", sequence: "WSHPQFEK", source: "canonical Strep-tag II" }],
-    [/flag/, { label: "FLAG tag", sequence: "DYKDDDDK", source: "canonical FLAG epitope" }],
-    [/(?:\bha\b|hemagglutinin)/, { label: "HA tag", sequence: "YPYDVPDYA", source: "canonical HA epitope" }],
-    [/myc/, { label: "Myc tag", sequence: "EQKLISEEDL", source: "canonical Myc epitope" }],
-    [/\bv5\b/, { label: "V5 tag", sequence: "GKPIPNPLLGLDST", source: "canonical V5 epitope" }],
-    [/t7/, { label: "T7 tag", sequence: "MASMTGGQQMG", source: "canonical T7 epitope" }],
-    [/s.?tag/, { label: "S-tag", sequence: "KETAAAKFERQHMDS", source: "canonical S-tag peptide" }],
-    [/alfa/, { label: "ALFA-tag", sequence: "PSRLEEELRRRLTE", source: "canonical ALFA-tag peptide" }],
-    [/protein c|hpc4/, { label: "Protein C tag", sequence: "EDQVDPRLIDGK", source: "canonical HPC4 epitope" }],
-  ];
-  return profiles.find(([pattern]) => pattern.test(tag))?.[1] ?? null;
-}
-function peptideFusionMass(sequence: string) { const residueMass: Record<string, number> = { A:71.0788,R:156.1875,N:114.1038,D:115.0886,C:103.1388,E:129.1155,Q:128.1307,G:57.0519,H:137.1411,I:113.1594,L:113.1594,K:128.1741,M:131.1926,F:147.1766,P:97.1167,S:87.0782,T:101.1051,W:186.2132,Y:163.1760,V:99.1326 }; return [...sequence].reduce((sum, residue) => sum + (residueMass[residue] ?? 0), 0); }
-function extinctionForSequence(sequence: string) { return [...sequence].reduce((sum, residue) => sum + (residue === "W" ? 5500 : residue === "Y" ? 1490 : 0), 0); }
-function finiteNumber(value: unknown) { const number = Number(value); return Number.isFinite(number) ? number : null; }
+function formatSpeciesMass(value: SpeciesNumbers | null) { return value ? formatMass(value.massDa) : "Calculate Protein properties"; }
+function formatSpeciesExtinction(value: SpeciesNumbers | null) { return formatCoefficient(value?.extinctionReduced ?? null); }
 function formatMass(value: number) { return `${(value / 1000).toFixed(2)} kDa`; }
 function formatCoefficient(value: number | null, fallback = true) { return value === null ? (fallback ? "Calculate Protein properties" : "") : Math.round(value).toLocaleString(); }
 
@@ -345,10 +336,10 @@ function safeFilename(value: string) { return value.trim().replace(/[^a-z0-9._-]
 function downloadBlob(filename: string, blob: Blob) { const url = URL.createObjectURL(blob), link = document.createElement("a"); link.href = url; link.download = filename; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
 function escapeHtml(value: unknown) { return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" })[character]!); }
 
-function roadmapReport(bundle: ProteinBundle, steps: RoadmapStep[]) {
-  const generated = new Date().toLocaleString(), jobs = new Map(bundle.projectJobs.map((job) => [job.id, job])), transition = cleavageTransition(bundle);
+function roadmapReport(bundle: ProteinBundle, steps: RoadmapStep[], transition: ReturnType<typeof cleavageTransition>) {
+  const generated = new Date().toLocaleString(), jobs = new Map(bundle.projectJobs.map((job) => [job.id, job]));
   const body = steps.map((step, index) => `<section class="step"><header><span>${index + 1}</span><div><h2>${escapeHtml(step.title)}</h2><p>${escapeHtml(step.instruction)}</p></div><b class="${step.ready ? "ready" : "pending"}">${step.ready ? "PLANNED" : "IN PROGRESS"}</b></header>${step.planDetails.length ? `<div class="plan">${step.planDetails.map((detail) => `<em>${escapeHtml(detail)}</em>`).join("")}</div>` : ""}<p class="record"><b>Record:</b> ${escapeHtml(step.record)}</p>${step.components.length ? `<div class="records">${step.components.map((component) => reportComponent(component, jobs.get(component.sourceJobId ?? ""))).join("")}</div>` : `<p class="empty">No records have been attached to this step.</p>`}</section>`).join("");
-  const transitionBlock = `<section class="transition"><header><div><small>EXPECTED PROTEIN MEASUREMENTS</small><h2>Before and after affinity-tag cleavage</h2></div><b>${transition.cleavagePlanned ? "CLEAVAGE PLANNED" : "TAG RETAINED / NOT SET"}</b></header><div><article><span>Before cleavage</span><strong>${escapeHtml(transition.beforeMass)}</strong><small>Molecular weight</small><em>${escapeHtml(transition.beforeExtinction)}</em><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><i>→</i><article><span>After cleavage</span><strong>${escapeHtml(transition.afterMass)}</strong><small>Molecular weight</small><em>${escapeHtml(transition.afterExtinction)}</em><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><aside><b>${escapeHtml(transition.tagLabel)}</b><p>${escapeHtml(transition.note)}</p>${transition.oxidized ? `<small>Oxidized-cystine ε₂₈₀ after cleavage: ${escapeHtml(transition.oxidized)} M⁻¹ cm⁻¹</small>` : ""}</aside></div></section>`;
+  const transitionBlock = `<section class="transition"><header><div><small>EXPECTED PROTEIN MEASUREMENTS</small><h2>Before and after affinity-tag cleavage</h2></div><b>${transition.cleavagePlanned ? "CLEAVAGE PLANNED" : "TAG RETAINED / NOT SET"}</b></header><div><article><span>Before cleavage</span><strong>${escapeHtml(transition.beforeMass)}</strong><small>Molecular weight</small><em>${escapeHtml(transition.beforeExtinction)}</em><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><i>→</i><article><span>After cleavage</span><strong>${escapeHtml(transition.afterMass)}</strong><small>Molecular weight</small><em>${escapeHtml(transition.afterExtinction)}</em><small>ε₂₈₀ reduced · M⁻¹ cm⁻¹</small></article><aside><b>${escapeHtml(transition.tagLabel)}</b><p>${escapeHtml(transition.note)}</p>${transition.oxidized ? `<small>Oxidized-cystine ε₂₈₀ after cleavage: ${escapeHtml(transition.oxidized)} M⁻¹ cm⁻¹</small>` : ""}${transition.assembly ? `<small>${escapeHtml(transition.assembly)}</small>` : ""}</aside></div></section>`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(bundle.protein.name)} · Purification roadmap</title><style>${reportCss}</style></head><body><main><header class="cover"><small>PROTEIN LAB · PURIFICATION RECORD</small><h1>${escapeHtml(bundle.protein.name)}</h1><p>${escapeHtml(bundle.protein.description || "Purification roadmap")}</p><dl><div><dt>Sequence length</dt><dd>${bundle.protein.sequence.length} aa</dd></div><div><dt>Organism</dt><dd>${escapeHtml(bundle.protein.organism || "Not recorded")}</dd></div><div><dt>Generated</dt><dd>${escapeHtml(generated)}</dd></div></dl></header>${body}${transitionBlock}<footer>Generated locally by Protein Lab · ${escapeHtml(generated)}</footer></main></body></html>`;
 }
 function reportComponent(component: RoadmapComponent, job?: ProjectJob) {

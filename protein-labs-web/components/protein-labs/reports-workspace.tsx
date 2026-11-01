@@ -15,6 +15,8 @@ import {
   type Figure, type ReportPage,
 } from "@/lib/report-export";
 import { headingIgnoresKey, singleLineHeading } from "@/lib/report-headings";
+import type { ConstructNumbers } from "@/lib/construct-numbers";
+import { useConstructNumbers } from "@/lib/use-construct-numbers";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { structureSnapshot, type StructureSnapshot } from "@/components/protein-labs/structure-snapshot";
 
@@ -51,6 +53,7 @@ const pageTemplates: PageTemplate[] = [
 
 export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle; onChanged: () => Promise<void> }) {
   const saved = bundle.projectNotebook;
+  const { numbers } = useConstructNumbers(bundle);
   const [title, setTitle] = useState(saved?.title ?? `${bundle.protein.name} — purification report`);
   const [summary, setSummary] = useState(saved?.summary ?? "Expression, purification, and quality-control record.");
   const [pages, setPages] = useState<ReportPage[]>(() => loadPages(saved?.sections));
@@ -166,7 +169,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
   }
 
   function exportHtml() {
-    const blob = new Blob([reportHtml(bundle, title, summary, pages, analyses, picture.state === "ready" ? picture.snapshot.dataUri : null)], { type: "text/html" });
+    const blob = new Blob([reportHtml(bundle, title, summary, pages, analyses, picture.state === "ready" ? picture.snapshot.dataUri : null, numbers)], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url; link.download = `${safeName(title)}.html`; link.click();
@@ -174,7 +177,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
     setMessage("A standalone HTML report was exported.");
   }
   function exportMarkdown() {
-    const blob = new Blob([reportMarkdown(bundle, title, summary, pages)], { type: "text/markdown" });
+    const blob = new Blob([reportMarkdown(bundle, title, summary, pages, numbers)], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url; link.download = `${safeName(title)}.md`; link.click();
@@ -251,7 +254,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
               <span className="report-page-number">{pageNumber ? `Page ${pageNumber}` : "Not included"}</span>
             </header>
 
-            {page.templateId === "properties" && <PropertiesBlocks bundle={bundle} geometry={geometry} picture={picture}/>}
+            {page.templateId === "properties" && <PropertiesBlocks bundle={bundle} numbers={numbers} geometry={geometry} picture={picture}/>}
             {page.templateId === "vector" && <VectorBlocks bundle={bundle} vectors={vectors}/>}
 
             {page.showFacts && facts.length > 0 && <section className="report-facts">
@@ -340,8 +343,8 @@ function modelCaption(bundle: ProteinBundle, geometry: JsonObject | null, pictur
   return `${text(model.name, text(model.modelId))} · ${text(model.source, "AlphaFold")}${geometry?.meanPlddt ? ` · mean pLDDT ${text(geometry.meanPlddt)}` : ""}${confidence ? " · coloured by pLDDT: blue confident, orange low" : ""}`;
 }
 
-function PropertiesBlocks({ bundle, geometry, picture }: { bundle: ProteinBundle; geometry: JsonObject | null; picture: StructurePicture }) {
-  const { properties, construct, constructFacts } = proteinProperties(bundle);
+function PropertiesBlocks({ bundle, numbers, geometry, picture }: { bundle: ProteinBundle; numbers: ConstructNumbers; geometry: JsonObject | null; picture: StructurePicture }) {
+  const { properties, construct, constructFacts } = proteinProperties(bundle, numbers);
   return <>
     <section className="report-properties">
       <div className="report-structure">

@@ -26,8 +26,12 @@ const reference: ProteinBundle = {
     job("purification-affinity", { tag: "His6" }),
     job("purification-cleavage", {
       proteaseName: "TEV protease",
-      // Illustrative saved construct; the export must carry it verbatim.
-      construct: { tagName: "His6-TEV", linkerName: "DYDIPTT spacer", junctionSequence: "GA", scar: "GGA", fusionLength: 163, fusionMassDa: 18321.7, fusionExtinction: 15470, cleavedLength: 144, cleavedMassDa: 16141.38, cleavedExtinction: 15470 },
+      // Illustrative saved construct in the shape `constructSummary` writes; the export must carry it verbatim.
+      construct: {
+        tagName: "His6-TEV", linkerName: "DYDIPTT spacer", junctionSequence: "GA", scar: "GGA", cleaves: true,
+        fusionProperties: { lengthAa: 163, massDa: 18321.7, pI: 6.9, extinctionReduced: 15470, extinctionOxidized: 15595 },
+        cleavedProperties: { lengthAa: 144, massDa: 16141.38, pI: 7.1, extinctionReduced: 15470, extinctionOxidized: 15595 },
+      },
     }),
   ],
   projectNotebook: null,
@@ -49,6 +53,13 @@ describe("report exports", () => {
     assert.match(markdown, /\| Theoretical pI \| 6\.74 \|/);
     assert.match(markdown, /\| Uncleaved fusion \| 163 \| 18,321\.70 \| 15,470 \|/);
     assert.match(markdown, /\| After tag cleavage \| 144 \| 16,141\.38 \| 15,470 \|/);
+  });
+
+  it("adds the assembly row the SEC default sizes for", () => {
+    const tetramer = { ...reference, projectJobs: [...reference.projectJobs, job("protparam", { oligomericState: { kind: "homotetramer" } })] };
+    const rows = proteinProperties(tetramer).construct.map((row) => [row.species, row.residues, row.massDa]);
+    assert.deepEqual(rows.at(-1), ["Homotetramer (4 × cleaved product)", "576", "64,565.52"]);
+    assert.ok(reportMarkdown(tetramer, "Report", "Summary", [page("properties")]).includes("| Homotetramer (4 × cleaved product) | 576 | 64,565.52 | 61,880 |"));
   });
 
   it("names the linker and the junction residues the protein keeps", () => {

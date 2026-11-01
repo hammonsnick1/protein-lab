@@ -10003,6 +10003,16 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   color: var(--foreground);
   padding: 8px;
 }
+.stage-mass-basis {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.stage-mass-basis b { color: var(--foreground); }
 .stage-buffer-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

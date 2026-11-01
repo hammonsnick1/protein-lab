@@ -19,6 +19,8 @@ import { secColumns, type SecColumn } from "@/lib/sec-column-catalog";
 import { LysisBufferPanel } from "@/components/protein-labs/lysis-buffer-panel";
 import { constructCysteines, dropUnneededReductant } from "@/lib/reductant-need";
 import { lysisHost, lysisHostLabels } from "@/lib/lysis-buffer-suggestion";
+import { secMassKDa, type ConstructNumbers } from "@/lib/construct-numbers";
+import { useConstructNumbers } from "@/lib/use-construct-numbers";
 
 type Mode = "purification-lysis" | "purification-subtractive" | "purification-sec";
 type Inspect = { kind:"method"|"affinity"|"sec"|"buffer"; id:string } | null;
@@ -33,10 +35,13 @@ export function PurificationStageJob({bundle,onChanged,mode}:{bundle:ProteinBund
   const [report,setReport]=useState<ConstructReport|null>(null);
   const protease=proteases.find(value=>value.id===proteaseId)??proteases[0];
   const [cleanupId,setCleanupId]=useState(String(saved.columnId??config(bundle,"purification-affinity").columnId??"his-ni"));
-  // SEC runs after tag cleavage, so the mass to match against the column is
-  // the cleaved construct when the purification planner has worked one out.
-  const defaultMass=Math.max(.1,Math.round(Number(plannedMassDa(bundle)??bundle.protparam?.result.molecularWeightDa??bundle.protein.sequence.length*110)/10)/100);
-  const [secId,setSecId]=useState(String(saved.columnId??pickSec(defaultMass).id)); const [expectedMass,setExpectedMass]=useState(Number(saved.expectedMassKDa??defaultMass)); const [sampleVolume,setSampleVolume]=useState(Number(saved.sampleVolumeMl??.25));
+  // SEC runs after tag cleavage, so the column is sized for the purified
+  // product times the recorded oligomeric state. Until the scientist types a
+  // mass or picks a column, both follow that suggestion.
+  const {numbers}=useConstructNumbers(bundle);
+  const suggestedMass=secMassKDa(numbers)??Math.max(.1,Math.round(bundle.protein.sequence.length*11)/100);
+  const [massInput,setExpectedMass]=useState<number|null>(saved.expectedMassKDa==null?null:Number(saved.expectedMassKDa)); const expectedMass=massInput??suggestedMass;
+  const [secChoice,setSecId]=useState<string|null>(saved.columnId==null?null:String(saved.columnId)); const secId=secChoice??pickSec(expectedMass).id; const [sampleVolume,setSampleVolume]=useState(Number(saved.sampleVolumeMl??.25));
   const initialBuffer=mode==="purification-lysis"?"lysis-native":mode==="purification-subtractive"?"cleanup-imac":"sec-hepes";
   const bufferStepId=mode==="purification-lysis"?"lysis":mode==="purification-subtractive"?"cleavage":"storage";
   // A saved job reopens with its buffer from the shared record; an unsaved one starts from a preset.
@@ -77,7 +82,7 @@ export function PurificationStageJob({bundle,onChanged,mode}:{bundle:ProteinBund
 
     {mode==="purification-subtractive"&&<ChoiceSection title="2 · Reverse-affinity cleanup medium" hint="The full Affinity Capture catalog is available. Reverse capture usually reuses the tag chemistry chosen for the first capture."><div className="catalog-filters stage-filters"><label><Search/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search tag, resin, or use…"/></label><select value={category} onChange={event=>setCategory(event.target.value)}>{affinityCategories.map(value=><option key={value}>{value}</option>)}</select></div><div className="stage-choice-grid">{filteredAffinity.map(value=><button key={value.id} className={value.id===cleanupId?"selected":""} style={{"--stage-color":value.color} as React.CSSProperties} onClick={()=>setInspect({kind:"affinity",id:value.id})}><span className="stage-choice-icon"><CatalogCartoon kind={resinCartoonKind(value.category, value.tag, value.name)}/></span><strong>{value.shortName}</strong><small>{value.name}</small><em>{value.tag}</em>{value.id===cleanupId&&<Check/>}</button>)}</div></ChoiceSection>}
 
-    {mode==="purification-sec"&&<ChoiceSection title="SEC column" hint="Ranges refer to globular proteins; oligomerization and detergent micelles change hydrodynamic size."><div className="stage-choice-grid sec">{secColumns.map(value=><button key={value.id} className={value.id===secId?"selected":""} style={{"--stage-color":value.color} as React.CSSProperties} onClick={()=>setInspect({kind:"sec",id:value.id})}><span className="stage-column-icon"><CatalogCartoon kind={secCartoonKind(value.maxKDa)}/></span><strong>{value.shortName}</strong><small>{value.minKDa===null?"User-defined range":`${value.minKDa}–${value.maxKDa} kDa`} · Vt {value.vt} mL</small><em>{value.format}</em>{value.id===secId&&<Check/>}</button>)}</div><div className="stage-numeric-fields"><label>Expected native mass / complex size (kDa)<input type="number" min=".1" step=".1" value={expectedMass} onChange={event=>setExpectedMass(Number(event.target.value))}/></label><label>Injection volume (mL)<input type="number" min=".001" step=".001" value={sampleVolume} onChange={event=>setSampleVolume(Number(event.target.value))}/></label></div></ChoiceSection>}
+    {mode==="purification-sec"&&<ChoiceSection title="SEC column" hint="Ranges refer to globular proteins; oligomerization and detergent micelles change hydrodynamic size."><div className="stage-choice-grid sec">{secColumns.map(value=><button key={value.id} className={value.id===secId?"selected":""} style={{"--stage-color":value.color} as React.CSSProperties} onClick={()=>setInspect({kind:"sec",id:value.id})}><span className="stage-column-icon"><CatalogCartoon kind={secCartoonKind(value.maxKDa)}/></span><strong>{value.shortName}</strong><small>{value.minKDa===null?"User-defined range":`${value.minKDa}–${value.maxKDa} kDa`} · Vt {value.vt} mL</small><em>{value.format}</em>{value.id===secId&&<Check/>}</button>)}</div><div className="stage-numeric-fields"><label>Expected native mass / complex size (kDa)<input type="number" min=".1" step=".1" value={expectedMass} onChange={event=>setExpectedMass(Number(event.target.value))}/></label><label>Injection volume (mL)<input type="number" min=".001" step=".001" value={sampleVolume} onChange={event=>setSampleVolume(Number(event.target.value))}/></label></div><SecMassBasis numbers={numbers} suggested={suggestedMass} current={expectedMass} onUse={()=>setExpectedMass(suggestedMass)}/></ChoiceSection>}
 
     {mode==="purification-lysis"?<LysisBufferPanel bundle={bundle} membrane={isMembrane(bundle)} methodId={method.id} step={lysisStep} source={bufferId} onApply={step=>{setBufferId("suggested");setLysisStep(step);setLysisEdited(false)}} onEdit={step=>{setLysisStep(step);setLysisEdited(true)}} onInspectPreset={id=>setInspect({kind:"buffer",id})}/>:<ChoiceSection title={composed?"Buffer starting point":"Buffer for this job"} hint={composed?`Click a preset to review it, then load its components into the composer below and edit them for your protein.${cysteines===0?" The construct has no cysteines, so the presets leave out the reducing agent.":""}`:"Click a buffer to review what it is for, why it helps, and what can go wrong."}><div className="stage-buffer-grid">{buffers.map(value=><button key={value.id} className={value.id===bufferId?"selected":""} style={{"--stage-color":value.color} as React.CSSProperties} onClick={()=>setInspect({kind:"buffer",id:value.id})}><span className="stage-buffer-icon"><CatalogCartoon kind={bufferCartoonKind(value.components)}/></span><span><strong>{value.name}</strong><small>{value.description}</small><em>pH {value.pH} · {formula(value)}</em></span>{value.id===bufferId&&<Check/>}</button>)}</div>{composed&&<BufferComposer key={composerLoads} label={`${bufferStepLabels[bufferStepId]} buffer`} step={bufferStep} onChange={setBufferStep}/>}</ChoiceSection>}
 
@@ -108,8 +113,13 @@ function secChecks(bundle:ProteinBundle,column:SecColumn,buffer:BufferStep,mass:
 
 function config(bundle:ProteinBundle,type:string){return bundle.projectJobs.find(job=>job.appType===type)?.config??{}}
 
+/** What the suggested SEC mass is made of, so the monomer and the assembly are both on screen. */
+function SecMassBasis({numbers,suggested,current,onUse}:{numbers:ConstructNumbers;suggested:number;current:number;onUse:()=>void}){
+  const chain=numbers.purified?`${(numbers.purified.massDa/1000).toFixed(2)} kDa ${numbers.purifiedSpecies}`:"";
+  const basis=numbers.assembly?`${numbers.assemblyLabel}: ${numbers.subunits} × ${chain}.`:chain?`One ${chain}.${numbers.oligomer?.kind==="hetero-complex"?` A hetero-complex is recorded${numbers.oligomer.complexNote?` (${numbers.oligomer.complexNote})`:""}; enter the complex mass, since partner chains are not in this project.`:numbers.oligomer&&numbers.oligomer.kind!=="unknown"?"":" Record the oligomeric state in Protein properties to size for the assembly."}`:"Estimated from sequence length; calculate Protein properties for the exact mass.";
+  return <p className="stage-mass-basis"><span><b>Suggested {suggested.toFixed(2)} kDa</b> · {basis}</span>{Math.abs(current-suggested)>=.01&&<Button size="sm" variant="outline" onClick={onUse}>Use {suggested.toFixed(2)} kDa</Button>}</p>;
+}
 function stageConstruct(bundle:ProteinBundle){return (config(bundle,"purification-cleavage").construct??config(bundle,"purification-affinity").construct) as JsonObject|undefined}
-function plannedMassDa(bundle:ProteinBundle):number|null{const construct=stageConstruct(bundle);if(!construct)return null;const properties=(construct.cleaves===true?construct.cleavedProperties:construct.fusionProperties) as JsonObject|undefined;const mass=Number(properties?.massDa??0);return Number.isFinite(mass)&&mass>0?mass:null}
 function vectorText(vectors:JsonObject[]){return vectors.flatMap(vector=>[vector.name,...(Array.isArray(vector.features)?vector.features:[]).map(raw=>{const item=raw as JsonObject;return`${item.name??""} ${item.type??""} ${item.notes??""} ${item.label??""}`})]).join(" ").toLowerCase()}
 function hasHis(value:string){return /(?:6x|6×|poly)?\s*his(?:tidine)?[- ]?tag|his6|6his/.test(value)}
 function hasNTermHis(value:string){return /(?:n[- ]?term(?:inal)?|amino[- ]?term(?:inal)?).{0,35}(?:his|polyhistidine)|(?:his|polyhistidine).{0,35}(?:n[- ]?term(?:inal)?|amino[- ]?term(?:inal)?)/.test(value)}
