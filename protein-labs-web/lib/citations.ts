@@ -105,6 +105,11 @@ const entries = [
     source: "Nat Struct Biol 2:1062–1067", doi: "10.1038/nsb1295-1062",
   },
   {
+    id: "yeates2012racemic", kind: "article", name: "Racemic protein crystallography", authors: "Yeates TO, Kent SBH", year: "2012",
+    title: "Racemic protein crystallography",
+    source: "Annu Rev Biophys 41:41–61", doi: "10.1146/annurev-biophys-050511-102333",
+  },
+  {
     id: "ita2016", kind: "book", name: "International Tables, Vol. A", authors: "Aroyo MI (ed.)", year: "2016",
     title: "International Tables for Crystallography, Volume A: Space-group symmetry",
     source: "International Union of Crystallography", doi: "10.1107/97809553602060000114",

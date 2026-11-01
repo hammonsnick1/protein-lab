@@ -117,6 +117,34 @@ export function hasPrediction(highlights: Map<number, SpaceGroupHighlight>): boo
   return [...highlights.values()].some((highlight) => highlight.predictor);
 }
 
+/**
+ * Why nothing is flagged in the list, when nothing is. The three reasons need
+ * different words, and running them together is what made the panel tell a
+ * project that already had a reference match and a finished Sequence research
+ * job to go and run Sequence research:
+ *
+ *  - `no-search`: the PDB search has not run, so nothing is saved at all.
+ *  - `no-hits`: it ran and matched no entry.
+ *  - `no-space-group`: entries are saved, but none of their records carries a
+ *    space group. That is the usual case until the engine records
+ *    `_symmetry.space_group_name_H-M` on a hit (HOM-321), and re-running the
+ *    search is what fills it in — not choosing a reference match.
+ */
+export type EvidenceGap =
+  | { kind: "no-search" }
+  | { kind: "no-hits" }
+  | { kind: "no-space-group"; hits: number };
+
+/** `null` once at least one saved hit carries a space group. */
+export function evidenceGap(
+  input: { searched: boolean; hits: number; withSpaceGroup: number },
+): EvidenceGap | null {
+  if (input.withSpaceGroup > 0) return null;
+  if (!input.searched) return { kind: "no-search" };
+  if (input.hits < 1) return { kind: "no-hits" };
+  return { kind: "no-space-group", hits: input.hits };
+}
+
 /** Space-group names in the evidence that the table could not resolve. */
 export function unresolvedSpaceGroups(hits: readonly SpaceGroupHit[] = []): string[] {
   return [...new Set(hits

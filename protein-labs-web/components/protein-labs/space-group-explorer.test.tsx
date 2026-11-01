@@ -66,9 +66,32 @@ describe("the space-group explorer", () => {
 
   it("says what is missing instead of inventing a prediction", () => {
     const body = text(plain);
-    assert.match(body, /No saved PDB homologue records a space group yet/);
+    assert.match(body, /No PDB search has been saved for this sequence yet/);
     assert.match(body, /no redistributable MASCL model ships with this installation/);
     assert.doesNotMatch(body, /\d+% likely|probability/);
+  });
+
+  // HOM-362: the panel used to ask for a reference match whenever no group was
+  // flagged, including on a project whose Sequence research had already run and
+  // whose homologues simply carry no space group in their saved records.
+  it("names the real cause when the saved homologues carry no space group", () => {
+    const html = renderToStaticMarkup(<SpaceGroupExplorer
+      proteinName="carbonic anhydrase II"
+      facts={factsWithHits([{ pdbId: "1A42", spaceGroup: null }, { pdbId: "2CBA", spaceGroup: null }])}
+    />);
+    const body = text(html);
+    assert.match(body, /All 2 saved PDB homologues carry no space group in their saved record/);
+    assert.match(body, /This is not about the reference match/);
+    assert.match(body, /_symmetry.space_group_name_H-M/);
+    assert.doesNotMatch(body, /choose a reference match/);
+    assert.doesNotMatch(body, /No PDB search has been saved/);
+  });
+
+  it("says the search matched nothing, rather than that it was never run", () => {
+    const html = renderToStaticMarkup(<SpaceGroupExplorer facts={factsWithHits([])}/>);
+    const body = text(html);
+    assert.match(body, /The saved PDB search matched no entry/);
+    assert.doesNotMatch(body, /No PDB search has been saved/);
   });
 
   it("flags and opens the group the saved homologues used", () => {
@@ -94,12 +117,23 @@ describe("the space-group explorer", () => {
     assert.match(body, /MASCL ran on this installation\./);
   });
 
-  it("warns on an operation no protein can perform, in teaching mode's groups", () => {
+  it("warns on an operation no natural L-protein can perform, in teaching mode's groups", () => {
     const html = renderToStaticMarkup(<SpaceGroupExplorer initialSymbol="P 1 m 1" proteinName="lysozyme"/>);
     const body = text(html);
-    assert.match(body, /Protein crystals never adopt it/);
+    assert.match(body, /A crystal grown from natural L-protein alone cannot adopt it/);
     assert.match(body, /lysozyme cannot do this/);
     assert.match(body, /mirror image/);
+  });
+
+  // HOM-362: racemic protein crystals really do use the centrosymmetric
+  // groups, so "never" is wrong wherever the panel says it.
+  it("scopes the handedness rule to natural L-protein and names racemic crystals", () => {
+    for (const html of [plain, renderToStaticMarkup(<SpaceGroupExplorer initialSymbol="P 1 m 1" proteinName="lysozyme"/>)]) {
+      assert.doesNotMatch(text(html), /\bnever (adopt|use|do)\b/);
+    }
+    const teaching = text(renderToStaticMarkup(<SpaceGroupExplorer initialSymbol="P m m m"/>));
+    assert.match(teaching, /racemic mixture of L- and D-chains/);
+    assert.match(teaching, /id="ref-space-groups-yeates2012racemic"|Racemic protein crystallography/);
   });
 
   it("gathers a cubic group's 96 operations into a readable set of kinds", () => {
@@ -120,6 +154,35 @@ describe("the space-group explorer", () => {
     assert.match(plain, /id="ref-space-groups-ucl-sgp"/);
     assert.match(plain, /id="ref-space-groups-gemmi"/);
     assert.match(plain, /id="ref-space-groups-wukovitz1995"/);
+    assert.match(plain, /id="ref-space-groups-yeates2012racemic"/);
     assert.match(text(plain), /Wukovitz/);
+  });
+
+  // HOM-315 audit: the handedness rule, the crystal systems and both plates are
+  // International Tables material, not the gemmi table's, so each shows an ITA
+  // marker of its own rather than borrowing the table's citation (HOM-362).
+  it("marks every International Tables claim with the ITA reference, not gemmi's", () => {
+    const ita = plain.match(/href="#ref-space-groups-ita2016"/g) ?? [];
+    assert.ok(ita.length >= 5, `expected an ITA marker on each ITA claim, found ${ita.length}`);
+    // The handedness clause carries ITA; the packing numbers beside it carry gemmi.
+    const summary = plain.match(/<p class="sg-summary">[\s\S]*?<\/p>/)?.[0] ?? "";
+    assert.match(summary, /ref-space-groups-gemmi/);
+    assert.match(summary, /ref-space-groups-ita2016/);
+    // gemmi marks the packing sentence, ITA the handedness clause after it.
+    assert.ok(
+      summary.indexOf("ref-space-groups-gemmi") < summary.indexOf("ref-space-groups-ita2016"),
+      "gemmi marks the packing numbers and ITA the handedness rule that follows them",
+    );
+    // The general-positions plate had no citation at all before HOM-362.
+    const positions = plain.match(/<strong>General positions<\/strong>[\s\S]*?<\/figcaption>/)?.[0] ?? "";
+    assert.match(positions, /ref-space-groups-ita2016/);
+    // The element plate cited only the UCL pages; it now cites both.
+    const elements = plain.match(/<strong>Symmetry elements<\/strong>[\s\S]*?<\/figcaption>/)?.[0] ?? "";
+    assert.match(elements, /ref-space-groups-ita2016/);
+    assert.match(elements, /ref-space-groups-ucl-sgp/);
+    // The crystal-system definitions live in tooltips, so the marker sits on
+    // the label those tooltips hang off.
+    const system = plain.match(/<dt>Crystal system[\s\S]*?<\/dt>/)?.[0] ?? "";
+    assert.match(system, /ref-space-groups-ita2016/);
   });
 });

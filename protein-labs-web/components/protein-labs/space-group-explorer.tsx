@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ArrowRight, Boxes, ChevronRight, Circle, CircleDot, Database, GraduationCap, Minus, MoveRight, Pause, Play, RotateCcw, RotateCw, Search, SkipForward, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Cite, ReferenceList } from "@/components/ui/citations";
+import { Cite, CiteGroup, ReferenceList } from "@/components/ui/citations";
 import { citationScope, type CitationId } from "@/lib/citations";
 import {
-  hasPrediction, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups,
-  type PredictorSuggestion, type SpaceGroupHighlight, type SpaceGroupHit,
+  evidenceGap, hasPrediction, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups,
+  type EvidenceGap, type PredictorSuggestion, type SpaceGroupHighlight, type SpaceGroupHit,
 } from "@/lib/space-group-evidence";
 import {
   CRYSTAL_SYSTEM_NOTES, CRYSTAL_SYSTEM_ORDER, IDENTITY, SOHNCKE_GROUPS, SPACE_GROUPS,
@@ -21,7 +21,7 @@ import {
 } from "@/lib/space-group-diagram";
 import type { ProteinFacts } from "@/lib/protein-facts";
 
-const REFERENCES: CitationId[] = ["ita2016", "ucl-sgp", "gemmi", "wukovitz1995", "mascl2025"];
+const REFERENCES: CitationId[] = ["ita2016", "ucl-sgp", "gemmi", "wukovitz1995", "yeates2012racemic", "mascl2025"];
 
 /** One step of the animation, in milliseconds. */
 const STEP_MS = 1500;
@@ -52,6 +52,7 @@ export function SpaceGroupExplorer({
   facts = null, proteinName = "your protein", suggestions = [], predictorNote, initialSymbol, onSelect,
 }: SpaceGroupExplorerProps) {
   const hits = useMemo(() => crystalForms(facts), [facts]);
+  const gap = useMemo(() => evidenceState(facts, hits), [facts, hits]);
   const highlights = useMemo(() => spaceGroupHighlights(hits, suggestions), [hits, suggestions]);
   const unresolved = useMemo(() => unresolvedSpaceGroups(hits), [hits]);
   // Whether a prediction actually landed on a group in the table, not merely
@@ -86,6 +87,7 @@ export function SpaceGroupExplorer({
   }, [onSelect]);
 
   const scope = citationScope("space-groups", REFERENCES);
+  const summary = spaceGroupSummary(group);
   const copies = multiplicity(group);
   const evidence = highlights.get(group.n);
 
@@ -99,8 +101,10 @@ export function SpaceGroupExplorer({
             A crystal is one copy of {proteinName} — the <em>asymmetric unit</em> — repeated by a fixed set of
             rotations, screw axes and translations. The 230 space groups are every set that fills space;
             only the 65 <em>Sohncke</em> groups leave a protein's handedness alone, so those are the ones a
-            protein crystal can use<Cite scope={scope} id="ita2016"/>. A few of the 65 turn up far more often
-            than the rest, for packing reasons<Cite scope={scope} id="wukovitz1995"/>.
+            crystal of natural L-protein can use<Cite scope={scope} id="ita2016"/>. A few of the 65 turn up far
+            more often than the rest, for packing reasons<Cite scope={scope} id="wukovitz1995"/>. The other 165
+            are not off the table for ever: a racemic mixture of synthetic L- and D-chains really does
+            crystallise in centrosymmetric groups<Cite scope={scope} id="yeates2012racemic"/>.
           </small>
         </div>
       </header>
@@ -109,7 +113,12 @@ export function SpaceGroupExplorer({
     <section className="crystallize-section sg-chooser" aria-labelledby="sg-chooser-heading">
       <header>
         <h3 id="sg-chooser-heading">Pick a group</h3>
-        <small>Groups your own PDB homologues crystallised in are flagged in the list. The group you pick is saved with the project and is the one the lattice builder packs. Its two International Tables plates are drawn on the right.</small>
+        <small>
+          Groups your own PDB homologues crystallised in are flagged in the list. The group you pick is saved with
+          the project and is the one the lattice builder packs. Hover a crystal system for the cell rules that
+          define it; the systems, the group symbols and both plates on the right follow International Tables for
+          Crystallography, Volume A<Cite scope={scope} id="ita2016"/>.
+        </small>
       </header>
       <div className="sg-body">
       <div className="sg-picker">
@@ -124,7 +133,7 @@ export function SpaceGroupExplorer({
           >{mode ? <><GraduationCap aria-hidden="true"/>All 230</> : <>65 for proteins</>}</button>)}
         </div>
         <p className="sg-mode-note">{teaching
-          ? "Teaching mode. The extra 165 groups mirror or invert their contents, which would turn L-amino acids into D-amino acids: real protein crystals never adopt them."
+          ? <>Teaching mode. The extra 165 groups mirror or invert their contents, which would turn L-amino acids into D-amino acids, so a crystal grown from natural L-protein cannot use them. Racemic crystals of synthetic L- and D-chains can, and do<Cite scope={scope} id="yeates2012racemic"/>.</>
           : "The 65 groups built only from rotations, screw axes and translations."}
         </p>
         <label className="sg-search">
@@ -165,21 +174,26 @@ export function SpaceGroupExplorer({
           <h4 className="sg-symbol" aria-label={`Space group ${symbolText(group)}, number ${group.n}`}><HmSymbol group={group}/></h4>
           <dl className="sg-facts">
             <div><dt>Number</dt><dd>{group.n} of 230</dd></div>
-            <div><dt>Crystal system</dt><dd title={CRYSTAL_SYSTEM_NOTES[group.system]}>{systemLabel(group.system)}</dd></div>
+            <div><dt>Crystal system<Cite scope={scope} id="ita2016"/></dt><dd title={CRYSTAL_SYSTEM_NOTES[group.system]}>{systemLabel(group.system)}</dd></div>
             <div><dt>Point group</dt><dd>{group.pointGroup}</dd></div>
             <div><dt>Copies per cell</dt><dd>{copies}</dd></div>
             <div><dt>Asymmetric unit</dt><dd>1/{copies} of the cell</dd></div>
           </dl>
         </div>
-        <p className="sg-summary">{spaceGroupSummary(group)}<Cite scope={scope} id="gemmi"/></p>
+        {/* Two claims, two sources: the packing numbers are read off the
+            generated table, the handedness rule is the Tables' own. */}
+        <p className="sg-summary">
+          {summary.packing}<Cite scope={scope} id="gemmi"/>{" "}
+          {summary.handedness}<CiteGroup scope={scope} ids={group.sohncke ? ["ita2016"] : ["ita2016", "yeates2012racemic"]}/>
+        </p>
 
-        <Evidence group={group} highlight={evidence} predictorNote={predictorNote} predicted={predicted} hits={hits} unresolved={unresolved} scope={scope}/>
+        <Evidence group={group} highlight={evidence} predictorNote={predictorNote} predicted={predicted} gap={gap} unresolved={unresolved} scope={scope}/>
 
         {/* The two plates stay beside the list: they are what reading the
             chosen group means, and they fill the column the list sets. */}
         <div className="sg-diagrams">
           <ElementFigure group={group} frame={frame} drawn={drawn} chosen={chosen} scope={scope}/>
-          <PositionFigure group={group} frame={frame} positions={positions} proteinName={proteinName}/>
+          <PositionFigure group={group} frame={frame} positions={positions} proteinName={proteinName} scope={scope}/>
         </div>
       </div>
       </div>
@@ -292,8 +306,8 @@ const CATEGORY_MARKS: Record<SymmetryCategory, { icon: ReactNode; label: string 
   rotation: { icon: <RotateCw aria-hidden="true"/>, label: "rotation axis" },
   screw: { icon: <MoveRight aria-hidden="true"/>, label: "screw axis: turn and slide" },
   centring: { icon: <ArrowRight aria-hidden="true"/>, label: "centring translation" },
-  reflection: { icon: <Minus aria-hidden="true"/>, label: "mirror or glide plane: impossible for a protein" },
-  inversion: { icon: <CircleDot aria-hidden="true"/>, label: "inversion: impossible for a protein" },
+  reflection: { icon: <Minus aria-hidden="true"/>, label: "mirror or glide plane: impossible for a natural L-protein" },
+  inversion: { icon: <CircleDot aria-hidden="true"/>, label: "inversion: impossible for a natural L-protein" },
 };
 
 function CategoryMark({ category, order }: { category: SymmetryCategory; order: number }) {
@@ -311,17 +325,31 @@ function crystalForms(facts: ProteinFacts | null): SpaceGroupHit[] {
     .map((hit) => ({ pdbId: hit.pdbId, spaceGroup: hit.spaceGroup, unitCell: hit.unitCell }));
 }
 
-function Evidence({ group, highlight, predictorNote, predicted = false, hits, unresolved, scope }: {
+/**
+ * What the saved PDB search amounts to, so the panel can tell "nobody has
+ * searched" from "the saved entries carry no space group" instead of asking
+ * for a reference match that is already there.
+ */
+function evidenceState(facts: ProteinFacts | null, hits: SpaceGroupHit[]): EvidenceGap | null {
+  const pdb = facts?.pdbHits;
+  return evidenceGap({
+    searched: pdb?.status === "known",
+    hits: pdb?.status === "known" ? pdb.value.hits.length : 0,
+    withSpaceGroup: hits.length,
+  });
+}
+
+function Evidence({ group, highlight, predictorNote, predicted = false, gap, unresolved, scope }: {
   group: SpaceGroup;
   highlight?: SpaceGroupHighlight;
   predictorNote?: string;
   /** True once a predictor really suggested something, so the note stops saying none did. */
   predicted?: boolean;
-  hits: SpaceGroupHit[];
+  /** Why nothing is flagged, when nothing is; `null` once something is. */
+  gap: EvidenceGap | null;
   unresolved: string[];
   scope: ReturnType<typeof citationScope>;
 }) {
-  const missing = hits.length === 0;
   return <div className="sg-evidence">
     <h5>What your protein's relatives did</h5>
     {highlight?.kind === "pdb" && <p className="found">
@@ -334,10 +362,19 @@ function Evidence({ group, highlight, predictorNote, predicted = false, hits, un
     {highlight?.predictor && <p className="found">
       <Sparkles aria-hidden="true"/><span>{highlight.predictor.source} suggests {group.short}. {highlight.predictor.detail}</span>
     </p>}
-    {!highlight && !missing && <p className="quiet">None of the saved PDB homologues used {group.short}. That is not an argument against it — it only says this group is not in your evidence.</p>}
-    {missing && <p className="quiet">
-      No saved PDB homologue records a space group yet. Run the Sequence research job and choose a reference match,
+    {!highlight && !gap && <p className="quiet">None of the saved PDB homologues used {group.short}. That is not an argument against it — it only says this group is not in your evidence.</p>}
+    {gap?.kind === "no-search" && <p className="quiet">
+      No PDB search has been saved for this sequence yet. Run the Sequence research job and save its PDB search,
       and the groups your relatives used will be flagged in the list.
+    </p>}
+    {gap?.kind === "no-hits" && <p className="quiet">
+      The saved PDB search matched no entry, so there are no relatives to read a space group from.
+    </p>}
+    {gap?.kind === "no-space-group" && <p className="quiet">
+      {gap.hits === 1 ? "The one saved PDB homologue carries" : `All ${gap.hits} saved PDB homologues carry`} no
+      space group in their saved record, so there is nothing to flag. This is not about the reference match — it
+      means the entries were fetched before the engine started recording each entry's{" "}
+      <code>_symmetry.space_group_name_H-M</code>. Re-run the PDB search in Sequence research to refetch them.
     </p>}
     {unresolved.length > 0 && <p className="quiet">
       {unresolved.length === 1 ? "One saved homologue reports a space group" : `${unresolved.length} saved homologues report space groups`} this table does not recognise ({unresolved.join(", ")}). They are left unflagged rather than guessed at.
@@ -407,7 +444,11 @@ function ElementFigure({ group, frame, drawn, chosen, scope }: {
   return <figure className="sg-figure">
     <figcaption>
       <strong>Symmetry elements</strong>
-      <span>Where the axes and planes of {group.short} sit in one cell, seen down <b>c</b> with <b>a</b> down the page<Cite scope={scope} id="ucl-sgp"/>.</span>
+      <span>
+        Where the axes and planes of {group.short} sit in one cell, seen down <b>c</b> with <b>a</b> down the page.
+        The glyphs, the arrow conventions and the height labels are the Tables' graphical symbols for symmetry
+        elements, drawn after the UCL diagrams<CiteGroup scope={scope} ids={["ita2016", "ucl-sgp"]}/>.
+      </span>
       {crowded && <span className="sg-figure-toggle">
         {showAll
           ? `All ${drawn.length} elements, as crowded as the printed plate.`
@@ -509,14 +550,20 @@ function motifScale(copies: number): number {
   return copies <= 4 ? 1.5 : copies <= 12 ? 1.15 : copies <= 32 ? 0.85 : 0.6;
 }
 
-function PositionFigure({ group, frame, positions, proteinName }: {
+function PositionFigure({ group, frame, positions, proteinName, scope }: {
   group: SpaceGroup; frame: DiagramFrame; positions: GeneralPosition[]; proteinName: string;
+  scope: ReturnType<typeof citationScope>;
 }) {
   const scale = motifScale(positions.length);
   return <figure className="sg-figure">
     <figcaption>
       <strong>General positions</strong>
-      <span>{positions.length} {positions.length === 1 ? "copy" : "copies"} of {proteinName} in one cell. The number beside each copy is its height above the page; a copy drawn flipped is a mirror image.</span>
+      <span>
+        {positions.length} {positions.length === 1 ? "copy" : "copies"} of {proteinName} in one cell. The number
+        beside each copy is its height above the page; a copy drawn flipped is a mirror image. The coordinate
+        triplets and the plate they are drawn on are the Tables' general-position diagram for
+        {" "}{group.short}<Cite scope={scope} id="ita2016"/>.
+      </span>
     </figcaption>
     <svg width={frame.width} height={frame.height} viewBox={`0 0 ${frame.width} ${frame.height}`} role="img"
       aria-label={`General-position diagram of space group ${symbolText(group)}: ${positions.length} copies of the asymmetric unit`}>
@@ -619,7 +666,7 @@ function Animation({ group, element, frame, cell, proteinName }: {
       <div className="sg-animation-words">
         <p className="sg-step-caption">{caption}</p>
         <p className="sg-step-what">{elementSentence(element, cell)}</p>
-        {!element.rigid && <p className="sg-step-warning"><TriangleAlert aria-hidden="true"/>{proteinName} cannot do this. Mirroring swaps every L-amino acid for a D-amino acid, which is why protein crystals use only the 65 Sohncke groups.</p>}
+        {!element.rigid && <p className="sg-step-warning"><TriangleAlert aria-hidden="true"/>{proteinName} cannot do this. Mirroring swaps every L-amino acid for a D-amino acid, which is why a crystal grown from natural L-protein uses only the 65 Sohncke groups.</p>}
         {reduced && <p className="sg-step-what">Reduced motion is on, so each step is shown finished rather than animated. Use <b>Next step</b> to walk through them.</p>}
         <p className="sg-step-hint"><ChevronRight aria-hidden="true"/>The copy may leave the cell. The faint cell next door shows where it reappears: the lattice repeats for ever.</p>
       </div>

@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
-  hasPrediction, masclSuggestions, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups, type SpaceGroupHit,
+  evidenceGap, hasPrediction, masclSuggestions, spaceGroupHighlights, startingGroup, unresolvedSpaceGroups,
+  type SpaceGroupHit,
 } from "./space-group-evidence.ts";
 import type { SpaceGroupSuggestion } from "./crystallization.ts";
 
@@ -129,5 +130,37 @@ describe("engine suggestions mapped for the selector", () => {
     const highlights = spaceGroupHighlights([], masclSuggestions([suggestion("P 21 21 21", "mascl", 0.42)]));
     assert.equal(highlights.get(19)!.kind, "predictor");
     assert.equal(highlights.get(19)!.detail, "MASCL probability 0.42.");
+  });
+});
+
+// Three different reasons for an empty list, and three different things to
+// tell the scientist. Running them together is the HOM-362 bug: a project with
+// a saved reference match and a finished Sequence research job was still being
+// told to run Sequence research and choose a reference match.
+describe("why nothing is flagged", () => {
+  it("reports nothing once a saved homologue carries a space group", () => {
+    assert.equal(evidenceGap({ searched: true, hits: 4, withSpaceGroup: 2 }), null);
+  });
+
+  it("asks for the PDB search only when no search has been saved", () => {
+    assert.deepEqual(evidenceGap({ searched: false, hits: 0, withSpaceGroup: 0 }), { kind: "no-search" });
+  });
+
+  it("separates a search that matched nothing from one never run", () => {
+    assert.deepEqual(evidenceGap({ searched: true, hits: 0, withSpaceGroup: 0 }), { kind: "no-hits" });
+  });
+
+  it("names the real cause when the saved entries carry no space group", () => {
+    assert.deepEqual(evidenceGap({ searched: true, hits: 7, withSpaceGroup: 0 }), { kind: "no-space-group", hits: 7 });
+  });
+
+  it("agrees with the highlights: a hit whose space group is null is no evidence", () => {
+    const hits = [hit("1A42", null), hit("2CBA", null)];
+    const flagged = [...spaceGroupHighlights(hits).values()].filter((entry) => entry.kind === "pdb");
+    assert.deepEqual(flagged, []);
+    assert.deepEqual(
+      evidenceGap({ searched: true, hits: hits.length, withSpaceGroup: flagged.length }),
+      { kind: "no-space-group", hits: 2 },
+    );
   });
 });
