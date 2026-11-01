@@ -21,6 +21,7 @@ import { Color } from "molstar/lib/mol-util/color";
 import type { ChainSequence } from "@/lib/conservation-coloring";
 import type { ResidueColoring } from "@/lib/structure-coloring";
 import type { InterfaceAtom } from "@/lib/structure-interface";
+import type { PickedLigandAtom } from "@/lib/ligand-depiction";
 import type { LigandAddress, ResidueAddress } from "@/lib/structure-regions";
 
 export type StageRepresentation = "cartoon" | "surface" | "ball-and-stick";
@@ -49,6 +50,8 @@ export class MolstarStage {
   private coloring: ResidueColoring | null = null;
   private coloringCells: string[] = [];
   private regionComponents: StructureCell[] = [];
+  /** The ligand atom picked in the 2D drawing; kept selected across region changes. */
+  private ligandAtom: { ligand: LigandAddress; atomName: string } | null = null;
   private subscriptions: { unsubscribe(): void }[] = [];
   // Style and region changes both edit the Mol* state tree; run them one at a time.
   private queue: Promise<unknown> = Promise.resolve();
@@ -90,7 +93,7 @@ export class MolstarStage {
 
   private async applyLoad(text: string, label: string): Promise<StageLoad> {
     await this.plugin.clear();
-    this.components = {}; this.representations = []; this.polymerRepresentations = []; this.surface = null; this.regionComponents = []; this.coloring = null; this.coloringCells = [];
+    this.components = {}; this.representations = []; this.polymerRepresentations = []; this.surface = null; this.regionComponents = []; this.coloring = null; this.coloringCells = []; this.ligandAtom = null;
     const builders = this.plugin.builders;
     const data = await builders.data.rawData({ data: text, label });
     const trajectory = await builders.structure.parseTrajectory(data, "mmcif");
@@ -192,7 +195,10 @@ export class MolstarStage {
   }
 
   /** Highlights exactly the given residues (and ligand), shows their side chains, and focuses the camera. */
-  showRegion(residues: ResidueAddress[], ligand: LigandAddress | null) { return this.serial(() => this.applyRegion(residues, ligand)); }
+  showRegion(residues: ResidueAddress[], ligand: LigandAddress | null) {
+    // Changing the region clears every selection; the atom picked in 2D goes back on afterwards.
+    return this.serial(() => this.applyRegion(residues, ligand).finally(() => this.selectLigandAtom()));
+  }
 
   private async applyRegion(residues: ResidueAddress[], ligand: LigandAddress | null) {
     if (this.regionComponents.length) { const update = this.plugin.build(); for (const component of this.regionComponents) update.delete(component.ref); await update.commit(); this.regionComponents = []; }
@@ -221,6 +227,31 @@ export class MolstarStage {
     this.plugin.managers.camera.focusLoci(loci, { minRadius: 8, extraRadius: 4, durationMs: motion(450) });
   }
 
+  /** Marks one atom of a ligand instance (from the 2D drawing) with the selection colour; null clears it. */
+  showLigandAtom(ligand: LigandAddress | null, atomName: string | null, focus: boolean) {
+    return this.serial(async () => {
+      const previous = this.ligandAtom ? this.loci(ligandAtomExpression(this.ligandAtom.ligand, this.ligandAtom.atomName)) : EmptyLoci;
+      if (StructureElement.Loci.is(previous)) this.plugin.managers.interactivity.lociSelects.deselect({ loci: previous });
+      this.ligandAtom = ligand && atomName ? { ligand, atomName } : null;
+      const loci = this.selectLigandAtom();
+      if (focus && loci) this.plugin.managers.camera.focusLoci(loci, { minRadius: 9, extraRadius: 4, durationMs: motion(350) });
+    });
+  }
+
+  /** Transient hover highlight of one ligand atom, e.g. from the 2D drawing. */
+  hoverLigandAtom(ligand: LigandAddress | null, atomName: string | null) {
+    const loci = ligand && atomName && this.structure ? this.loci(ligandAtomExpression(ligand, atomName)) : EmptyLoci;
+    this.plugin.managers.interactivity.lociHighlights.highlightOnly({ loci });
+  }
+
+  private selectLigandAtom(): StructureElement.Loci | null {
+    if (!this.ligandAtom || !this.structure) return null;
+    const loci = this.loci(ligandAtomExpression(this.ligandAtom.ligand, this.ligandAtom.atomName));
+    if (!StructureElement.Loci.is(loci) || StructureElement.Loci.isEmpty(loci)) return null;
+    this.plugin.managers.interactivity.lociSelects.select({ loci });
+    return loci;
+  }
+
   /** Transient hover highlight, e.g. from the sequence strip. */
   hoverResidue(residue: ResidueAddress | null) {
     const loci = residue && this.structure ? this.loci(selectionExpression([residue], null)) : EmptyLoci;
@@ -244,6 +275,15 @@ export class MolstarStage {
 
   onClick(listener: (residue: StageResidue | null) => void) {
     this.subscriptions.push(this.plugin.behaviors.interaction.click.subscribe(({ current }) => listener(residueFromLoci(current.loci))));
+  }
+
+  /** Atom of a non-polymer, non-water residue under the pointer (null otherwise). */
+  onLigandHover(listener: (atom: PickedLigandAtom | null) => void) {
+    this.subscriptions.push(this.plugin.behaviors.interaction.hover.subscribe(({ current }) => listener(ligandAtomFromLoci(current.loci))));
+  }
+
+  onLigandClick(listener: (atom: PickedLigandAtom | null) => void) {
+    this.subscriptions.push(this.plugin.behaviors.interaction.click.subscribe(({ current }) => listener(ligandAtomFromLoci(current.loci))));
   }
 
   resetCamera() { PluginCommands.Camera.Reset(this.plugin, { durationMs: motion(350) }); }
@@ -293,6 +333,17 @@ export function selectionExpression(residues: ResidueAddress[], ligand: LigandAd
     groups.push(MS.struct.generator.atomGroups({ "chain-test": MS.core.rel.eq([MS.ammp("label_asym_id"), ligand.labelAsymId]), "residue-test": MS.core.logic.and(tests) }));
   }
   return groups.length === 1 ? groups[0] : MS.struct.combinator.merge(groups);
+}
+
+/** One named atom of a ligand instance; alternate locations of that atom are all included. */
+export function ligandAtomExpression(ligand: LigandAddress, atomName: string): Expression {
+  const tests = [MS.core.rel.eq([MS.ammp("auth_seq_id"), Number(ligand.authSeqId)]), MS.core.rel.eq([MS.ammp("label_comp_id"), ligand.compId])];
+  if (ligand.insertionCode) tests.push(MS.core.rel.eq([MS.ammp("pdbx_PDB_ins_code"), ligand.insertionCode]));
+  return MS.struct.generator.atomGroups({
+    "chain-test": MS.core.rel.eq([MS.ammp("label_asym_id"), ligand.labelAsymId]),
+    "residue-test": MS.core.logic.and(tests),
+    "atom-test": MS.core.rel.eq([MS.ammp("label_atom_id"), atomName]),
+  });
 }
 
 function polymerResidues(structure: Structure | undefined): StageResidue[] {
@@ -351,4 +402,15 @@ function residueFromLoci(loci: Loci): StageResidue | null {
   if (!location || !Unit.isAtomic(location.unit) || StructureProperties.entity.type(location) !== "polymer") return null;
   const compId = StructureProperties.atom.label_comp_id(location);
   return { labelAsymId: StructureProperties.chain.label_asym_id(location), labelSeqId: StructureProperties.residue.label_seq_id(location), authAsymId: StructureProperties.chain.auth_asym_id(location), authSeqId: StructureProperties.residue.auth_seq_id(location), insCode: StructureProperties.residue.pdbx_PDB_ins_code(location), compId, code: ONE_LETTER[compId] ?? "X" };
+}
+
+function ligandAtomFromLoci(loci: Loci): PickedLigandAtom | null {
+  if (!StructureElement.Loci.is(loci) || StructureElement.Loci.isEmpty(loci)) return null;
+  const location = StructureElement.Loci.getFirstLocation(loci);
+  if (!location || !Unit.isAtomic(location.unit) || !["non-polymer", "branched"].includes(StructureProperties.entity.type(location))) return null;
+  const insertionCode = StructureProperties.residue.pdbx_PDB_ins_code(location);
+  return {
+    chainId: StructureProperties.chain.auth_asym_id(location), authSeqId: String(StructureProperties.residue.auth_seq_id(location)), insertionCode: insertionCode || null,
+    ccdId: StructureProperties.atom.label_comp_id(location), atomName: StructureProperties.atom.label_atom_id(location),
+  };
 }

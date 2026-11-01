@@ -28,6 +28,7 @@ from .protein_planner.protparam import SequenceValidationError
 from .protein_planner.service import ProteinPlanner
 from .gel_analysis import analyze_gel
 from .chromatography import analyze_chromatogram, calibrate_sec, create_chromatography_run
+from .nmr import predict_hsqc
 from .vector_sources import VectorSourceError
 
 
@@ -231,6 +232,23 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send(200, self.planner.get_structure_regions(*match.groups()))
                 return
             match = re.fullmatch(
+                r"/v1/protein-planner/proteins/([^/]+)/structures/(alphafold_db|pdb)/([^/]+)/ligand-depiction",
+                path,
+            )
+            if match:
+                required = {
+                    key: (query.get(key) or [""])[0].strip()
+                    for key in ("chainId", "authSeqId", "ccdId")
+                }
+                if not all(required.values()):
+                    raise ValueError("chainId, authSeqId, and ccdId query parameters are required")
+                self._send(200, self.planner.get_ligand_depiction(
+                    *match.groups(),
+                    chain_id=required["chainId"], auth_seq_id=required["authSeqId"], ccd_id=required["ccdId"],
+                    insertion_code=(query.get("insertionCode") or [None])[0],
+                ))
+                return
+            match = re.fullmatch(
                 r"/v1/protein-planner/proteins/([^/]+)/structures/(alphafold_db|pdb)/([^/]+)",
                 path,
             )
@@ -327,6 +345,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/gel/analyze":
                 self._send(200, analyze_gel(body))
+                return
+            if path == "/v1/nmr/hsqc/predict":
+                self._send(200, predict_hsqc(body))
                 return
             if path == "/v1/protein-planner/back-translate":
                 self._send(200, self.planner.back_translate_target(body))

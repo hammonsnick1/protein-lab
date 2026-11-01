@@ -420,6 +420,8 @@ class RCSBClient:
     search_url = "https://search.rcsb.org/rcsbsearch/v2/query"
     data_url = "https://data.rcsb.org/rest/v1/core"
     files_url = "https://files.rcsb.org/download"
+    # CCD records live beside, not under, the entry download path.
+    ligands_url = "https://files.rcsb.org/ligands/download"
 
     def __init__(self, http: HttpClient):
         self.http = http
@@ -527,6 +529,26 @@ class RCSBClient:
         )
         if not response.text.lstrip().startswith("data_"):
             raise RemoteServiceError("RCSB PDB files", "returned an invalid mmCIF record")
+        return self._store(key, response.text)
+
+    def fetch_chemical_component(self, ccd_id: str) -> str:
+        """Fetch one PDB Chemical Component Dictionary definition (cached)."""
+        ccd_id = ccd_id.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9]{1,8}", ccd_id):
+            raise ValueError("A valid PDB chemical component ID is required")
+        key = f"ccd:{ccd_id}"
+        cached = self._cached(key)
+        if cached is not None:
+            return cached
+        response = self.http.request(
+            "GET", f"{self.ligands_url}/{ccd_id}.cif",
+            accept="text/plain", service="RCSB Chemical Component Dictionary",
+            timeout=10, retry_attempts=2,
+        )
+        if not response.text.lstrip().startswith("data_"):
+            raise RemoteServiceError(
+                "RCSB Chemical Component Dictionary", "returned an invalid chemical component record"
+            )
         return self._store(key, response.text)
 
     def search_sequence(

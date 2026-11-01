@@ -149,6 +149,63 @@ omitted. Region `type` values are:
 The surface group uses a documented fast Cα-neighbour exposure proxy, not a
 solvent-accessible surface-area calculation.
 
+## 2D ligand depiction
+
+`GET /v1/protein-planner/proteins/{proteinId}/structures/pdb/{pdbId}/ligand-depiction?chainId={chainId}&authSeqId={authSeqId}&ccdId={ccdId}[&insertionCode={code}]`
+
+Draws exactly one deposited ligand instance; it never combines instances that
+share a CCD code. `chainId` is the author chain and `authSeqId` is the author
+residue number (both strings); `insertionCode` is separate and is optional
+only when the deposited instance has no insertion code. AlphaFold DB requests
+return `400`, because AlphaFold models do not contain ligands.
+
+```json
+{
+  "source": "pdb",
+  "structureId": "1ATP",
+  "ligand": {"ccdId": "ATP", "chainId": "E", "authSeqId": "355", "insertionCode": null},
+  "svg": "<?xml ...><svg ...>",
+  "atomIndexToPdbAtomName": {"0": "PG", "1": "O1G"},
+  "atomCoordinates": {"0": [110.6, 203.3], "1": [59.8, 206.4]},
+  "bondIndexToPdbAtomNames": {"0": ["PG", "O1G"]},
+  "stereo": {
+    "method": "CCD connectivity; R/S and E/Z perceived from deposited 3D coordinates at CCD-declared stereocentres and stereo double bonds",
+    "cipLabels": {"20": "R"},
+    "doubleBondLabels": {},
+    "wedgeBonds": [{"from": "C1'", "to": "N9", "style": "hash"}],
+    "ccdDisagreements": []
+  },
+  "references": [{"label": "PDB Chemical Component Dictionary", "url": "..."}]
+}
+```
+
+- **Indices.** `atomIndexToPdbAtomName` and `bondIndexToPdbAtomNames` are
+  0-based RDKit indices in the drawing; values are deposited
+  `_atom_site.label_atom_id` names, so the UI can sync 2D and 3D selections.
+  `cipLabels` is keyed by atom index, `doubleBondLabels` by bond index.
+  `atomCoordinates` gives each mapped atom's `[x, y]` in the SVG's own
+  `viewBox` pixels (the point RDKit drew it at), so the UI can find the atom
+  under a click; carbons have no label element in the SVG to click on.
+- **Atoms drawn.** Connectivity and bond orders come from the [PDB Chemical
+  Component Dictionary](https://www.wwpdb.org/data/ccd). Only heavy atoms are
+  drawn (hydrogens are implicit). CCD *leaving* atoms that are absent from the
+  deposit (for example retinal `O1`, replaced by the Lys216 Schiff base in
+  1C3W) are omitted. Every other CCD heavy atom must have a deposited
+  coordinate, otherwise the endpoint returns `400` naming the missing atoms
+  instead of guessing stereochemistry. Alternate locations use the first one.
+- **Stereo.** RDKit (BSD-3-Clause) perceives configuration from the deposited
+  coordinates, but only at stereocentres and double bonds that the CCD's
+  `pdbx_stereo_config` declares, so heme iron is never labelled. Phosphorus
+  with two or more terminal oxygens (phosphate) is not labelled because its
+  non-bridging oxygens are equivalent by resonance. R/S and E/Z use RDKit's
+  new CIP labeller; wedges/hashes are drawn in the SVG and listed in
+  `wedgeBonds` (`"H"` marks an implicit hydrogen RDKit adds for a wedge).
+  `ccdDisagreements` lists centres whose deposited geometry gives a different
+  label from the CCD definition (a modelling issue the UI should show).
+- **Errors.** AlphaFold DB sources are `400`, an unmatched instance or an
+  unknown CCD code is `404`, and an unavailable CCD service is a bounded-time
+  `502` naming the source.
+
 ## Conservation
 
 Per-residue ConSurf conservation grades live under

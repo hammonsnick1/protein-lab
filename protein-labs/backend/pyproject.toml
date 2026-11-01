@@ -3,7 +3,7 @@ name = "protein-labs-backend"
 version = "0.3.0b1"
 description = "Local backend for Protein Labs and Protein Planner"
 requires-python = ">=3.11"
-dependencies = ["biopython>=1.85,<2"]
+dependencies = ["biopython>=1.85,<2", "rdkit>=2024.3,<2026"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

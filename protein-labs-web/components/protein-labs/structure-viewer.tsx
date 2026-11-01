@@ -5,19 +5,19 @@ import { CircleDot, Minus, Orbit, Plus, RotateCcw, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { JsonObject } from "@/lib/protein-labs-api";
 import { findStructurePalette, STRUCTURE_PALETTES, structurePaletteForKey, type StructurePaletteId } from "@/lib/structure-palettes";
-import { MolstarViewer, type ViewerRegion } from "@/components/protein-labs/molstar-viewer";
+import { MolstarViewer, type MolstarViewerProps, type ViewerRegion } from "@/components/protein-labs/molstar-viewer";
 import type { ConservationSources } from "@/lib/conservation-coloring";
 
 type AtomPoint = { x: number; y: number; z: number; chain: string; plddt: number | null };
 type Projected = AtomPoint & { px: number; py: number; depth: number; scale: number };
 type Representation = "ribbon" | "surface" | "atoms";
 type ColorMode = "theme" | "confidence";
-type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId; /** Fixes the colouring, ignoring the user's saved choice. */ colorMode?: ColorMode; /** Wraps the ribbon in a translucent molecular surface. */ envelope?: boolean; /** Residues to highlight and focus in the full (Mol*) viewer. */ region?: ViewerRegion | null; /** Side panel to hold the full viewer's controls. */ controlsHost?: HTMLElement | null; /** The model carries per-residue pLDDT. */ confidence?: boolean; /** Conservation sources to colour the full viewer by. */ conservation?: ConservationSources };
+type StructureViewerProps = { geometry: JsonObject | null; compact?: boolean; autoRotate?: boolean; hologram?: boolean; label?: string; paletteKey?: string; palette?: StructurePaletteId; /** Fixes the colouring, ignoring the user's saved choice. */ colorMode?: ColorMode; /** Wraps the ribbon in a translucent molecular surface. */ envelope?: boolean; /** Residues to highlight and focus in the full (Mol*) viewer. */ region?: ViewerRegion | null; /** Side panel to hold the full viewer's controls. */ controlsHost?: HTMLElement | null; /** The model carries per-residue pLDDT. */ confidence?: boolean; /** Conservation sources to colour the full viewer by. */ conservation?: ConservationSources } & Pick<MolstarViewerProps, "ligandAtom" | "hoveredLigandAtom" | "onLigandPick" | "onLigandHover">;
 
 export function StructureViewer(props: StructureViewerProps) {
   const structureText = typeof props.geometry?.structureText === "string" ? props.geometry.structureText : "";
   // Full views of real coordinates use Mol*; compact cards and Cα-only traces keep the lightweight SVG trace.
-  if (!props.compact && structureText) return <MolstarViewer structureText={structureText} label={props.label ?? "Structure"} paletteKey={props.paletteKey} palette={props.palette} autoRotate={props.autoRotate} confidence={props.confidence ?? props.geometry?.source !== "pdb"} region={props.region} controlsHost={props.controlsHost} conservation={props.conservation}/>;
+  if (!props.compact && structureText) return <MolstarViewer structureText={structureText} label={props.label ?? "Structure"} paletteKey={props.paletteKey} palette={props.palette} autoRotate={props.autoRotate} confidence={props.confidence ?? props.geometry?.source !== "pdb"} region={props.region} controlsHost={props.controlsHost} conservation={props.conservation} ligandAtom={props.ligandAtom} hoveredLigandAtom={props.hoveredLigandAtom} onLigandPick={props.onLigandPick} onLigandHover={props.onLigandHover}/>;
   return <TraceStructureViewer {...props} />;
 }
 

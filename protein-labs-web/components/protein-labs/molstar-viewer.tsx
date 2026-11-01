@@ -11,10 +11,13 @@ import { CONSERVATION_SOURCES, conservationColoring, INSUFFICIENT_COLOR, UNMAPPE
 import { CONSERVATION_COLORS, MAX_GRADE } from "@/lib/conservation";
 import { clampCutoff, DEFAULT_INTERFACE_CUTOFF, findInterfaces, formatCutoff, INTERFACE_CUTOFF_RANGE, interfaceChainColor, interfaceColoring, type InterfaceAtom, type InterfaceResult } from "@/lib/structure-interface";
 import { residueKey, type LigandAddress, type ResidueAddress } from "@/lib/structure-regions";
+import type { PickedLigandAtom } from "@/lib/ligand-depiction";
 import type { MolstarStage, StageColor, StageRepresentation, StageResidue } from "./molstar-stage";
 
 /** What the viewer should highlight: residues in label numbering, plus a ligand instance for binding sites. */
 export type ViewerRegion = { id: string; residues: ResidueAddress[]; ligand: LigandAddress | null };
+/** One atom of a ligand instance, named as in the deposited file. */
+export type ViewerLigandAtom = { ligand: LigandAddress; atomName: string };
 
 export type MolstarViewerProps = {
   structureText: string;
@@ -29,6 +32,14 @@ export type MolstarViewerProps = {
   controlsHost?: HTMLElement | null;
   /** Conservation sources for this protein; without them the Conservation panel is not shown. */
   conservation?: ConservationSources;
+  /** Ligand atom picked in the 2D drawing: selected in 3D, and the camera turns to it when `focus` is set. */
+  ligandAtom?: (ViewerLigandAtom & { focus: boolean }) | null;
+  /** Ligand atom under the pointer in the 2D drawing. */
+  hoveredLigandAtom?: ViewerLigandAtom | null;
+  /** A ligand atom was clicked in 3D. */
+  onLigandPick?: (atom: PickedLigandAtom) => void;
+  /** The pointer moved onto (or off) a ligand atom in 3D. */
+  onLigandHover?: (atom: PickedLigandAtom | null) => void;
 };
 
 type Status = { state: "loading" | "ready" | "error"; message: string };
@@ -50,7 +61,7 @@ const toLegacy = (value: StageRepresentation) => value === "cartoon" ? "ribbon" 
 
 const OPACITY_KEY = "protein-labs-structure-surface-opacity";
 
-export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null, controlsHost, conservation }: MolstarViewerProps) {
+export function MolstarViewer({ structureText, label, paletteKey, palette, autoRotate = false, confidence = false, region = null, controlsHost, conservation, ligandAtom = null, hoveredLigandAtom = null, onLigandPick, onLigandHover }: MolstarViewerProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<MolstarStage | null>(null);
   const [status, setStatus] = useState<Status>({ state: "loading", message: "Loading the 3D viewer…" });
@@ -68,6 +79,11 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   const [spin, setSpin] = useState(autoRotate);
   const [hovered, setHovered] = useState<string | null>(null);
   const [picked, setPicked] = useState<StageResidue | null>(null);
+  const [pickedAtom, setPickedAtom] = useState<PickedLigandAtom | null>(null);
+  // The stage subscribes once; these refs hand it the latest callbacks.
+  const ligandPick = useRef(onLigandPick);
+  const ligandHover = useRef(onLigandHover);
+  useEffect(() => { ligandPick.current = onLigandPick; ligandHover.current = onLigandHover; }, [onLigandPick, onLigandHover]);
   const [saving, setSaving] = useState<string | null>(null);
   const [surfaceOpacity, setSurfaceOpacity] = useState(100);
   const [proteinAtoms, setProteinAtoms] = useState<InterfaceAtom[]>([]);
@@ -108,6 +124,8 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
       if (cancelled) { stage.dispose(); return; }
       stage.onHover((residue) => setHovered(residue ? residueKey(residue.labelAsymId, residue.labelSeqId) : null));
       stage.onClick((residue) => setPicked(residue));
+      stage.onLigandClick((atom) => { setPickedAtom(atom); if (atom) ligandPick.current?.(atom); });
+      stage.onLigandHover((atom) => ligandHover.current?.(atom));
       stageRef.current = stage;
       setStageReady(true);
     }).catch((reason: unknown) => { if (!cancelled) setStatus({ state: "error", message: messageOf(reason) }); });
@@ -122,7 +140,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
     queueMicrotask(() => { if (!cancelled) setStatus({ state: "loading", message: "Drawing the structure…" }); });
     stage.load(structureText, label).then((result) => {
       if (cancelled) return;
-      setResidues(result.residues); setChainSequences(result.chains); setHasConfidence(result.hasConfidence); setPicked(null);
+      setResidues(result.residues); setChainSequences(result.chains); setHasConfidence(result.hasConfidence); setPicked(null); setPickedAtom(null);
       // Mol* groups chains by entity (A, C, B, D for haemoglobin); list them by name instead.
       setProteinAtoms(stage.proteinHeavyAtoms().sort((one, other) => one.chain.localeCompare(other.chain, undefined, { numeric: true })));
       setLoadedRevision((value) => value + 1);
@@ -161,6 +179,12 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
   useEffect(() => {
     if (hovered) document.getElementById(cellId(hovered))?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [hovered]);
+  useEffect(() => {
+    if (ready) void stageRef.current?.showLigandAtom(ligandAtom?.ligand ?? null, ligandAtom?.atomName ?? null, ligandAtom?.focus ?? false);
+  }, [ready, loadedRevision, ligandAtom]);
+  useEffect(() => {
+    if (ready) stageRef.current?.hoverLigandAtom(hoveredLigandAtom?.ligand ?? null, hoveredLigandAtom?.atomName ?? null);
+  }, [ready, hoveredLigandAtom]);
 
   function chooseRepresentation(value: StageRepresentation) { setRepresentation(value); localStorage.setItem("protein-labs-structure-representation", toLegacy(value)); }
   function chooseOpacity(value: number) { setSurfaceOpacity(value); localStorage.setItem(OPACITY_KEY, String(value)); }
@@ -184,7 +208,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
     } catch (reason) { setSaving(`The image could not be saved. ${messageOf(reason)}`); }
   }
   function hoverFromStrip(residue: StageResidue | null) { setHovered(residue ? residueKey(residue.labelAsymId, residue.labelSeqId) : null); stageRef.current?.hoverResidue(residue); }
-  function pickFromStrip(residue: StageResidue) { setPicked(residue); stageRef.current?.focusResidue(residue); }
+  function pickFromStrip(residue: StageResidue) { setPicked(residue); setPickedAtom(null); stageRef.current?.focusResidue(residue); }
 
   const chainCount = new Set(residues.map((item) => item.labelAsymId)).size;
   const controls = <>
@@ -227,7 +251,7 @@ export function MolstarViewer({ structureText, label, paletteKey, palette, autoR
         <span className="structure-badge">{label}{ready ? ` · ${residues.length} residues · ${chainCount || 1} chain${chainCount === 1 ? "" : "s"}` : ""}</span>
         <div className="confidence-legend molecular-status">
           {coloring?.id.startsWith("conservation-") ? <ConservationLegend title={coloring.title}/> : coloring ? <ColoringLegend coloring={coloring}/> : <ColourLegend color={color}/>}
-          <small role="status">{saving ?? (picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it")}</small>
+          <small role="status">{saving ?? (pickedAtom ? `${pickedAtom.ccdId} ${pickedAtom.authSeqId}${pickedAtom.insertionCode ?? ""} · atom ${pickedAtom.atomName} · chain ${pickedAtom.chainId}` : picked ? `${threeLetter(picked.compId)} ${picked.authSeqId}${picked.insCode} · chain ${picked.authAsymId}` : "Drag to rotate · scroll to zoom · click a residue to identify it")}</small>
         </div>
       </div>
     </div>

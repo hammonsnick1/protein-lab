@@ -1,0 +1,47 @@
+data_1C3W
+#
+# RET HETATM rows only, extracted unchanged from PDB entry 1C3W
+# (https://files.rcsb.org/download/1C3W.cif, CC0 1.0, accessed 2026-10-31).
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.label_alt_id
+_atom_site.label_comp_id
+_atom_site.label_asym_id
+_atom_site.label_entity_id
+_atom_site.label_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_formal_charge
+_atom_site.auth_seq_id
+_atom_site.auth_comp_id
+_atom_site.auth_asym_id
+_atom_site.auth_atom_id
+_atom_site.pdbx_PDB_model_num
+HETATM 2031 C C1  . RET P 4 .   ? 14.868 45.136 0.227   1.00 18.51 ? 301 RET A C1  1
+HETATM 2032 C C2  . RET P 4 .   ? 14.674 46.087 -0.944  1.00 21.32 ? 301 RET A C2  1
+HETATM 2033 C C3  . RET P 4 .   ? 14.055 47.376 -0.614  1.00 21.33 ? 301 RET A C3  1
+HETATM 2034 C C4  . RET P 4 .   ? 14.729 48.068 0.529   1.00 20.40 ? 301 RET A C4  1
+HETATM 2035 C C5  . RET P 4 .   ? 14.908 47.176 1.740   1.00 17.64 ? 301 RET A C5  1
+HETATM 2036 C C6  . RET P 4 .   ? 15.073 45.850 1.573   1.00 14.36 ? 301 RET A C6  1
+HETATM 2037 C C7  . RET P 4 .   ? 15.481 45.145 2.777   1.00 13.22 ? 301 RET A C7  1
+HETATM 2038 C C8  . RET P 4 .   ? 15.657 43.815 2.940   1.00 15.46 ? 301 RET A C8  1
+HETATM 2039 C C9  . RET P 4 .   ? 16.158 43.145 4.123   1.00 14.75 ? 301 RET A C9  1
+HETATM 2040 C C10 . RET P 4 .   ? 16.353 41.815 3.947   1.00 16.62 ? 301 RET A C10 1
+HETATM 2041 C C11 . RET P 4 .   ? 16.830 40.973 5.062   1.00 17.62 ? 301 RET A C11 1
+HETATM 2042 C C12 . RET P 4 .   ? 16.943 39.651 4.706   1.00 19.25 ? 301 RET A C12 1
+HETATM 2043 C C13 . RET P 4 .   ? 17.421 38.654 5.656   1.00 21.41 ? 301 RET A C13 1
+HETATM 2044 C C14 . RET P 4 .   ? 17.423 37.391 5.159   1.00 23.66 ? 301 RET A C14 1
+HETATM 2045 C C15 . RET P 4 .   ? 17.375 36.243 6.055   1.00 24.00 ? 301 RET A C15 1
+HETATM 2046 C C16 . RET P 4 .   ? 13.601 44.218 0.342   1.00 16.60 ? 301 RET A C16 1
+HETATM 2047 C C17 . RET P 4 .   ? 16.110 44.275 -0.247  1.00 17.24 ? 301 RET A C17 1
+HETATM 2048 C C18 . RET P 4 .   ? 15.122 48.001 2.955   1.00 16.14 ? 301 RET A C18 1
+HETATM 2049 C C19 . RET P 4 .   ? 16.522 43.889 5.359   1.00 17.25 ? 301 RET A C19 1
+HETATM 2050 C C20 . RET P 4 .   ? 17.811 39.027 7.031   1.00 18.20 ? 301 RET A C20 1
+#

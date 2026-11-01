@@ -130,7 +130,7 @@ const entries = [
     id: "rdkit", kind: "software", name: "RDKit", authors: "RDKit contributors", year: "2006–",
     title: "RDKit: open-source cheminformatics",
     source: "rdkit.org", doi: "10.5281/zenodo.591637", url: "https://www.rdkit.org",
-    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Candidate for 2D ligand drawing; not bundled yet." },
+    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Backend dependency for 2D ligand drawing and R/S, E/Z labels; notice in THIRD_PARTY_NOTICES.md." },
   },
   {
     id: "molstar", kind: "software", name: "Mol*", authors: "Sehnal D, Bittrich S, Deshpande M, Svobodová R, Berka K, Bazgier V, Velankar S, Burley SK, Koča J, Rose AS", year: "2021",
@@ -147,6 +147,27 @@ const entries = [
     id: "ccd", kind: "database", name: "Chemical Component Dictionary (CCD)", authors: "Westbrook JD, Shao C, Feng Z, Zhuravleva M, Velankar S, Young J", year: "2015",
     title: "The chemical component dictionary: complete descriptions of constituent molecules in experimentally determined 3D macromolecules in the Protein Data Bank",
     source: "Bioinformatics 31:1274–1278", doi: "10.1093/bioinformatics/btu789", url: "https://www.wwpdb.org/data/ccd",
+  },
+  // Reading a 2D ligand drawing (HOM-307): wedges and hashes, R/S and E/Z.
+  {
+    id: "iupac2006stereo", kind: "article", name: "IUPAC wedge and hash bonds", authors: "Brecher J", year: "2006",
+    title: "Graphical representation of stereochemical configuration (IUPAC Recommendations 2006)",
+    source: "Pure Appl Chem 78:1897–1970", doi: "10.1351/pac200678101897",
+  },
+  {
+    id: "cip1966", kind: "article", name: "Cahn–Ingold–Prelog rules", authors: "Cahn RS, Ingold C, Prelog V", year: "1966",
+    title: "Specification of molecular chirality",
+    source: "Angew Chem Int Ed Engl 5:385–415", doi: "10.1002/anie.196603851",
+  },
+  {
+    id: "iupac2013", kind: "book", name: "IUPAC Blue Book", authors: "Favre HA, Powell WH", year: "2013",
+    title: "Nomenclature of Organic Chemistry: IUPAC Recommendations and Preferred Names 2013",
+    source: "Royal Society of Chemistry, Cambridge", doi: "10.1039/9781849733069",
+  },
+  {
+    id: "hanson2018cip", kind: "article", name: "CIP rules for software", authors: "Hanson RM, Musacchio S, Mayfield JW, Vainio MJ, Yerin A, Redkin D", year: "2018",
+    title: "Algorithmic analysis of Cahn–Ingold–Prelog rules of stereochemistry: proposals for revised rules and a guide for machine implementation",
+    source: "J Chem Inf Model 58:1755–1765", doi: "10.1021/acs.jcim.8b00324",
   },
   {
     id: "opencloning", kind: "software", name: "OpenCloning", authors: "Lera-Ramirez M", year: "2022",

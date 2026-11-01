@@ -5,6 +5,7 @@ import type { ProjectDiff, ProjectTree } from "@/lib/project-tree-types";
 declare const __PROTEIN_LABS_API__: string | undefined;
 
 import type { RegionsResponse, StructureDetail, StructureListResponse, StructureSource } from "./structure-regions.ts";
+import { depictionQuery, type LigandDepiction, type LigandInstance } from "./ligand-depiction.ts";
 import type { ConservationJob, ConservationJobSummary } from "./conservation.ts";
 import type { TaxonomySearchResponse } from "./organism-search.ts";
 
@@ -147,6 +148,7 @@ export const proteinLabsApi = {
   listStructures: (proteinId: string, limit = 10) => request<StructureListResponse>(`/v1/protein-planner/proteins/${proteinId}/structures?limit=${limit}`),
   getStructure: (proteinId: string, source: StructureSource, structureId: string) => request<StructureDetail>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}`),
   getStructureRegions: (proteinId: string, source: StructureSource, structureId: string) => request<RegionsResponse>(`/v1/protein-planner/proteins/${proteinId}/structures/${source}/${encodeURIComponent(structureId)}/regions`),
+  getLigandDepiction: (proteinId: string, structureId: string, ligand: LigandInstance) => request<LigandDepiction>(`/v1/protein-planner/proteins/${proteinId}/structures/pdb/${encodeURIComponent(structureId)}/ligand-depiction?${depictionQuery(ligand)}`),
   // ConSurf conservation. ConSurf has no job-submission API, so a new run is
   // prepared here, finished by the user in their browser and imported back;
   // ConSurf-DB lookups are answered straight away. See
