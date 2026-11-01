@@ -228,6 +228,13 @@ def render_ligand_depiction(ccd_text: str, ligand: dict[str, Any]) -> dict[str, 
     return {
         "svg": svg,
         "atomIndexToPdbAtomName": {str(index): name for name, index in atom_index.items()},
+        # Where each mapped atom sits in the SVG's own pixel space, so a viewer
+        # can hit-test clicks on carbons, which the SVG draws without a label.
+        "atomCoordinates": {
+            str(index): [round(point.x, 1), round(point.y, 1)]
+            for index in atom_index.values()
+            for point in [drawer.GetDrawCoords(index)]
+        },
         "bondIndexToPdbAtomNames": {
             str(bond.GetIdx()): [atom_names[bond.GetBeginAtomIdx()], atom_names[bond.GetEndAtomIdx()]]
             for bond in mol.GetBonds()

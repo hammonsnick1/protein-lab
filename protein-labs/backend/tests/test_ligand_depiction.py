@@ -14,6 +14,7 @@ Expected stereochemistry is the published configuration of each molecule
 also matches each CCD's ``pdbx_stereo_config``.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,28 @@ def test_atp_ribose_configuration_and_wedges_come_from_deposited_coordinates():
     assert {bond["from"] for bond in result["stereo"]["wedgeBonds"]} == {"C1'", "C2'", "C3'", "C4'"}
     assert {bond["style"] for bond in result["stereo"]["wedgeBonds"]} <= {"wedge", "hash"}
     assert result["stereo"]["ccdDisagreements"] == []
+
+
+def test_atom_coordinates_are_where_the_svg_draws_each_atom():
+    result = _render("2BXG", "IBP")
+    coordinates = result["atomCoordinates"]
+    assert set(coordinates) == set(result["atomIndexToPdbAtomName"])
+    assert all(0 <= x <= 500 and 0 <= y <= 350 for x, y in coordinates.values())
+    # Unlabelled carbons have no element of their own; a plain single bond
+    # between two carbons, or the first line of a double one (the second is
+    # offset), is drawn exactly from one atom's point to the other's.
+    names = result["atomIndexToPdbAtomName"]
+    lines = re.findall(r"<path class='bond-(\d+) atom-(\d+) atom-(\d+)' d='M ([\d.]+),([\d.]+) L ([\d.]+),([\d.]+)'", result["svg"])
+    checked, seen = 0, set()
+    for bond, begin, end, x1, y1, x2, y2 in lines:
+        if bond in seen:
+            continue
+        seen.add(bond)
+        if names[begin].startswith("C") and names[end].startswith("C"):
+            assert coordinates[begin] == pytest.approx([float(x1), float(y1)], abs=0.11)
+            assert coordinates[end] == pytest.approx([float(x2), float(y2)], abs=0.11)
+            checked += 1
+    assert checked >= 5
 
 
 def test_ibuprofen_is_s_in_every_one_of_the_four_albumin_instances():
