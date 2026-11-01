@@ -10,6 +10,7 @@
 // Only erasable TypeScript syntax is used, so the unit tests run under Node
 // without a bundler.
 import type { JsonObject, ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
+import type { CitationId } from "./citations.ts";
 import { cofactorKey, splitCofactorText } from "./alphafold-server-export.ts";
 import { preferredJob, type ConservationJobSummary } from "./conservation.ts";
 import { researchHits, type ResearchHit } from "./structure-hits.ts";
@@ -130,16 +131,20 @@ export type ProteinFacts = {
 
 export type FactKey = keyof ProteinFacts;
 
-/** A title and a one-paragraph student explanation for every fact. */
-export const FACT_GUIDE: Record<FactKey, { label: string; explanation: string }> = {
-  sequence: { label: "Amino-acid sequence", explanation: "The chain of amino acids your construct is made of, written one letter per residue. Every other prediction starts from it." },
-  reference: { label: "UniProt reference", explanation: "The UniProt entry you chose as the closest known relative of your protein. Its curated notes (cofactors, membrane segments, disordered stretches) are borrowed from it, so they are only as good as the match." },
-  membrane: { label: "Membrane protein", explanation: "Membrane proteins sit partly inside the cell's oily lipid membrane. Their membrane-spanning stretches are greasy, so they need detergents or lipids to stay folded outside the cell, which changes how you purify, crystallise or measure them." },
-  disorder: { label: "Disordered regions", explanation: "Some stretches of a protein never settle into a fixed shape. They are flexible, so they blur crystal packing and give sharp, crowded NMR peaks. Knowing where they are tells you what to trim or expect." },
-  cofactors: { label: "Ligands and cofactors", explanation: "Small molecules or metal ions the protein binds to work, such as heme or zinc. A protein purified without its cofactor may be unstable or inactive, and the cofactor shows up in structures and spectra." },
-  pdbHits: { label: "Experimental structures (PDB)", explanation: "Structures of this or a closely related protein already solved by X-ray crystallography, NMR or cryo-EM and deposited in the Protein Data Bank. Crystal entries record how the crystals were grown." },
-  conservation: { label: "Conservation (ConSurf)", explanation: "How much each position varies across related proteins in evolution, on ConSurf's 1 (variable) to 9 (conserved) scale. Conserved positions are usually important for folding or function." },
-  alphaFoldModels: { label: "AlphaFold models", explanation: "Predicted 3D structures from AlphaFold. The pLDDT score (0–100) says how confident the prediction is at each residue; below about 50 a region is often disordered rather than wrongly predicted." },
+/**
+ * A title and a one-paragraph student explanation for every fact, with the
+ * sources behind any database, tool or rule of thumb the explanation names.
+ */
+export const FACT_GUIDE: Record<FactKey, { label: string; explanation: string; citations: CitationId[] }> = {
+  sequence: { label: "Amino-acid sequence", explanation: "The chain of amino acids your construct is made of, written one letter per residue. Every other prediction starts from it.", citations: [] },
+  reference: { label: "UniProt reference", explanation: "The UniProt entry you chose as the closest known relative of your protein. Its curated notes (cofactors, membrane segments, disordered stretches) are borrowed from it, so they are only as good as the match.", citations: ["uniprot2023"] },
+  membrane: { label: "Membrane protein", explanation: "Membrane proteins sit partly inside the cell's oily lipid membrane. Their membrane-spanning stretches are greasy, so they need detergents or lipids to stay folded outside the cell, which changes how you purify, crystallise or measure them.", citations: ["caffrey2015"] },
+  disorder: { label: "Disordered regions", explanation: "Some stretches of a protein never settle into a fixed shape. They are flexible, so they blur crystal packing and give sharp, crowded NMR peaks. Knowing where they are tells you what to trim or expect.", citations: ["dale2003"] },
+  cofactors: { label: "Ligands and cofactors", explanation: "Small molecules or metal ions the protein binds to work, such as heme or zinc. A protein purified without its cofactor may be unstable or inactive, and the cofactor shows up in structures and spectra.", citations: [] },
+  pdbHits: { label: "Experimental structures (PDB)", explanation: "Structures of this or a closely related protein already solved by X-ray crystallography, NMR or cryo-EM and deposited in the Protein Data Bank. Crystal entries record how the crystals were grown.", citations: ["pdb2000"] },
+  conservation: { label: "Conservation (ConSurf)", explanation: "How much each position varies across related proteins in evolution, on ConSurf's 1 (variable) to 9 (conserved) scale. Conserved positions are usually important for folding or function.", citations: ["consurf2023"] },
+  // pLDDT is defined by Jumper et al.; the "below about 50" band is from Tunyasuvunakool et al.
+  alphaFoldModels: { label: "AlphaFold models", explanation: "Predicted 3D structures from AlphaFold. The pLDDT score (0–100) says how confident the prediction is at each residue; below about 50 a region is often disordered rather than wrongly predicted.", citations: ["alphafold2021", "tunyasuvunakool2021"] },
 };
 
 export function proteinFacts(bundle: ProteinBundle): ProteinFacts {

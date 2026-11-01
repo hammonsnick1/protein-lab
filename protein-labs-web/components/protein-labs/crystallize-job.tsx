@@ -9,7 +9,7 @@ import { citationScope, type CitationId, type CitationScope } from "@/lib/citati
 import { ensureProjectJob, proteinLabsApi, type JsonObject, type ProteinBundle } from "@/lib/protein-labs-api";
 import { FACT_GUIDE, proteinFacts } from "@/lib/protein-facts";
 import {
-  CRYSTALLIZE_APP_TYPE, crystallizeConfig, factInfluences, formatProbability, INFLUENCE_LABELS, PREDICTOR_CITATIONS, readAssessment, scoreView,
+  assessmentCitations, CRYSTALLIZE_APP_TYPE, crystallizeConfig, factInfluences, formatProbability, INFLUENCE_LABELS, PREDICTOR_CITATIONS, readAssessment, scoreView,
   type Assessment, type FactInfluence, type InfluenceEffect, type Predictor, type ScoreView, type SpaceGroupSuggestion,
 } from "@/lib/crystallization";
 import { CrystallizationGuidance } from "@/components/protein-labs/crystallization-guidance";
@@ -46,8 +46,11 @@ function SpaceGroupPanel({ bundle, facts, suggestedSpaceGroups, selectedSpaceGro
   />;
 }
 
-// Every source this job cites, in first-use order down the page.
-const REFERENCES: CitationId[] = ["shoebill2026", "mall2025plm", "mascl2025", "ita2016", "pdb2000", "uniprot2023", "caffrey2015", "dale2003", "consurf2023", "alphafold2021", "jancarik1991"];
+// Every source this job cites, in first-use order down the page. The engine's
+// recommendation sits second, so the ids it sends are numbered right after the
+// score card's; the rest follow in page order.
+const SCORE_REFERENCES: CitationId[] = ["shoebill2026", "mall2025plm"];
+const REFERENCES: CitationId[] = ["dale2003", "mcpherson2014", "caffrey2015", "mascl2025", "ita2016", "pdb2000", "carugo1997", "uniprot2023", "jancarik1991", "consurf2023", "alphafold2021", "tunyasuvunakool2021"];
 
 type Load = { state: "loading" } | { state: "ready"; assessment: Assessment } | { state: "error"; message: string };
 
@@ -109,7 +112,7 @@ export function CrystallizeJob({ bundle, onChanged, onOpenJob }: { bundle: Prote
 // ── Propensity and advice ───────────────────────────────────────────────────
 
 function PropensityPanel({ bundle, facts, assessment, onOpenJob, load, onRetry, onSaveAssessment }: CrystallizePanelProps & { load?: Load; onRetry?: () => void; onSaveAssessment?: (assessment: Assessment, influences: FactInfluence[]) => Promise<void> }) {
-  const refs = useMemo(() => citationScope("crystallize", REFERENCES), []);
+  const refs = useMemo(() => citationScope("crystallize", [...SCORE_REFERENCES, ...assessmentCitations(assessment), ...REFERENCES]), [assessment]);
   const influences = useMemo(() => factInfluences(facts), [facts]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -131,7 +134,7 @@ function PropensityPanel({ bundle, facts, assessment, onOpenJob, load, onRetry, 
   return <div className="crystallize-propensity">
     <section className="crystallize-summary" aria-busy={state.state === "loading"}>
       <ScoreCard load={state} refs={refs} onRetry={onRetry}/>
-      <Recommendation load={state}/>
+      <Recommendation load={state} refs={refs}/>
     </section>
 
     <section className="crystallize-explainer" aria-labelledby="crystallize-explainer-heading">
@@ -141,7 +144,7 @@ function PropensityPanel({ bundle, facts, assessment, onOpenJob, load, onRetry, 
         <div><h4>What it cannot tell you</h4><ul>
           <li>It is a chance, not a promise. A low score does not mean it will never crystallise, and a high one does not mean the first screen will work.</li>
           <li>It describes the sequence you saved. A shorter construct, a bound ligand or a surface mutation can change the outcome a lot.<Cite scope={refs} id="dale2003"/></li>
-          <li>It says nothing about your sample&apos;s purity, concentration or buffer, which matter as much as the protein itself.</li>
+          <li>It says nothing about your sample&apos;s purity, concentration or buffer, which matter as much as the protein itself.<CiteGroup scope={refs} ids={["dale2003", "mcpherson2014"]}/></li>
           <li>Membrane proteins need detergents or lipids to crystallise, which these predictors do not model, so treat their scores with extra care.<Cite scope={refs} id="caffrey2015"/></li>
         </ul></div>
       </div>
@@ -193,13 +196,13 @@ function ScoreScale({ view }: { view: ScoreView | null }) {
   </figure>;
 }
 
-function Recommendation({ load }: { load: Load }) {
+function Recommendation({ load, refs }: { load: Load; refs: CitationScope }) {
   const assessment = load.state === "ready" ? load.assessment : null;
   return <div className="crystallize-recommendation">
     <span className="eyebrow"><Sparkles aria-hidden="true"/> RECOMMENDATION</span>
     {assessment ? <>
-      <p className="crystallize-lead">{assessment.recommendation || "No recommendation was returned."}</p>
-      {assessment.explanations.length > 0 && <ul>{assessment.explanations.map((item, index) => <li key={index}><StatusChip tone={DIRECTION_TONES[item.direction]} label={DIRECTION_LABELS[item.direction]}/><span>{item.summary}{item.source && <small>{item.source}</small>}</span></li>)}</ul>}
+      <p className="crystallize-lead">{assessment.recommendation || "No recommendation was returned."}{assessment.recommendation && assessment.recommendationCitations.length > 0 && <CiteGroup scope={refs} ids={assessment.recommendationCitations}/>}</p>
+      {assessment.explanations.length > 0 && <ul>{assessment.explanations.map((item, index) => <li key={index}><StatusChip tone={DIRECTION_TONES[item.direction]} label={DIRECTION_LABELS[item.direction]}/><span>{item.summary}{item.citations.length > 0 && <CiteGroup scope={refs} ids={item.citations}/>}{item.source && <small>{item.source}</small>}</span></li>)}</ul>}
       {assessment.method.plainLanguage && <p className="method">{assessment.method.plainLanguage}</p>}
     </> : <p className="method">{load.state === "loading" ? "The recommendation appears once the assessment finishes." : "The facts below still show what the project knows; the recommendation needs the local engine."}</p>}
   </div>;
@@ -249,7 +252,7 @@ function SpaceGroups({ assessment, refs, loading }: { assessment: Assessment | n
         <td className="num">{group.probability === null ? "—" : formatProbability(group.probability)}</td>
       </tr>)}</tbody>
     </table> : <p className="crystallize-empty">{loading ? "Suggestions appear with the assessment." : <>No space group to suggest yet. {mascl && mascl.status !== "ran" ? "MASCL did not run" : "MASCL returned no groups"}<Cite scope={refs} id="mascl2025"/>, and none of the saved PDB homologues reports a crystal form<Cite scope={refs} id="pdb2000"/>. Running the PDB search in Sequence research can add reported groups.</>}</p>}
-    {groups.some((group) => group.origin === "homologue") && <p className="crystallize-note">Groups reported by related structures are facts about those crystals, not predictions for yours; a related protein can pack differently.</p>}
+    {groups.some((group) => group.origin === "homologue") && <p className="crystallize-note">Groups reported by related structures are facts about those crystals, not predictions for yours; a related protein can pack differently.<Cite scope={refs} id="carugo1997"/></p>}
   </section>;
 }
 
@@ -262,7 +265,7 @@ function Influences({ influences, refs, onOpenJob }: { influences: FactInfluence
     <table className="crystallize-influences">
       <thead><tr><th scope="col">Fact</th><th scope="col">What the earlier job found</th><th scope="col">Effect</th><th scope="col">What it changes</th></tr></thead>
       <tbody>{influences.map((item) => <tr key={item.key} className={item.effect}>
-        <th scope="row"><strong>{item.label}</strong><small>{FACT_GUIDE[item.key].explanation}</small></th>
+        <th scope="row"><strong>{item.label}</strong><small>{FACT_GUIDE[item.key].explanation}{FACT_GUIDE[item.key].citations.length > 0 && <CiteGroup scope={refs} ids={FACT_GUIDE[item.key].citations}/>}</small></th>
         <td>{item.finding}{item.sources.length > 0 && <small className="crystallize-source">{item.sources.map((source) => `${source.label}${source.date ? ` · ${new Date(source.date).toLocaleDateString()}` : ""}`).filter((value, index, all) => all.indexOf(value) === index).join("; ")}</small>}</td>
         <td><StatusChip tone={EFFECT_TONES[item.effect]} label={INFLUENCE_LABELS[item.effect]}/></td>
         <td>{item.advice}{item.citations.length > 0 && <CiteGroup scope={refs} ids={item.citations}/>}{item.producedBy && <Button size="sm" variant="outline" className="crystallize-open-job" onClick={() => onOpenJob(item.producedBy!.jobId)}>Open {item.producedBy.label} <ArrowRight/></Button>}</td>
