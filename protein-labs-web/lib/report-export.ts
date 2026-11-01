@@ -11,6 +11,7 @@
 // tests run under Node's built-in type stripping.
 import type { JsonObject, ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
 import { gelFigureNote, readGelJobConfig } from "./gel-quantification.ts";
+import { finalStorageBuffer } from "./roadmap-steps.ts";
 import { assemblyValue, oligomericLabel, oligomericSummary, readOligomericState, subunitCount } from "./oligomeric-state.ts";
 
 export type Figure = { id: string; jobId: string; caption: string };
@@ -82,10 +83,10 @@ export function pageFacts(bundle: ProteinBundle, templateId: string): [string, s
     add("Mass after cleavage", construct.cleavedMassDa ? `${number(construct.cleavedMassDa, 2)} Da` : "");
   }
   if (templateId === "quality") {
-    const buffer = jobConfig(bundle, "purification-buffer");
+    const storage = finalStorageBuffer(bundle);
     const review = jobConfig(bundle, "purification-workflow");
-    add("Storage buffer", buffer.bufferName ?? buffer.presetName);
-    add("Buffer pH", buffer.bufferPH);
+    add("Storage buffer", storage?.name);
+    add("Buffer pH", storage?.pH);
     add("Workflow review", review.reviewStatus);
     add("Reviewed", review.savedAt ? new Date(String(review.savedAt)).toLocaleDateString() : "");
   }
