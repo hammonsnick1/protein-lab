@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import threading
 from typing import Any
 import uuid
 import zipfile
@@ -34,6 +35,15 @@ from .structures import build_residue_mapping, compute_regions, summarize_struct
 from .ligand_depiction import render_ligand_depiction
 from .protparam import analyze_sequence, normalize_sequence
 from .project_trees import ProjectTreeService
+from .purification_run import (
+    IMPORTED_RUN_NAME,
+    ROADMAP_APP_TYPE,
+    RUN_APP_TYPE,
+    new_run,
+    next_run_name,
+    normalize_run,
+    roadmap_to_run,
+)
 from .crystallization import crystallization_assessment
 from .readiness import (
     choose_conservation,
@@ -105,6 +115,7 @@ class ProteinPlanner:
         self.email = email
         self.taxonomy = taxonomy or TaxonomyClient(blast.http, email=email)
         self.project_trees = ProjectTreeService(database)
+        self._run_import_lock = threading.Lock()
 
     def create_protein(self, fields: dict[str, Any]) -> dict[str, Any]:
         sequence = normalize_sequence(str(fields.get("sequence") or ""))
@@ -1274,6 +1285,7 @@ class ProteinPlanner:
             "purification-buffer": "Purification buffer design",
             "purification-workflow": "Purification workflow review",
             "purification-roadmap": "Purification roadmap",
+            "purification-run": "Purification run",
             "transformation-expression": "Transformation and expression",
             "chromatogram-studio": "Chromatogram analysis",
             "gel-analysis": "Gel purity analysis",
@@ -1287,9 +1299,10 @@ class ProteinPlanner:
             name = labels[app_type]
         if len(name) > 120:
             raise ValueError("Project job names must be 120 characters or fewer")
-        return self.database.create_project_job(
-            protein_id, name, app_type, fields.get("config") or {}
-        )
+        config = fields.get("config") or {}
+        if app_type == RUN_APP_TYPE:
+            config = normalize_run(config)
+        return self.database.create_project_job(protein_id, name, app_type, config)
 
     def update_project_job(
         self, protein_id: str, job_id: str, fields: dict[str, Any]
@@ -1306,12 +1319,51 @@ class ProteinPlanner:
         config = fields.get("config", existing["config"])
         if not isinstance(config, dict):
             raise ValueError("Project job configuration must be an object")
+        if existing["appType"] == RUN_APP_TYPE:
+            config = normalize_run(config)
+            # Provenance is fixed at import: clearing it would let the next
+            # import create a second "Run 1".
+            if existing["config"].get("importedFrom") is not None:
+                config["importedFrom"] = existing["config"]["importedFrom"]
         return self.database.update_project_job(
             protein_id,
             job_id,
             name=name,
             status=status,
             config=config,
+        )
+
+    def import_purification_roadmap(self, protein_id: str) -> dict[str, Any]:
+        """Turn the protein's roadmap board into "Run 1", once.
+
+        Idempotent: a protein that already has a run imported from its roadmap
+        gets that run back with ``created: False``. The roadmap job is only
+        read, never changed or deleted, so the board keeps working until the
+        run view replaces it.
+        """
+        with self._run_import_lock:
+            jobs = self.database.get_bundle(protein_id)["projectJobs"]
+            for job in jobs:
+                imported = job["config"].get("importedFrom") if job["appType"] == RUN_APP_TYPE else None
+                if isinstance(imported, dict) and imported.get("appType") == ROADMAP_APP_TYPE:
+                    return {"created": False, "run": job}
+            roadmap = next((job for job in jobs if job["appType"] == ROADMAP_APP_TYPE), None)
+            config = roadmap_to_run(roadmap, jobs, now=utc_now())
+            run = self.database.create_project_job(
+                protein_id, next_run_name(jobs, IMPORTED_RUN_NAME), RUN_APP_TYPE, config
+            )
+            return {"created": True, "run": run}
+
+    def create_purification_run(
+        self, protein_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        """A new run of this protein from the current plan ("Run N" by default)."""
+        jobs = self.database.get_bundle(protein_id)["projectJobs"]
+        name = str(fields.get("name") or "").strip() or next_run_name(jobs)
+        if len(name) > 120:
+            raise ValueError("Project job names must be 120 characters or fewer")
+        return self.database.create_project_job(
+            protein_id, name, RUN_APP_TYPE, new_run(jobs, now=utc_now())
         )
 
     def delete_project_job(self, protein_id: str, job_id: str) -> None:
