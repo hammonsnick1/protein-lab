@@ -6,9 +6,9 @@
 
 | Tool | License/runtime note | H / N published RMSE (ppm) |
 | --- | --- | --- |
-| UCBShift 2.0 | External only; upstream CSpred license permits educational, research, and not-for-profit use, not general commercial use | 0.31 / 1.83 |
+| UCBShift 2.0 | External only; upstream CSpred license permits educational, research, and not-for-profit use, not general commercial use | 0.31 / 1.81 (UCBShift 1.0 backbone model, which 2.0 keeps; Li et al., Chem Sci 2020, [doi:10.1039/c9sc06561j](https://doi.org/10.1039/c9sc06561j)) |
 | LEGOLAS | External only; MIT-licensed source repository is about 150 MB by GitHub’s reported repository size (checked 2026-10-31); CPU environment includes PyTorch, MDTraj, Biopython | no comparable H/N RMSE in upstream README |
-| SHIFTX2 | External-only legacy fallback; no redistributable installation is bundled and its license must be confirmed by the operator before configuration | 0.17 / 1.12 |
+| SHIFTX2 | External-only legacy fallback; no redistributable installation is bundled and its license must be confirmed by the operator before configuration | 0.17 / 1.12 (Han et al. 2011 abstract) |
 
 The adapter does not install any predictor. At review time, the CSpred/UCBShift source repository was about 320 MB by GitHub’s reported repository size; SHIFTX2 1.13’s Linux archive was 163 MB compressed (download checked 2026-10-31) and requires legacy Python/Java/GCC tooling. This keeps installation and runtime dependencies outside the application process.
 
@@ -18,7 +18,7 @@ Proline has no backbone amide proton (`hasHnPeak: false`). Supplied disordered r
 
 ## Random-coil fallback
 
-Without a predictor, and for supplied disordered positions, each residue gets its amino-acid-specific random-coil amide ¹H/¹⁵N from Wishart DS, Bigam CG, Holm A, Hodges RS, Sykes BD, *J Biomol NMR* 5:67–81 (1995), [doi:10.1007/BF00227471](https://doi.org/10.1007/BF00227471): X in Ac-GGXAGG-NH2, 1 M urea, 25 °C, pH 5, DSS-referenced, reduced Cys. The paper's nearest-neighbour set for X in Ac-GGXPGG-NH2 is used when the next residue is proline. Other neighbour effects are not applied. The values were transcribed from that paper as tabulated in the UCBShift/CSpred source (`THGLab/CSpred`, `ucbshifty.py`). `method.randomCoilTable` names the table.
+Without a predictor, and for supplied disordered positions, each residue gets its amino-acid-specific random-coil amide ¹H/¹⁵N from Wishart DS, Bigam CG, Holm A, Hodges RS, Sykes BD, *J Biomol NMR* 5:67–81 (1995), [doi:10.1007/BF00227471](https://doi.org/10.1007/BF00227471): X in Ac-GGXAGG-NH2, 1 M urea, 25 °C, pH 5, DSS-referenced, reduced Cys. The paper's nearest-neighbour set for X in Ac-GGXPGG-NH2 is used when the next residue is proline. Other neighbour effects are not applied. The paper is paywalled, so the published numbers were read from the transcription of it in the UCBShift/CSpred source (`THGLab/CSpred`, `ucbshifty.py`, UC Regents not-for-profit licence). Only the measured values are reused; no CSpred code is copied or shipped. `THIRD_PARTY_NOTICES.md` declares this use. `method.randomCoilTable` names the table.
 
 ## Predictor numbering
 
