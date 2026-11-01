@@ -29,6 +29,7 @@ WORKFLOW_APP_TYPES = [
     "purification-buffer",
     "purification-workflow",
     "purification-roadmap",
+    "purification-run",
     "transformation-expression",
     "chromatogram-studio",
     "gel-analysis",
