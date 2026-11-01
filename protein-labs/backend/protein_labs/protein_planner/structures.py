@@ -221,6 +221,10 @@ def parse_mmcif_structure(text: str) -> dict[str, Any]:
                 "authSeqId": auth_seq,
                 "insertionCode": insertion,
                 "atoms": [],
+                # Keep atom names alongside coordinates for atom-level tools
+                # (for example the 2D ligand depiction).  ``atoms`` remains a
+                # coordinate list for the region-contact contract above.
+                "atomCoordinatesByName": {},
                 "classification": (
                     "water" if comp_id in WATER_IDS
                     else "common_additive" if comp_id in COMMON_ADDITIVES
@@ -229,6 +233,9 @@ def parse_mmcif_structure(text: str) -> dict[str, Any]:
             })
             if coordinate is not None:
                 ligand["atoms"].append(coordinate)
+                # Alternate locations may repeat an atom name.  Retain the
+                # first coordinate rather than silently remapping an atom.
+                ligand["atomCoordinatesByName"].setdefault(atom_name, coordinate)
 
     # The scheme includes residues absent from atom_site and therefore preserves
     # auth numbering and insertion codes across unmodelled gaps.

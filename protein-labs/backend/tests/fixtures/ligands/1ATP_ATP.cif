@@ -1,0 +1,58 @@
+data_1ATP
+#
+# ATP HETATM rows only, extracted unchanged from PDB entry 1ATP
+# (https://files.rcsb.org/download/1ATP.cif, CC0 1.0, accessed 2026-10-31).
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.label_alt_id
+_atom_site.label_comp_id
+_atom_site.label_asym_id
+_atom_site.label_entity_id
+_atom_site.label_seq_id
+_atom_site.pdbx_PDB_ins_code
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.occupancy
+_atom_site.B_iso_or_equiv
+_atom_site.pdbx_formal_charge
+_atom_site.auth_seq_id
+_atom_site.auth_comp_id
+_atom_site.auth_asym_id
+_atom_site.auth_atom_id
+_atom_site.pdbx_PDB_model_num
+HETATM 2937 P  PG    . ATP E 4 .   ? 16.223  8.151   -1.015  1.00 18.11  ? 355 ATP E PG    1
+HETATM 2938 O  O1G   . ATP E 4 .   ? 17.550  8.536   -0.515  1.00 17.95  ? 355 ATP E O1G   1
+HETATM 2939 O  O2G   . ATP E 4 .   ? 15.748  6.835   -0.427  1.00 15.57  ? 355 ATP E O2G   1
+HETATM 2940 O  O3G   . ATP E 4 .   ? 16.255  8.014   -2.438  1.00 6.59   ? 355 ATP E O3G   1
+HETATM 2941 P  PB    . ATP E 4 .   ? 14.471  10.520  -1.490  1.00 22.96  ? 355 ATP E PB    1
+HETATM 2942 O  O1B   . ATP E 4 .   ? 13.929  9.920   -2.700  1.00 13.08  ? 355 ATP E O1B   1
+HETATM 2943 O  O2B   . ATP E 4 .   ? 15.318  11.737  -1.637  1.00 19.59  ? 355 ATP E O2B   1
+HETATM 2944 O  O3B   . ATP E 4 .   ? 15.196  9.363   -0.681  1.00 13.80  ? 355 ATP E O3B   1
+HETATM 2945 P  PA    . ATP E 4 .   ? 11.968  9.868   -0.260  1.00 19.49  ? 355 ATP E PA    1
+HETATM 2946 O  O1A   . ATP E 4 .   ? 11.100  9.880   -1.430  1.00 13.47  ? 355 ATP E O1A   1
+HETATM 2947 O  O2A   . ATP E 4 .   ? 12.426  8.514   0.144   1.00 25.00  ? 355 ATP E O2A   1
+HETATM 2948 O  O3A   . ATP E 4 .   ? 13.242  10.795  -0.567  1.00 21.72  ? 355 ATP E O3A   1
+HETATM 2949 O  "O5'" . ATP E 4 .   ? 11.333  10.591  1.011   1.00 14.92  ? 355 ATP E "O5'" 1
+HETATM 2950 C  "C5'" . ATP E 4 .   ? 12.092  10.373  2.227   1.00 58.54  ? 355 ATP E "C5'" 1
+HETATM 2951 C  "C4'" . ATP E 4 .   ? 11.238  9.922   3.406   1.00 15.72  ? 355 ATP E "C4'" 1
+HETATM 2952 O  "O4'" . ATP E 4 .   ? 10.003  10.681  3.386   1.00 30.04  ? 355 ATP E "O4'" 1
+HETATM 2953 C  "C3'" . ATP E 4 .   ? 10.722  8.498   3.395   1.00 9.26   ? 355 ATP E "C3'" 1
+HETATM 2954 O  "O3'" . ATP E 4 .   ? 11.705  7.533   3.717   1.00 33.78  ? 355 ATP E "O3'" 1
+HETATM 2955 C  "C2'" . ATP E 4 .   ? 9.560   8.606   4.401   1.00 1.00   ? 355 ATP E "C2'" 1
+HETATM 2956 O  "O2'" . ATP E 4 .   ? 9.942   8.562   5.764   1.00 48.53  ? 355 ATP E "O2'" 1
+HETATM 2957 C  "C1'" . ATP E 4 .   ? 8.988   9.957   4.085   1.00 12.71  ? 355 ATP E "C1'" 1
+HETATM 2958 N  N9    . ATP E 4 .   ? 7.778   9.924   3.236   1.00 19.15  ? 355 ATP E N9    1
+HETATM 2959 C  C8    . ATP E 4 .   ? 7.884   9.906   1.879   1.00 45.84  ? 355 ATP E C8    1
+HETATM 2960 N  N7    . ATP E 4 .   ? 6.731   9.904   1.248   1.00 35.77  ? 355 ATP E N7    1
+HETATM 2961 C  C5    . ATP E 4 .   ? 5.796   9.977   2.253   1.00 24.00  ? 355 ATP E C5    1
+HETATM 2962 C  C6    . ATP E 4 .   ? 4.373   10.039  2.244   1.00 26.67  ? 355 ATP E C6    1
+HETATM 2963 N  N6    . ATP E 4 .   ? 3.616   10.001  1.128   1.00 31.35  ? 355 ATP E N6    1
+HETATM 2964 N  N1    . ATP E 4 .   ? 3.756   10.034  3.445   1.00 19.73  ? 355 ATP E N1    1
+HETATM 2965 C  C2    . ATP E 4 .   ? 4.499   10.076  4.582   1.00 28.79  ? 355 ATP E C2    1
+HETATM 2966 N  N3    . ATP E 4 .   ? 5.825   10.053  4.705   1.00 18.18  ? 355 ATP E N3    1
+HETATM 2967 C  C4    . ATP E 4 .   ? 6.425   9.873   3.496   1.00 37.89  ? 355 ATP E C4    1
+#
