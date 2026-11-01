@@ -68,7 +68,12 @@ COMMON_PEPTIDE_FEATURES = [
     ("HA tag", "YPYDVPDYA", "#00ACC1"),
     ("Myc tag", "EQKLISEEDL", "#00ACC1"),
     ("Strep-tag II", "WSHPQFEK", "#00ACC1"),
+    # The house His construct is M–His–DYDIPTT–ENLYFQ(G/S)–GA–target, so the
+    # spacer and both tolerated rTEV P1' residues are annotated too; the web
+    # construct designer builds the same layout.
+    ("DYDIPTT linker", "DYDIPTT", "#00ACC1"),
     ("TEV cleavage site", "ENLYFQG", "#E53935"),
+    ("TEV cleavage site", "ENLYFQS", "#E53935"),
     ("HRV 3C cleavage site", "LEVLFQGP", "#E53935"),
     ("Thrombin cleavage site", "LVPRGS", "#E53935"),
     ("Enterokinase cleavage site", "DDDDK", "#E53935"),

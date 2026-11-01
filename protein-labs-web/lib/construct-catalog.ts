@@ -52,6 +52,16 @@ export type CleavageSite = {
 
 export type LinkerOption = { id: string; name: string; sequence: string; note: string };
 
+/**
+ * Residues the backbone contributes immediately before the target protein.
+ *
+ * These are not part of the tag or the protease site: they come from the
+ * cloning junction itself, so they stay on the protein after cleavage and have
+ * to be counted in the cleaved product's mass and pI. The in-house His vectors
+ * leave Gly-Ala at that junction.
+ */
+export type JunctionOption = LinkerOption;
+
 /** Short tags with exact, well-established published sequences. */
 export const tagModules: TagModule[] = [
   { id: "his6", name: "6×His", sequence: "HHHHHH", terminus: "N", aliases: ["6×his", "6xhis", "his6", "polyhistidine", "his"], note: "Standard polyhistidine tag for IMAC." },
@@ -102,11 +112,21 @@ export const cleavageSites: CleavageSite[] = [
 
 export const linkerOptions: LinkerOption[] = [
   { id: "none", name: "No linker", sequence: "", note: "Tag and cleavage site sit directly against each other." },
+  { id: "dydiptt", name: "DYDIPTT spacer", sequence: "DYDIPTT", note: "Charged, protease-accessible spacer between a poly-His tag and an rTEV site; the default His–TEV layout." },
   { id: "gs", name: "Short Gly-Ser", sequence: "GS", note: "Minimal spacer; common in commercial backbones." },
   { id: "sggs", name: "Flexible SGGS", sequence: "SGGS", note: "Adds flexibility so the protease can reach its site." },
   { id: "gsgsgs", name: "Flexible (GS)₃", sequence: "GSGSGS", note: "Longer flexible spacer for poorly accessible sites." },
   { id: "ggggs", name: "Flexible (G₄S)", sequence: "GGGGS", note: "Classic flexible fusion linker." },
 ];
+
+export const junctionOptions: JunctionOption[] = [
+  { id: "none", name: "No junction residues", sequence: "", note: "The protease site or tag runs straight into the target." },
+  { id: "ga", name: "Gly-Ala junction", sequence: "GA", note: "Gly-Ala left by the vector's cloning junction, directly before the protein of interest." },
+];
+
+/** Poly-His tags, for which the house DYDIPTT–TEV–GA layout is the default. */
+const polyHisTagIds = new Set(["his6", "his8", "his10"]);
+
 
 export type ConstructPlan = {
   terminus: TagTerminus;
@@ -114,14 +134,62 @@ export type ConstructPlan = {
   initiatorMet: boolean;
   tagId: string;
   linkerId: string;
+  /** Backbone residues directly before the target. Absent means none. */
+  junctionId?: string;
   cleavageId: string;
   /** Resolved sequence for a large fusion partner, when one was supplied. */
   resolvedTagSequence?: string;
   resolvedTagSource?: string;
 };
 
+/**
+ * The linker and junction a construct starts from.
+ *
+ * An N-terminal poly-His tag cleaved with TEV gets the house layout
+ * `M–His–DYDIPTT–ENLYFQ↓G–GA–target`. Anything else, including a C-terminal
+ * His tag, starts with no linker and no junction residues rather than a
+ * Gly-Ser spacer nobody asked for; both remain selectable.
+ *
+ * An empty `cleavageId` means the protease stage has not been visited yet. The
+ * tag is chosen first and TEV is the house protease, so a poly-His construct
+ * starts from the house layout. This only decides the starting point: once a
+ * plan is saved its linker and junction are kept as saved.
+ */
+export function defaultLayoutFor(
+  tagId: string,
+  cleavageId: string,
+  terminus: TagTerminus = "N",
+): { linkerId: string; junctionId: string } {
+  const house = terminus === "N" && polyHisTagIds.has(tagId) && (cleavageId === "tev" || cleavageId === "");
+  return house ? { linkerId: "dydiptt", junctionId: "ga" } : { linkerId: "none", junctionId: "none" };
+}
+
+/**
+ * Change the tag or its terminus and carry the layout along with it.
+ *
+ * The linker and junction move to the new default only while they still match
+ * the old one, so switching a His resin to GST drops DYDIPTT and GA, but a
+ * linker or junction the researcher picked by hand is left alone.
+ */
+export function relayoutPlan(
+  plan: ConstructPlan,
+  patch: Partial<Pick<ConstructPlan, "tagId" | "terminus">>,
+  cleavageId: string,
+): ConstructPlan {
+  const next = { ...plan, ...patch };
+  if (patch.tagId !== undefined && patch.tagId !== plan.tagId) {
+    next.resolvedTagSequence = "";
+    next.resolvedTagSource = "";
+  }
+  const before = defaultLayoutFor(plan.tagId, cleavageId, plan.terminus);
+  const after = defaultLayoutFor(next.tagId, cleavageId, next.terminus);
+  if (plan.linkerId === before.linkerId) next.linkerId = after.linkerId;
+  if ((plan.junctionId ?? "none") === before.junctionId) next.junctionId = after.junctionId;
+  return next;
+}
+
 export type ConstructSegment = {
-  kind: "met" | "tag" | "linker" | "site" | "target" | "scar";
+  kind: "met" | "tag" | "linker" | "site" | "target" | "scar" | "junction";
   label: string;
   sequence: string;
   start: number;
@@ -138,6 +206,10 @@ export type AssembledConstruct = {
   /** Set when a large fusion partner has no resolved sequence yet. */
   unresolvedTag: TagModule | null;
   cleaves: boolean;
+  /**
+   * Every residue the construct leaves on the purified protein: the protease's
+   * P1′ residues plus any backbone junction residues, in construct order.
+   */
   scar: string;
   warnings: string[];
 };
@@ -186,6 +258,7 @@ export function assembleConstruct(target: string, plan: ConstructPlan): Assemble
   const tag = findTagModule(plan.tagId);
   const site = cleavageSiteForProtease(plan.cleavageId);
   const linker = linkerOptions.find((option) => option.id === plan.linkerId) ?? linkerOptions[0];
+  const junction = junctionOptions.find((option) => option.id === plan.junctionId) ?? junctionOptions[0];
   const warnings: string[] = [];
 
   const tagSequence = tagSequenceFor(tag, plan);
@@ -221,9 +294,13 @@ export function assembleConstruct(target: string, plan: ConstructPlan): Assemble
       push("site", `${site?.name ?? "Cleavage"} site`, siteSequence.slice(0, cutWithinSite), false);
       push("scar", "Retained scar", siteSequence.slice(cutWithinSite), true);
     }
+    // The backbone's own residues sit between the site and the target, so they
+    // survive cleavage even when the protease itself leaves nothing behind.
+    push("junction", `${junction.name} (vector)`, junction.sequence, true);
     push("target", "Target protein", cleanTarget, true);
   } else {
     push("met", "Initiator Met", plan.initiatorMet && !cleanTarget.startsWith("M") ? "M" : "", true);
+    push("junction", `${junction.name} (vector)`, junction.sequence, true);
     push("target", "Target protein", cleanTarget, true);
     if (siteSequence) {
       // For a C-terminal tag the target keeps everything before the cut.
@@ -238,9 +315,14 @@ export function assembleConstruct(target: string, plan: ConstructPlan): Assemble
   const retained = segments.filter((segment) => segment.retained).map((segment) => segment.sequence).join("");
   const removed = segments.filter((segment) => !segment.retained).map((segment) => segment.sequence).join("");
   const cleaved = cleaves ? retained : fusion;
-  const scar = segments.filter((segment) => segment.kind === "scar").map((segment) => segment.sequence).join("");
+  const scar = segments
+    .filter((segment) => segment.kind === "scar" || segment.kind === "junction")
+    .map((segment) => segment.sequence)
+    .join("");
 
-  if (cleaves && plan.terminus === "N" && !site?.foldedDomain && scar) {
+  // A folded-domain protease leaves no scar of its own, but the vector's
+  // junction residues still remain, so the warning depends only on the scar.
+  if (cleaves && plan.terminus === "N" && scar) {
     warnings.push(`Tag removal leaves ${scar} at the new N-terminus, which changes the N-end-rule half-life estimate.`);
   }
   if (cleaves && site && !site.foldedDomain && siteSequence && cleanTarget.includes(siteSequence)) {
