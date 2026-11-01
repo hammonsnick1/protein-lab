@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 import { citationHref, citations, citationScope, citationShortLabel, licenseRegister, type CitationId } from "./citations.ts";
 
@@ -20,6 +21,12 @@ describe("citation registry", () => {
       if (citation.doi) assert.match(citation.doi, /^10\.\d{4,9}\/\S+$/, key);
       assert.match(citationHref(citation) ?? "", /^https?:\/\//, key);
     }
+  });
+
+  it("defines each id once, so parallel branches that add the same source cannot both keep it", () => {
+    const source = readFileSync(new URL("./citations.ts", import.meta.url), "utf8");
+    const ids = [...source.matchAll(/^\s+id: "([^"]+)"/gm)].map((match) => match[1]);
+    assert.deepEqual(ids.filter((id, index) => ids.indexOf(id) !== index), []);
   });
 
   it("prefers the DOI over the project URL", () => {

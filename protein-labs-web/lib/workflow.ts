@@ -5,7 +5,7 @@ export type WorkflowJobDefinition = {
   appType: string;
   label: string;
   description: string;
-  stage: "understand" | "plan" | "purify" | "analysis";
+  stage: "understand" | "plan" | "purify" | "analysis" | "crystallize";
   color: string;
   requiredKey?: string;
 };
@@ -22,6 +22,7 @@ export const workflowSections: WorkflowSectionDefinition[] = [
   { id: "plan", label: "Plan your purification", description: "Choose the production system and design a compatible purification strategy.", color: "#6d7ff2" },
   { id: "purify", label: "Purify your protein", description: "Run the approved plan at the bench and keep a structured experimental record.", color: "#ef8f47" },
   { id: "analysis", label: "Analyze your purification", description: "Inspect chromatography and gel results without losing their project context.", color: "#b47bf3" },
+  { id: "crystallize", label: "Crystallize your protein", description: "Judge how likely crystals are and plan the first screens from what the project already knows.", color: "#4aa6c9" },
 ];
 
 export type WorkflowState = "completed" | "skipped" | "started" | "recommended" | "available";
@@ -47,6 +48,7 @@ export const workflowJobs: WorkflowJobDefinition[] = [
   { id: "transformation-expression", appType: "transformation-expression", label: "Transformation and Expression", description: "Record the starting material, host-specific medium, culture conditions, and expression notes.", stage: "purify", color: "#ef8f47", requiredKey: "mediaId" },
   { id: "chromatogram", appType: "chromatogram-studio", label: "Chromatogram Studio", description: "Analyze purification traces, SEC standards, peaks, and figures.", stage: "analysis", color: "#b47bf3" },
   { id: "gel", appType: "gel-analysis", label: "Gel densitometry", description: "Analyze SDS-PAGE or Native PAGE lanes, Rf, MW, and purity.", stage: "analysis", color: "#7fcb81" },
+  { id: "crystallize", appType: "crystallization", label: "Crystallize your protein", description: "See how likely crystals are, which space groups to expect, and how earlier findings shape the first screens.", stage: "crystallize", color: "#4aa6c9", requiredKey: "assessedAt" },
 ];
 
 /** Jobs that were folded into others. Saved links (roadmaps, old bookmarks)

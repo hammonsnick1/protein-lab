@@ -26,6 +26,7 @@ const EXEMPT: Record<string, string> = {
   ".restriction-label": "legacy plasmid map, viewBox units (SVG)",
   ".plasmid-map .restriction-label": "legacy plasmid map, viewBox units (SVG)",
   ".tree-preview text": "tile thumbnail drawn in viewBox units (SVG)",
+  ".xtal-drop .xg-label.small": "hanging/sitting drop labels in viewBox units, drawn at 1.15× or more (SVG)",
   ".residue-structure text": "amino-acid skeletal drawing in viewBox units: 0.42 units at 34px per unit is 14px on screen (SVG)",
   // Decorative glyph, hidden from assistive technology.
   ".mascot-zzz span:nth-child(3)": "decorative sleeping glyph",

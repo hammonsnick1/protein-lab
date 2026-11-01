@@ -67,6 +67,26 @@ const entries = [
     source: "Proteins 93:1747–1766", doi: "10.1002/prot.26844",
   },
   {
+    id: "pdb2000", kind: "database", name: "Protein Data Bank", authors: "Berman HM, et al.", year: "2000",
+    title: "The Protein Data Bank",
+    source: "Nucleic Acids Res 28:235–242", doi: "10.1093/nar/28.1.235", url: "https://www.rcsb.org",
+  },
+  {
+    id: "uniprot2023", kind: "database", name: "UniProtKB", authors: "UniProt Consortium", year: "2023",
+    title: "UniProt: the Universal Protein Knowledgebase in 2023",
+    source: "Nucleic Acids Res 51:D523–D531", doi: "10.1093/nar/gkac1052", url: "https://www.uniprot.org",
+  },
+  {
+    id: "alphafold2021", kind: "software", name: "AlphaFold", authors: "Jumper J, Evans R, Pritzel A, et al.", year: "2021",
+    title: "Highly accurate protein structure prediction with AlphaFold",
+    source: "Nature 596:583–589", doi: "10.1038/s41586-021-03819-2",
+  },
+  {
+    id: "consurf2023", kind: "software", name: "ConSurf", authors: "Yariv B, Yariv E, Kessel A, et al.", year: "2023",
+    title: "Using evolutionary data to make sense of macromolecules with a “face-lifted” ConSurf",
+    source: "Protein Sci 32:e4582", doi: "10.1002/pro.4582", url: "https://consurf.tau.ac.il",
+  },
+  {
     id: "ucl-sgp", kind: "website", name: "UCL space-group diagrams", authors: "Cockcroft JK", year: "1999",
     title: "A hypertext book of crystallographic space group diagrams and tables",
     source: "Birkbeck College, University of London; hosted by the Department of Chemistry, UCL",
@@ -132,6 +152,98 @@ const entries = [
     id: "opencloning", kind: "software", name: "OpenCloning", authors: "Lera-Ramirez M", year: "2022",
     title: "OpenCloning backend", source: "GitHub", url: "https://github.com/OpenCloning/OpenCloning_backend",
     license: { name: "MIT", reuse: "permissive", url: "https://github.com/OpenCloning/OpenCloning_backend", usage: "Vector builder conventions adapted (backend 1.9.5)." },
+  },
+  // Crystallization practice (HOM-312): reviews, screen design papers and the
+  // vendors' own formulation pages.
+  {
+    id: "mcpherson2014", kind: "article", authors: "McPherson A, Gavira JA", year: "2014",
+    title: "Introduction to protein crystallization",
+    source: "Acta Crystallogr F Struct Biol Commun 70:2–20", doi: "10.1107/S2053230X13033141",
+  },
+  {
+    id: "chayen2008", kind: "article", authors: "Chayen NE, Saridakis E", year: "2008",
+    title: "Protein crystallization: from purified protein to diffraction-quality crystal",
+    source: "Nat Methods 5:147–153", doi: "10.1038/nmeth.f.203",
+  },
+  {
+    id: "dessau2011", kind: "article", authors: "Dessau MA, Modis Y", year: "2011",
+    title: "Protein crystallization for X-ray crystallography",
+    source: "J Vis Exp 47:e2285", doi: "10.3791/2285",
+  },
+  {
+    id: "asherie2004", kind: "article", authors: "Asherie N", year: "2004",
+    title: "Protein crystallization and phase diagrams",
+    source: "Methods 34:266–272", doi: "10.1016/j.ymeth.2004.03.028",
+  },
+  {
+    id: "jancarik1991", kind: "article", name: "Sparse-matrix screening", authors: "Jancarik J, Kim SH", year: "1991",
+    title: "Sparse matrix sampling: a screening method for crystallization of proteins",
+    source: "J Appl Crystallogr 24:409–411", doi: "10.1107/S0021889891004430",
+  },
+  {
+    id: "newman2005", kind: "article", name: "JCSG+ screen", authors: "Newman J, Egan D, Walter TS, Meged R, Berry I, Ben Jelloul M, et al.", year: "2005",
+    title: "Towards rationalization of crystallization screening for small- to medium-sized academic laboratories: the PACT/JCSG+ strategy",
+    source: "Acta Crystallogr D Biol Crystallogr 61:1426–1431", doi: "10.1107/S0907444905024984",
+  },
+  {
+    id: "gorrec2009", kind: "article", name: "Morpheus screen", authors: "Gorrec F", year: "2009",
+    title: "The MORPHEUS protein crystallization screen",
+    source: "J Appl Crystallogr 42:1035–1042", doi: "10.1107/S0021889809042022",
+  },
+  {
+    id: "newstead2008", kind: "article", name: "MemGold screen", authors: "Newstead S, Ferrandon S, Iwata S", year: "2008",
+    title: "Rationalizing α-helical membrane protein crystallization",
+    source: "Protein Sci 17:466–472", doi: "10.1110/ps.073263108",
+  },
+  {
+    id: "parker2012", kind: "article", name: "MemGold2 screen", authors: "Parker JL, Newstead S", year: "2012",
+    title: "Current trends in α-helical membrane protein crystallization: an update",
+    source: "Protein Sci 21:1358–1365", doi: "10.1002/pro.2122",
+  },
+  {
+    id: "caffrey2015", kind: "article", name: "Lipid cubic phase (in meso)", authors: "Caffrey M", year: "2015",
+    title: "A comprehensive review of the lipid cubic phase or in meso method for crystallizing membrane and soluble proteins and complexes",
+    source: "Acta Crystallogr F Struct Biol Commun 71:3–18", doi: "10.1107/S2053230X14026843",
+  },
+  {
+    id: "dale2003", kind: "article", authors: "Dale GE, Oefner C, D'Arcy A", year: "2003",
+    title: "The protein as a variable in protein crystallization",
+    source: "J Struct Biol 142:88–97", doi: "10.1016/S1047-8477(03)00041-8",
+  },
+  {
+    id: "hassell2007", kind: "article", authors: "Hassell AM, An G, Bledsoe RK, Bynum JM, Carter HL, Deng SJJ, et al.", year: "2007",
+    title: "Crystallization of protein–ligand complexes",
+    source: "Acta Crystallogr D Biol Crystallogr 63:72–79", doi: "10.1107/S0907444906047020",
+  },
+  {
+    id: "mcpherson2006", kind: "article", authors: "McPherson A, Cudney B", year: "2006",
+    title: "Searching for silver bullets: an alternative strategy for crystallizing macromolecules",
+    source: "J Struct Biol 156:387–406", doi: "10.1016/j.jsb.2006.09.006",
+  },
+  {
+    id: "hampton-index", kind: "website", name: "Index", authors: "Hampton Research", year: "2026",
+    title: "Index • Index HT: product description and reagent formulation",
+    source: "Hampton Research, Aliso Viejo, CA", url: "https://hamptonresearch.com/product-Index-Index-HT-5.html",
+  },
+  {
+    id: "hampton-pegion", kind: "website", name: "PEG/Ion • PEG/Ion 2", authors: "Hampton Research", year: "2026",
+    title: "PEG/Ion • PEG/Ion 2 • PEG/Ion HT: product description and reagent formulation",
+    source: "Hampton Research, Aliso Viejo, CA", url: "https://hamptonresearch.com/product-PEG-Ion-PEG-Ion-2-PEG-Ion-HT-11.html",
+  },
+  {
+    id: "md-jcsg-plus", kind: "website", name: "JCSG-plus", authors: "Molecular Dimensions", year: "2026",
+    title: "JCSG-plus: product page and formulation sheet",
+    source: "Molecular Dimensions (Calibre Scientific)", url: "https://moleculardimensions.com/en/category/jcsg-plus",
+  },
+  {
+    id: "md-morpheus", kind: "website", name: "Morpheus", authors: "Molecular Dimensions", year: "2026",
+    title: "Morpheus: product page and formulation sheet",
+    source: "Molecular Dimensions (Calibre Scientific)", url: "https://moleculardimensions.com/en/category/morpheus-i",
+  },
+  {
+    id: "md-memgold", kind: "website", name: "MemGold • MemGold2", authors: "Molecular Dimensions", year: "2026",
+    title: "MemGold and MemGold2: product pages and formulation sheets",
+    source: "Molecular Dimensions (Calibre Scientific)", url: "https://moleculardimensions.com/en/category/memgold",
   },
 ] as const satisfies readonly Citation[];
 

@@ -36,6 +36,13 @@ Licences list reads the same data from `protein-labs-web/lib/citations.ts`.
 | UCL space-group diagrams (http://img.chem.ucl.ac.uk/sgp/mainmenu.htm) | © 1997–1999 Birkbeck College | Cite only | Visual model only; the app draws its own diagrams. |
 | gemmi (https://github.com/project-gemmi/gemmi) | MPL-2.0 | Allowed with notice | Space-group table generated from gemmi 0.7.5; notice below. |
 
+## Shoebill (not distributed)
+
+Protein Labs does not copy, redistribute, or execute Shoebill code or model
+weights. The public repository was examined on 2026-10-31 and has no license
+file, so it is unavailable pending an explicit usable license from its authors.
+Source: https://github.com/KJ-Liao/Shoebill
+
 ## OpenCloning
 
 Protein Labs' Expression Planning vector builder adapts sequence/source model

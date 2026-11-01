@@ -33,6 +33,7 @@ from .conservation import (
 from .structures import build_residue_mapping, compute_regions, summarize_structure
 from .protparam import analyze_sequence, normalize_sequence
 from .project_trees import ProjectTreeService
+from .crystallization import crystallization_assessment
 from .taxonomy import TaxonomyClient
 from ..expression_planner import (
     COMMON_ENZYMES,
@@ -130,6 +131,10 @@ class ProteinPlanner:
         target, so they use the same calculations but are never persisted.
         """
         return analyze_sequence(sequence)
+
+    def crystallization_assessment(self, protein_id: str) -> dict[str, Any]:
+        """Assess crystallization evidence already stored for one project."""
+        return crystallization_assessment(self.database.get_bundle(protein_id))
 
     def submit_blast(
         self,
@@ -1123,6 +1128,7 @@ class ProteinPlanner:
             "transformation-expression": "Transformation and expression",
             "chromatogram-studio": "Chromatogram analysis",
             "gel-analysis": "Gel purity analysis",
+            "crystallization": "Crystallization assessment",
         }
         if app_type not in labels:
             raise ValueError("Select a valid Protein Labs application")

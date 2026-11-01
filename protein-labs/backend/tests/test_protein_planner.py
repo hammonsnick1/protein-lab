@@ -32,6 +32,7 @@ WORKFLOW_APP_TYPES = [
     "transformation-expression",
     "chromatogram-studio",
     "gel-analysis",
+    "crystallization",
 ]
 
 
