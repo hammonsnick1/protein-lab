@@ -39,7 +39,14 @@ describe("jobNeighbours", () => {
 
   it("follows the workflow order across stages", () => {
     assert.deepEqual(Object.values(jobNeighbours("research")).map((value) => value?.id), ["properties", "reference-match"]);
-    assert.deepEqual(Object.values(jobNeighbours("purification-workflow")).map((value) => value?.id), ["purification-lysis", "transformation-expression"]);
+    assert.deepEqual(Object.values(jobNeighbours("purification-workflow")).map((value) => value?.id), ["purification-sec", "transformation-expression"]);
+  });
+
+  it("plans the purification in bench order", () => {
+    assert.deepEqual(workflowJobs.filter((job) => job.stage === "plan").map((job) => job.id), [
+      "expression-system", "expression-vector", "purification-affinity", "purification-subtractive", "purification-lysis", "purification-sec", "purification-workflow",
+    ]);
+    assert.deepEqual(Object.values(jobNeighbours("expression-system")).map((value) => value?.id), ["readiness", "expression-vector"]);
   });
 
   it("resolves folded jobs to the job that now holds them", () => {

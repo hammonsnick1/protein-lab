@@ -118,6 +118,36 @@ describe("suggestLysisBuffer", () => {
     assert.match(reason({ ...his, host: "" }, "Lysozyme"), /No expression host/);
   });
 
+  it("adds lysozyme for E. coli only with a non-mechanical method; optional with sonication", () => {
+    for (const method of ["enzymatic", "freeze-thaw", "detergent", "osmotic"]) {
+      assert.ok(names({ ...his, method }).includes("Lysozyme"), method);
+      assert.match(reason({ ...his, method }, "Lysozyme"), /this method relies on/);
+    }
+    for (const method of ["sonication", "homogenizer", "bead-mill"]) {
+      assert.ok(!names({ ...his, method }).includes("Lysozyme"), method);
+      assert.match(reason({ ...his, method }, "Lysozyme"), /Optional.*14\.3 kDa/);
+    }
+    assert.ok(!names({ ...his, host: "mammalian", method: "freeze-thaw" }).includes("Lysozyme"));
+  });
+
+  it("adds a reductant only when the construct has cysteines, or the count is unknown", () => {
+    for (const context of [his, strep, mbp, { ...his, capture: null }]) {
+      assert.equal(component({ ...context, cysteines: 2 }, "TCEP")?.concentration, 1);
+      assert.match(reason({ ...context, cysteines: 2 }, "TCEP"), /^2 Cys in the construct\./);
+      assert.ok(names({ ...context, cysteines: null }).includes("TCEP"));
+      assert.ok(!names({ ...context, cysteines: 0 }).includes("TCEP"));
+      assert.match(reason({ ...context, cysteines: 0 }, "TCEP"), /no cysteines/);
+    }
+    assert.ok(!names({ ...gst, cysteines: 0 }).includes("DTT"));
+    assert.ok(names({ ...gst, cysteines: 4 }).includes("DTT"));
+  });
+
+  it("warns that TCEP oxidizes in a phosphate base", () => {
+    const phosphate = { ...his, capture: { ...his.capture, binding: { pH: "8.0", purpose: "Binding", components: [{ name: "Sodium phosphate", concentration: 50, unit: "mM", role: "Buffering" }, { name: "NaCl", concentration: 300, unit: "mM", role: "Ionic strength" }] } } };
+    assert.match(reason(phosphate, "TCEP"), /phosphate buffer oxidizes within days/);
+    assert.doesNotMatch(reason(his, "TCEP"), /phosphate/);
+  });
+
   it("membrane proteins get a detergent, matching the SEC detergent when there is one", () => {
     assert.ok(!names(his).some((name) => findLibraryComponent(name)?.purposes.some((value) => value.purpose === "detergent")));
     const membrane = { ...his, membrane: true };

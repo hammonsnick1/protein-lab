@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { BookOpen, FlaskConical, Plus, Search, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BufferComponent, BufferStep } from "@/lib/purification-catalog";
+import { tcepInPhosphate, tcepPhosphateCaveat } from "@/lib/reductant-need";
 import { applyLibraryComponent, bufferUnits, findLibraryComponent, formatTypicalRange, purposeById, purposeExplanation, purposeOptions, rangeStatus, resolvePurpose, searchLibrary, type BufferLibraryEntry, type BufferPurposeId } from "@/lib/buffer-component-library";
 
 const customPurpose = "__custom";
@@ -38,6 +39,7 @@ export function BufferComposer({ label, step, onChange, children }: { label:stri
         <Button variant="ghost" size="icon-sm" aria-label={`Remove ${component.name||"component"}`} onClick={e=>{e.stopPropagation();removeComponent(index)}}><Trash2/></Button>
         {entry?.alert&&<p className="buffer-composer-alert"><TriangleAlert aria-hidden="true"/><span><b>{entry.name}:</b> {entry.alert}</span></p>}
       </div>})}
+      {tcepInPhosphate(components)&&<p className="buffer-composer-alert"><TriangleAlert aria-hidden="true"/><span><b>TCEP with phosphate:</b> {tcepPhosphateCaveat}</span></p>}
       {!components.length&&<div className="buffer-composer-empty"><FlaskConical aria-hidden="true"/><span><strong>No components yet</strong><small>Start with the buffering agent and salt, then add what this step needs: a competitor, reducing agent or stabilizer.</small></span></div>}
     </div>
     <Button variant="outline" onClick={addComponent}><Plus/> Add component</Button>
