@@ -39,6 +39,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
+import { roadmapStepOptions, stageBindingLabel } from "@/lib/roadmap-steps";
 import { clientToViewBox, plotRole, plotViewBox, screenTextSize, withSvgNamespace, type StudioTab } from "@/lib/plot-geometry";
 import { secColumns } from "@/lib/sec-column-catalog";
 
@@ -66,6 +67,9 @@ type Trace = {
   fillOpacity: number;
   excludedRanges: Range[];
   regionTransforms: RegionTransform[];
+  // The purification step this run came from (a roadmap step id), chosen by
+  // the scientist. Null until bound; one project can hold traces from many steps.
+  stepId: string | null;
 };
 type Peak = {
   id: string;
@@ -401,6 +405,7 @@ export function ChromatogramStudioJob({
   const plotRef = useRef<SVGSVGElement>(null);
   const activeTrace =
     traces.find((value) => value.id === activeTraceId) ?? traces[0];
+  const stepOptions = useMemo(() => roadmapStepOptions(bundle), [bundle]);
   const selectedPeak = peaks.find((value) => value.id === selectedPeakId);
   const selectedAnnotation = annotations.find((value) => value.id === selectedAnnotationId);
   const fit = useMemo(() => fitSec(standards, vo, vt), [standards, vo, vt]);
@@ -467,6 +472,7 @@ export function ChromatogramStudioJob({
           fillOpacity: 0.16,
           excludedRanges: [],
           regionTransforms: [],
+          stepId: null,
         });
       }
       setTraces([...traces, ...imported]);
@@ -1003,6 +1009,24 @@ export function ChromatogramStudioJob({
               {trace.visible ? <Eye /> : <EyeOff />}
             </button>
           ))}
+          {activeTrace && (
+            <label className="trace-step">
+              Purification step
+              <select
+                value={activeTrace.stepId ?? ""}
+                title={stageBindingLabel(activeTrace.stepId, stepOptions)}
+                onChange={(event) => updateTrace(activeTrace.id, { stepId: event.target.value || null })}
+              >
+                <option value="">Not bound to a step</option>
+                {stepOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{stageBindingLabel(option.id, stepOptions)}</option>
+                ))}
+                {activeTrace.stepId && !stepOptions.some((option) => option.id === activeTrace.stepId) && (
+                  <option value={activeTrace.stepId}>{stageBindingLabel(activeTrace.stepId, stepOptions)}</option>
+                )}
+              </select>
+            </label>
+          )}
         </div>
         <Button onClick={() => void save()} disabled={busy}>
           {busy ? <LoaderCircle className="spin" /> : <Save />} Save project
@@ -4337,6 +4361,7 @@ function loadTraces(value: unknown): Trace[] {
       scale: Number(r.scale ?? 1),
       offset: Number(r.offset ?? 0),
     })),
+    stepId: typeof raw.stepId === "string" && raw.stepId ? raw.stepId : null,
   }));
 }
 function loadPeaks(value: unknown): Peak[] {
