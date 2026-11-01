@@ -90,6 +90,31 @@ PDB-to-UniProt numbering comes only from explicit SIFTS segments. AlphaFold DB
 uses its documented one-to-one UniProt model numbering. The mmCIF polymer
 scheme preserves unmodelled residues and insertion codes.
 
+## PDB entry coordinates without a project
+
+`GET /v1/pdb/entries/{pdbId}/mmcif`
+
+For structures unrelated to the user's protein, such as the Crystallize
+lattice learning examples. No project, UniProt reference match or residue
+mapping is involved, so the response has no `mapping`:
+
+```json
+{
+  "pdbId": "1CRN",
+  "structure": {"id": "1CRN", "source": "pdb", "format": "cif", "title": "...", "method": "X-RAY DIFFRACTION", "resolutionAngstrom": 1.5, "sourceUrl": "https://www.rcsb.org/structure/1CRN", "chains": [...]},
+  "structureText": "data_1CRN\n...",
+  "format": "cif",
+  "errors": []
+}
+```
+
+`pdbId` is upper-cased and must be four alphanumeric characters (400
+otherwise). Coordinates and metadata share the RCSB cache used by the
+project structure endpoints. If the mmCIF download fails the route returns
+502 with `type: "RemoteServiceError"`; if only the entry metadata lookup
+fails, coordinates are still returned with blank metadata and an entry in
+`errors`.
+
 ## Regions of interest
 
 `GET /v1/protein-planner/proteins/{proteinId}/structures/{source}/{structureId}/regions`
