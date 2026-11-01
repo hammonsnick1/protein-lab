@@ -1,7 +1,7 @@
 "use client";
 
 import { MouseEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CircleAlert, ExternalLink, LoaderCircle, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, ExternalLink, LoaderCircle, Maximize2, Minimize2, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Cite, CiteGroup, ReferenceList } from "@/components/ui/citations";
 import { citationScope } from "@/lib/citations";
@@ -27,10 +27,13 @@ export type Ligand2DPanelProps = {
   onPickAtom(atomName: string | null): void;
   onHoverAtom(atomName: string | null): void;
   onClose(): void;
+  /** The drawing takes half the stage instead of a side column. */
+  wide: boolean;
+  onWide(wide: boolean): void;
 };
 
 /** The deposited ligand drawn in 2D by the engine, linked atom for atom to the 3D view. */
-export function Ligand2DPanel({ proteinId, structureId, ligands, ligand, atomName, hoveredAtomName, onChooseLigand, onPickAtom, onHoverAtom, onClose }: Ligand2DPanelProps) {
+export function Ligand2DPanel({ proteinId, structureId, ligands, ligand, atomName, hoveredAtomName, onChooseLigand, onPickAtom, onHoverAtom, onClose, wide, onWide }: Ligand2DPanelProps) {
   const key = `${structureId}|${ligandKey(ligand)}`;
   const [load, setLoad] = useState<Load>({ key, state: "loading", value: null, message: "" });
   const [reload, setReload] = useState(0);
@@ -54,7 +57,10 @@ export function Ligand2DPanel({ proteinId, structureId, ligands, ligand, atomNam
         <h3 id="ligand-2d-title">2D drawing</h3>
         <p title={ligand.name ?? undefined}>{name ? `${name} · ` : ""}<a href={`https://www.rcsb.org/ligand/${encodeURIComponent(ligand.ccdId)}`} target="_blank" rel="noreferrer">{ligand.ccdId}<ExternalLink aria-hidden="true"/></a></p>
       </div>
-      <Button variant="ghost" size="icon" title="Close the 2D drawing" aria-label="Close the 2D drawing" onClick={onClose}><X/></Button>
+      <span>
+        <Button variant="ghost" size="icon" className="ligand-2d-widen" title={wide ? "Narrower drawing" : "Wider drawing"} aria-label={wide ? "Narrower drawing" : "Wider drawing"} aria-pressed={wide} onClick={() => onWide(!wide)}>{wide ? <Minimize2/> : <Maximize2/>}</Button>
+        <Button variant="ghost" size="icon" title="Close the 2D drawing" aria-label="Close the 2D drawing" onClick={onClose}><X/></Button>
+      </span>
     </header>
     {ligands.length > 1 && <label className="lab-field ligand-2d-choice"><span>Ligand</span>
       <select value={ligandKey(ligand)} onChange={(event) => { const next = ligands.find((item) => ligandKey(item) === event.target.value); if (next) onChooseLigand(next); }}>

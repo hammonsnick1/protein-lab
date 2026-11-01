@@ -15886,12 +15886,15 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
    white paper in both themes, as on the RCSB ligand pages; the rings that link
    it to the 3D view use the same accent (hover) and primary (picked) colours. */
 .structure-workbench .structure-stage-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; flex: 1; min-height: 0; }
-.structure-workbench .structure-stage-row.with-ligand { grid-template-columns: minmax(0, 1fr) clamp(300px, 34%, 420px); }
+.structure-workbench .structure-stage-row.with-ligand { grid-template-columns: minmax(0, 1fr) clamp(320px, 38%, 560px); }
+.structure-workbench .structure-stage-row.with-ligand.ligand-wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .structure-workbench .structure-stage-row > .molecule-stage { height: auto; min-height: 0; }
 .ligand-2d { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); font-size: 13px; line-height: 1.45; scrollbar-width: thin; }
 .ligand-2d-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.ligand-2d-head > div { min-width: 0; }
+.ligand-2d-head > span { display: flex; flex: none; gap: 2px; }
 .ligand-2d-head h3 { margin: 0; font-size: 15px; }
-.ligand-2d-head p { margin: 2px 0 0; color: var(--muted-foreground); font-size: 12px; }
+.ligand-2d-head p { margin: 2px 0 0; color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; }
 .ligand-2d-head a { display: inline-flex; align-items: center; gap: 3px; color: var(--foreground); font-weight: 650; }
 .ligand-2d-head a svg { width: 12px; height: 12px; }
 .ligand-2d-choice { margin: 0; }
@@ -15932,7 +15935,9 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .ligand-2d-refs { font-size: 12px; }
 @media (max-width: 1279px) {
   /* Narrow windows: the drawing sits under the 3D view instead of beside it. */
-  .structure-workbench .structure-stage-row.with-ligand { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(320px, 1fr) minmax(0, 46%); }
+  .structure-workbench .structure-stage-row.with-ligand,
+  .structure-workbench .structure-stage-row.with-ligand.ligand-wide { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(320px, 1fr) minmax(0, 46%); }
+  .ligand-2d-widen { display: none; }
 }
 .structure-workbench .structure-side,
 .structure-workbench .sequence-strip { scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent; }

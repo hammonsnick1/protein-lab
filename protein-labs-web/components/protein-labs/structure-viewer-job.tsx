@@ -34,6 +34,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   const [pickedAtom, setPickedAtom] = useState<{ name: string; focus: boolean } | null>(null);
   const [hover2d, setHover2d] = useState<string | null>(null);
   const [hover3d, setHover3d] = useState<string | null>(null);
+  const [ligandWide, setLigandWide] = useState(false);
   const [reload, setReload] = useState(0);
   const savedModels = bundle.alphaFoldModels.length;
   const hits = useMemo(() => researchHits(bundle.pdbMatches), [bundle.pdbMatches]);
@@ -155,7 +156,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
   return <div ref={workbench} className={`structure-layout structure-workbench ${panelOpen ? "panel-open" : "panel-closed"}`} style={fillHeight ? { "--structure-fill-height": `${fillHeight}px` } as CSSProperties : undefined}>
     <section className="lab-panel structure-view">
       <div className="panel-heading"><div><h2>{facts ? structureOptionLabel(facts) : "Structure Viewer"}</h2><p>{legacy ? "Saved AlphaFold model. Experimental entries need the structure service of the local engine." : facts?.title || choice?.hit?.description || (selected?.source === "alphafold_db" ? "AlphaFold DB model of the reference UniProt entry" : "Choose an AlphaFold model or an experimental PDB entry")}</p></div></div>
-      {legacy ? <LegacyPreview bundle={bundle}/> : <div className={`structure-stage-row ${ligand2d && viewerShown ? "with-ligand" : ""}`}>
+      {legacy ? <LegacyPreview bundle={bundle}/> : <div className={`structure-stage-row ${ligand2d && viewerShown ? "with-ligand" : ""} ${ligandWide ? "ligand-wide" : ""}`}>
         <div className="molecule-stage">
           {current.state === "ready" && geometry && selected
             ? <StructureViewer geometry={geometry} paletteKey={proteinId} label={selected.id} confidence={selected.source === "alphafold_db"} region={viewerRegion} controlsHost={controlsHost} conservation={conservation}
@@ -163,7 +164,7 @@ export function StructureJob({ bundle, onChanged, onOpenJob }: JobProps & { onOp
             : <StageMessage list={list} detail={current} selected={selected} hasChoices={choices.length > 0} onRetry={() => setReload((value) => value + 1)} onOpenResearch={openResearch}/>}
         </div>
         {ligand2d && viewerShown && selected && <Ligand2DPanel proteinId={proteinId} structureId={selected.id} ligands={ligands.some((item) => ligandKey(item) === ligandKey(ligand2d)) ? ligands : [ligand2d, ...ligands]} ligand={ligand2d}
-          atomName={pickedAtom?.name ?? null} hoveredAtomName={hover3d} onChooseLigand={chooseLigand} onPickAtom={(name) => setPickedAtom(name ? { name, focus: true } : null)} onHoverAtom={setHover2d} onClose={closeLigand}/>}
+          atomName={pickedAtom?.name ?? null} hoveredAtomName={hover3d} onChooseLigand={chooseLigand} onPickAtom={(name) => setPickedAtom(name ? { name, focus: true } : null)} onHoverAtom={setHover2d} onClose={closeLigand} wide={ligandWide} onWide={setLigandWide}/>}
       </div>}
     </section>
     <aside ref={panel} className="structure-panel" aria-label="Structure tools">
