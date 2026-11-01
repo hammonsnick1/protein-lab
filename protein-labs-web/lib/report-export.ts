@@ -12,6 +12,7 @@
 import type { JsonObject, ProjectJob, ProteinBundle } from "./protein-labs-api.ts";
 import { gelFigureNote, readGelJobConfig } from "./gel-quantification.ts";
 import { assemblyValue, oligomericLabel, oligomericSummary, readOligomericState, subunitCount } from "./oligomeric-state.ts";
+import { constructNumbers, type ConstructNumbers, type SpeciesNumbers } from "./construct-numbers.ts";
 
 export type Figure = { id: string; jobId: string; caption: string };
 export type ReportPage = {
@@ -78,8 +79,8 @@ export function pageFacts(bundle: ProteinBundle, templateId: string): [string, s
     add("Recognition site", cleavage.recognitionSite ?? cleavage.site);
     add("Conditions", cleavage.conditions);
     add("Buffer", cleavage.bufferName);
-    const construct = asObject(cleavage.construct);
-    add("Mass after cleavage", construct.cleavedMassDa ? `${number(construct.cleavedMassDa, 2)} Da` : "");
+    const { cleaved } = constructNumbers(bundle);
+    add("Mass after cleavage", cleaved ? `${number(cleaved.massDa, 2)} Da` : "");
   }
   if (templateId === "quality") {
     const buffer = jobConfig(bundle, "purification-buffer");
@@ -99,7 +100,7 @@ function savedConstruct(bundle: ProteinBundle): JsonObject {
 }
 
 /** The Protein properties page: predicted characteristics and the expressed construct. */
-export function proteinProperties(bundle: ProteinBundle): ProteinProperties {
+export function proteinProperties(bundle: ProteinBundle, numbers: ConstructNumbers = constructNumbers(bundle)): ProteinProperties {
   const protparam = bundle.protparam?.result ?? {};
   const extinction = asObject(protparam.extinctionCoefficient280);
   const construct = savedConstruct(bundle);
@@ -130,22 +131,18 @@ export function proteinProperties(bundle: ProteinBundle): ProteinProperties {
     [`${assembly.name} ε₂₈₀ (cystines formed, ${assembly.scale})`, `${number(assemblyValue(extinction.oxidizedMolarM1Cm1, oligomer), 0)} M⁻¹cm⁻¹`],
   );
   if (oligomer?.notes) properties.push(["Oligomeric-state notes", oligomer.notes]);
+  // The same species the roadmap and SEC polishing quote. With no tag chosen
+  // the native chain is what is expressed and purified.
+  const row = (species: string, value: SpeciesNumbers | null): ConstructRow => value
+    ? { species, residues: String(value.residues), massDa: number(value.massDa, 2), extinction: number(value.extinctionReduced, 0) }
+    : { species, residues: "—", massDa: "—", extinction: "—" };
+  const expressed = numbers.constructSource === "none" ? numbers.native : numbers.fusion;
+  const constructRows = [row(numbers.constructSource === "none" ? "Native chain" : "Uncleaved fusion", expressed)];
+  if (numbers.cleaves) constructRows.push(row("After tag cleavage", numbers.cleaved));
+  if (numbers.assembly) constructRows.push(row(`${numbers.assemblyLabel} (${numbers.subunits} × ${numbers.purifiedSpecies})`, numbers.assembly));
   return {
     properties,
-    construct: [
-      {
-        species: "Uncleaved fusion",
-        residues: text(construct.fusionLength, residues),
-        massDa: construct.fusionMassDa ? number(construct.fusionMassDa, 2) : nativeMass,
-        extinction: construct.fusionExtinction ? number(construct.fusionExtinction, 0) : nativeExt,
-      },
-      {
-        species: "After tag cleavage",
-        residues: text(construct.cleavedLength, residues),
-        massDa: construct.cleavedMassDa ? number(construct.cleavedMassDa, 2) : nativeMass,
-        extinction: construct.cleavedExtinction ? number(construct.cleavedExtinction, 0) : nativeExt,
-      },
-    ],
+    construct: constructRows,
     constructFacts: [
       ["Affinity tag", text(construct.tagName ?? affinity.tag, "Not selected")],
       ["Linker", text(construct.linkerName, "None")],
@@ -165,7 +162,7 @@ export function proteinProperties(bundle: ProteinBundle): ProteinProperties {
  * characterised the protein and no construct was saved: such a page then
  * exports exactly as before, with no table of dashes.
  */
-export function exportedProperties(bundle: ProteinBundle, page: ReportPage): ProteinProperties | null {
+export function exportedProperties(bundle: ProteinBundle, page: ReportPage, numbers?: ConstructNumbers): ProteinProperties | null {
   if (page.templateId !== "properties") return null;
   const protparam = bundle.protparam?.result ?? {};
   const extinction = asObject(protparam.extinctionCoefficient280);
@@ -173,7 +170,7 @@ export function exportedProperties(bundle: ProteinBundle, page: ReportPage): Pro
     .some((value) => typeof value === "number" && Number.isFinite(value));
   const construct = savedConstruct(bundle);
   if (!characterised && !Object.keys(construct).length) return null;
-  return proteinProperties(bundle);
+  return proteinProperties(bundle, numbers);
 }
 
 export const constructColumns = ["Species", "Residues", "Molecular weight (Da)", "ε₂₈₀ reduced (M⁻¹cm⁻¹)"];
@@ -185,13 +182,13 @@ function markdownTable(head: string[], rows: string[][]) {
   return [`| ${head.map(markdownCell).join(" | ")} |`, `| ${head.map(() => "---").join(" | ")} |`, ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`)];
 }
 
-export function reportMarkdown(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[]) {
+export function reportMarkdown(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], numbers?: ConstructNumbers) {
   const lines = [`# ${title}`, "", summary, "", `**${bundle.protein.name}** · ${bundle.protein.sequence.length} aa · ${bundle.protein.organism || "organism not entered"}`, ""];
   for (const page of pages.filter((value) => !value.hidden)) {
     lines.push(`## ${page.title}`);
     if (page.subtitle) lines.push(`*${page.subtitle}*`);
     lines.push("");
-    const properties = exportedProperties(bundle, page);
+    const properties = exportedProperties(bundle, page, numbers);
     if (properties) {
       lines.push(...markdownTable(["Property", "Value"], properties.properties), "");
       lines.push("### Expressed construct", "");
@@ -219,10 +216,10 @@ function htmlProperties(properties: ProteinProperties) {
       ${htmlFacts(properties.constructFacts)}`;
 }
 
-export function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], analyses: ProjectJob[]) {
+export function reportHtml(bundle: ProteinBundle, title: string, summary: string, pages: ReportPage[], analyses: ProjectJob[], numbers?: ConstructNumbers) {
   const body = pages.filter((page) => !page.hidden).map((page) => {
     const facts = page.showFacts ? pageFacts(bundle, page.templateId) : [];
-    const properties = exportedProperties(bundle, page);
+    const properties = exportedProperties(bundle, page, numbers);
     const figures = page.figures.map((figure, index) => {
       const job = analyses.find((value) => value.id === figure.jobId);
       const image = job?.appType === "gel-analysis" && job.config.previewBase64
