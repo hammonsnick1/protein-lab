@@ -8,6 +8,7 @@ import type { RegionsResponse, StructureDetail, StructureListResponse, Structure
 import { depictionQuery, type LigandDepiction, type LigandInstance } from "./ligand-depiction.ts";
 import type { ConservationJob, ConservationJobSummary } from "./conservation.ts";
 import type { TaxonomySearchResponse } from "./organism-search.ts";
+import type { ReadinessStructureEvidence } from "./readiness-evidence.ts";
 
 // An empty bundled value is meaningful: it means same-origin requests, so the
 // chain tests for a defined string rather than a truthy one.
@@ -156,6 +157,8 @@ export const proteinLabsApi = {
   prepareConsurfJob: (proteinId: string) => post<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/consurf-job`),
   lookupConsurfDb: (proteinId: string, pdbId = "", chain = "") => post<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/consurf-db`, { pdbId, chain }),
   importConsurf: (proteinId: string, gradesPath: string, msaPath = "", jobId = "") => post<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/import`, { gradesPath, msaPath, jobId }),
+  // Readiness check: model pLDDT and ConSurf grades on construct numbering. See STRUCTURE_API.md.
+  readinessEvidence: (proteinId: string) => request<ReadinessStructureEvidence>(`/v1/protein-planner/proteins/${proteinId}/readiness/evidence`),
   listConservation: (proteinId: string) => request<{ proteinId: string; jobs: ConservationJobSummary[]; colors: Record<string, string> }>(`/v1/protein-planner/proteins/${proteinId}/conservation`),
   getConservation: (proteinId: string, jobId: string) => request<ConservationJob>(`/v1/protein-planner/proteins/${proteinId}/conservation/${encodeURIComponent(jobId)}`),
   getConservationMsa: (proteinId: string, jobId: string) => request<{ fasta: string; available: boolean; sequenceCount: number; alignmentLength: number; queryId: string; ids: string[] }>(`/v1/protein-planner/proteins/${proteinId}/conservation/${encodeURIComponent(jobId)}/msa`),
