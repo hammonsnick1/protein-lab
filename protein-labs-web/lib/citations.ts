@@ -151,6 +151,12 @@ const entries = [
     license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Bundled in the engine for 2D ligand drawing and R/S, E/Z labels, with its Boost, cairo, InChI and other native libraries; notices in THIRD_PARTY_NOTICES.md." },
   },
   {
+    id: "certifi", kind: "software", name: "certifi", authors: "Reitz K and contributors", year: "2011–",
+    title: "certifi: Mozilla's CA bundle for Python",
+    source: "PyPI", url: "https://github.com/certifi/python-certifi",
+    license: { name: "MPL-2.0", reuse: "permissive", url: "https://github.com/certifi/python-certifi/blob/master/LICENSE", usage: "Bundled in the engine, unmodified, as the CA bundle for HTTPS when the system has none; notice in THIRD_PARTY_NOTICES.md." },
+  },
+  {
     id: "molstar", kind: "software", name: "Mol*", authors: "Sehnal D, Bittrich S, Deshpande M, Svobodová R, Berka K, Bazgier V, Velankar S, Burley SK, Koča J, Rose AS", year: "2021",
     title: "Mol* Viewer: modern web app for 3D visualization and analysis of large biomolecular structures",
     source: "Nucleic Acids Res 49:W431–W437", doi: "10.1093/nar/gkab314", url: "https://molstar.org",

@@ -37,6 +37,7 @@ Licences list reads the same data from `protein-labs-web/lib/citations.ts`.
 | Shoebill (https://github.com/KJ-Liao/Shoebill) | No licence file | Cite only | Method studied and cited; no code copied. |
 | UCL space-group diagrams (http://img.chem.ucl.ac.uk/sgp/mainmenu.htm) | © 1997–1999 Birkbeck College | Cite only | Visual model only; the app draws its own diagrams. |
 | gemmi (https://github.com/project-gemmi/gemmi) | MPL-2.0 | Allowed with notice | Space-group table generated from gemmi 0.7.5; notice below. |
+| certifi (https://github.com/certifi/python-certifi) | MPL-2.0 | Allowed with notice | Bundled in the engine, unmodified, as the CA bundle for HTTPS when the system has none; notice below. |
 
 ## RDKit
 
@@ -328,6 +329,38 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+## certifi
+
+The packaged engine bundles certifi's `cacert.pem` (Mozilla's CA
+certificates) unmodified. `protein-labs/backend/protein_labs/tls.py` uses it to
+verify HTTPS servers only when the system has no CA bundle where the engine can
+find it. Source code for the bundled file is available at the URL below.
+Version: as pinned by `protein-labs/backend/requirements.txt` (`certifi>=2024.2.2`)
+
+Source: https://github.com/certifi/python-certifi
+Licence: MPL-2.0 (full text in the gemmi section below)
+
+This package contains a modified version of ca-bundle.crt:
+
+ca-bundle.crt -- Bundle of CA Root Certificates
+
+This is a bundle of X.509 certificates of public Certificate Authorities
+(CA). These were automatically extracted from Mozilla's root certificates
+file (certdata.txt).  This file can be found in the mozilla source tree:
+https://hg.mozilla.org/mozilla-central/file/tip/security/nss/lib/ckfw/builtins/certdata.txt
+It contains the certificates in PEM format and therefore
+can be directly used with curl / libcurl / php_curl, or with
+an Apache+mod_ssl webserver for SSL client authentication.
+Just configure this file as the SSLCACertificateFile.#
+
+***** BEGIN LICENSE BLOCK *****
+This Source Code Form is subject to the terms of the Mozilla Public License,
+v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain
+one at http://mozilla.org/MPL/2.0/.
+
+***** END LICENSE BLOCK *****
+@(#) $RCSfile: certdata.txt,v $ $Revision: 1.80 $ $Date: 2011/11/03 15:11:58 $
 
 ## gemmi
 
