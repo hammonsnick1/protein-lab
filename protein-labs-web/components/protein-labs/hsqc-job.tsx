@@ -7,6 +7,7 @@ import { StatusChip } from "@/components/ui/status-chip";
 import { Cite, CiteGroup, ReferenceList } from "@/components/ui/citations";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { HsqcSpectrum } from "@/components/protein-labs/hsqc-spectrum";
+import { JobSummary, JobTabs } from "@/components/protein-labs/job-tabs";
 import type { ViewerRegion } from "@/components/protein-labs/molstar-viewer";
 import { citationScope, type CitationId, type CitationScope } from "@/lib/citations";
 import { ensureProjectJob, proteinLabsApi, type JsonObject, type ProteinBundle } from "@/lib/protein-labs-api";
@@ -30,6 +31,7 @@ type Load<T> = { state: "idle" | "loading" } | { state: "ready"; value: T } | { 
 type StructureLoad = { key: string; detail: Load<StructureDetail>; regions: Load<StructureRegion[]> };
 
 const NONE = "none";
+type HsqcTab = "spectrum" | "inputs" | "sample" | "about";
 const entryKey = (entry: { source: string; id: string }) => `${entry.source}:${entry.id}`;
 
 export function HsqcJob({ bundle, onChanged, onOpenJob }: { bundle: ProteinBundle; onChanged: () => Promise<void>; onOpenJob: (jobId: string) => void }) {
@@ -128,6 +130,7 @@ export function HsqcJob({ bundle, onChanged, onOpenJob }: { bundle: ProteinBundl
 
   // ── Save
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<HsqcTab>("spectrum");
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
   const savedAt = typeof savedJob?.config.predictedAt === "string" ? savedJob.config.predictedAt : "";
@@ -151,39 +154,59 @@ export function HsqcJob({ bundle, onChanged, onOpenJob }: { bundle: ProteinBundl
       <Button variant="outline" onClick={() => setRun((value) => value + 1)} disabled={!inputs || prediction.state === "loading"}>{prediction.state === "loading" ? <LoaderCircle className="spin"/> : <RefreshCw/>} Predict again</Button>
     </header>
 
-    <Intro refs={refs} name={bundle.protein.name}/>
+    <HsqcSummary prediction={prediction} peaks={peaks} noPeak={noPeak.length} structure={selected ? structureOptionLabel(selected) : list.state === "loading" ? "Listing structures…" : "None"}
+      note={<span className={failed ? "error" : ""}>{failed && <CircleAlert/>}{message || (savedAt ? `Last saved ${new Date(savedAt).toLocaleString()}.` : "Not saved to the project yet.")}</span>}
+      action={<Button disabled={busy || !result} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save prediction</Button>}/>
 
-    <Inputs facts={facts} refs={refs} structures={structures} list={list} activeKey={activeKey} onChoose={(key) => { setChoice(key); setSelectedId(null); setNote(""); }} current={current} inputs={inputs} onOpenJob={onOpenJob}/>
+    <JobTabs label="HSQC prediction" active={tab} onActiveChange={(id) => setTab(id as HsqcTab)} tabs={[
+      { id: "spectrum", label: "Spectrum", hint: result ? `${peaks.length} peaks · 3D view` : "Peaks and structure", content: <>
+        <section className="hsqc-stage" aria-label="Predicted spectrum and structure">
+          <div className="hsqc-spectrum-panel">
+            <header><h3>Predicted ¹H–¹⁵N HSQC</h3><small>{result ? `${peaks.filter((peak) => peak.kind === "backbone").length} backbone peaks${peaks.some((peak) => peak.kind === "sidechain") ? ` · ${peaks.filter((peak) => peak.kind === "sidechain").length} side-chain` : ""} · ${noPeak.filter((item) => item.reason === "proline").length} prolines without a peak` : prediction.state === "loading" ? "Predicting…" : ""}</small></header>
+            {result ? <HsqcSpectrum peaks={peaks} selectedId={selectedId} onSelect={(peak) => selectPeak(peak)} view={view} onView={setView} bounds={bounds} rmse={result.predictor.rmse} predictorLabel={result.predictor.label}/>
+              : <div className={`hsqc-placeholder ${prediction.state === "error" ? "error" : ""}`} role={prediction.state === "error" ? "alert" : "status"}>{prediction.state === "error" ? <><CircleAlert/><strong>No spectrum</strong><small>{prediction.message}</small></> : <><LoaderCircle className="spin"/><strong>{inputs ? "Predicting chemical shifts…" : "Gathering what the project knows…"}</strong><small>{inputs ? "The built-in fallback answers at once; an installed structure-based predictor can take a few minutes." : "Reading the saved structure and its regions."}</small></>}</div>}
+            <SelectionDetails peak={selectedPeak} result={result} note={note} refs={refs}/>
+          </div>
+          <div className="hsqc-structure-panel">
+            <header><h3>Structure<Cite scope={refs} id="molstar"/></h3><small>{selected ? structureOptionLabel(selected) : "No structure"} · click a residue to find its peak</small></header>
+            <div className="molecule-stage hsqc-molecule">
+              {detail?.structureText ? <StructureViewer geometry={{ structureText: detail.structureText, format: detail.format ?? "cif", source: selected?.source ?? null }} paletteKey={proteinId} label={selected?.id ?? "Structure"} confidence={selected?.source === "alphafold_db"} region={region} controlsHost={null} onResiduePick={pickResidue}/>
+                : <div className="structure-empty" role={current.detail.state === "error" ? "alert" : "status"}>{current.detail.state === "loading" ? <><LoaderCircle className="spin"/><strong>Downloading the structure…</strong><small>Structures come from AlphaFold DB or the PDB and can take a moment.</small></> : current.detail.state === "error" ? <><CircleAlert/><strong>The structure could not be loaded</strong><small>{current.detail.message} The spectrum still works; peaks just cannot be shown in 3D.</small></> : <><Info/><strong>No structure to link to</strong><small>Fetch the AlphaFold model or pick a PDB entry in the Structure Viewer job to click between peaks and residues.</small><Button variant="outline" onClick={() => onOpenJob("structure")}>Open Structure Viewer <ArrowRight/></Button></>}</div>}
+            </div>
+          </div>
+        </section>
 
-    <PredictorPanel prediction={prediction} refs={refs} onRetry={() => setRun((value) => value + 1)}/>
+        {result && <PeakTable peaks={peaks} noPeak={noPeak} selectedId={selectedId} onSelect={(peak) => selectPeak(peak, true)}/>}
+      </> },
+      { id: "inputs", label: "Inputs and predictor", hint: result ? result.predictor.label : "Sequence, structure, predictor", content: <>
+        <Inputs facts={facts} refs={refs} structures={structures} list={list} activeKey={activeKey} onChoose={(key) => { setChoice(key); setSelectedId(null); setNote(""); }} current={current} inputs={inputs} onOpenJob={onOpenJob}/>
 
-    <section className="hsqc-stage" aria-label="Predicted spectrum and structure">
-      <div className="hsqc-spectrum-panel">
-        <header><h3>Predicted ¹H–¹⁵N HSQC</h3><small>{result ? `${peaks.filter((peak) => peak.kind === "backbone").length} backbone peaks${peaks.some((peak) => peak.kind === "sidechain") ? ` · ${peaks.filter((peak) => peak.kind === "sidechain").length} side-chain` : ""} · ${noPeak.filter((item) => item.reason === "proline").length} prolines without a peak` : prediction.state === "loading" ? "Predicting…" : ""}</small></header>
-        {result ? <HsqcSpectrum peaks={peaks} selectedId={selectedId} onSelect={(peak) => selectPeak(peak)} view={view} onView={setView} bounds={bounds} rmse={result.predictor.rmse} predictorLabel={result.predictor.label}/>
-          : <div className={`hsqc-placeholder ${prediction.state === "error" ? "error" : ""}`} role={prediction.state === "error" ? "alert" : "status"}>{prediction.state === "error" ? <><CircleAlert/><strong>No spectrum</strong><small>{prediction.message}</small></> : <><LoaderCircle className="spin"/><strong>{inputs ? "Predicting chemical shifts…" : "Gathering what the project knows…"}</strong><small>{inputs ? "The built-in fallback answers at once; an installed structure-based predictor can take a few minutes." : "Reading the saved structure and its regions."}</small></>}</div>}
-        <SelectionDetails peak={selectedPeak} result={result} note={note} refs={refs}/>
-      </div>
-      <div className="hsqc-structure-panel">
-        <header><h3>Structure<Cite scope={refs} id="molstar"/></h3><small>{selected ? structureOptionLabel(selected) : "No structure"} · click a residue to find its peak</small></header>
-        <div className="molecule-stage hsqc-molecule">
-          {detail?.structureText ? <StructureViewer geometry={{ structureText: detail.structureText, format: detail.format ?? "cif", source: selected?.source ?? null }} paletteKey={proteinId} label={selected?.id ?? "Structure"} confidence={selected?.source === "alphafold_db"} region={region} controlsHost={null} onResiduePick={pickResidue}/>
-            : <div className="structure-empty" role={current.detail.state === "error" ? "alert" : "status"}>{current.detail.state === "loading" ? <><LoaderCircle className="spin"/><strong>Downloading the structure…</strong><small>Structures come from AlphaFold DB or the PDB and can take a moment.</small></> : current.detail.state === "error" ? <><CircleAlert/><strong>The structure could not be loaded</strong><small>{current.detail.message} The spectrum still works; peaks just cannot be shown in 3D.</small></> : <><Info/><strong>No structure to link to</strong><small>Fetch the AlphaFold model or pick a PDB entry in the Structure Viewer job to click between peaks and residues.</small><Button variant="outline" onClick={() => onOpenJob("structure")}>Open Structure Viewer <ArrowRight/></Button></>}</div>}
-        </div>
-      </div>
-    </section>
-
-    {result && <PeakTable peaks={peaks} noPeak={noPeak} selectedId={selectedId} onSelect={(peak) => selectPeak(peak, true)}/>}
-
-    <SamplePrep refs={refs} name={bundle.protein.name} massKDa={averageMassKDa(sequence)}/>
+        <PredictorPanel prediction={prediction} refs={refs} onRetry={() => setRun((value) => value + 1)}/>
+      </> },
+      { id: "sample", label: "Sample preparation", hint: "Tube, buffer, labelling", content: <>
+        <SamplePrep refs={refs} name={bundle.protein.name} massKDa={averageMassKDa(sequence)}/>
+      </> },
+      { id: "about", label: "What an HSQC is", hint: "Reading the spectrum", content: <>
+        <Intro refs={refs} name={bundle.protein.name}/>
+      </> },
+    ]}/>
 
     <ReferenceList scope={refs} className="hsqc-references"/>
-
-    <footer>
-      <span role="status" className={failed ? "error" : ""}>{failed && <CircleAlert/>}{message || (savedAt ? `Last saved ${new Date(savedAt).toLocaleString()}.` : "Not saved to the project yet.")}</span>
-      <Button disabled={busy || !result} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save prediction</Button>
-    </footer>
   </div>;
+}
+
+// ── Summary strip ───────────────────────────────────────────────────────────
+
+/** What the prediction is built on and how far to trust it, above the tabs. */
+function HsqcSummary({ prediction, peaks, noPeak, structure, note, action }: { prediction: Load<HsqcPrediction>; peaks: Peak[]; noPeak: number; structure: string; note: React.ReactNode; action: React.ReactNode }) {
+  const result = prediction.state === "ready" ? prediction.value : null;
+  const structural = result?.status === "structure_aware";
+  const backbone = peaks.filter((peak) => peak.kind === "backbone").length, sidechain = peaks.length - backbone;
+  return <JobSummary label="HSQC prediction summary" items={[
+    { label: "Predictor", value: result ? result.predictor.label : prediction.state === "error" ? "Did not run" : "Choosing a predictor…", detail: result ? (structural ? "Shifts from the 3D structure" : "Sequence-only estimate: peaks crowd the centre") : prediction.state === "error" ? "See Inputs and predictor" : undefined, status: result ? (structural ? { tone: "pass", label: "Structure-based" } : { tone: "attention", label: "Sequence only" }) : prediction.state === "error" ? { tone: "error", label: "Failed" } : undefined },
+    { label: "Peaks", value: result ? `${backbone} backbone${sidechain ? ` · ${sidechain} side-chain` : ""}` : "—", detail: result ? `${noPeak} residue${noPeak === 1 ? "" : "s"} without a peak` : undefined },
+    { label: "Structure", value: structure, detail: "Change it under Inputs and predictor" },
+  ]} note={note} actions={action}/>;
 }
 
 // ── Plain-language introduction ─────────────────────────────────────────────

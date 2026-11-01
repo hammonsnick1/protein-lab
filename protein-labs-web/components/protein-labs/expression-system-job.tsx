@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { BookOpen, Check, CircleAlert, CircleCheck, Columns3, ExternalLink, LoaderCircle, Microscope, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { JobSummary, JobTabs } from "@/components/protein-labs/job-tabs";
 import { ensureProjectJob, type ProteinBundle } from "@/lib/protein-labs-api";
 import {
   compatibleVectorFamilies, expressionHosts, expressionVectors, familyMetrics, familyReferences, findHost, hostCategories,
@@ -103,6 +104,8 @@ function MetricValue({ cell }: { cell: MetricCell }) {
     : <span className="metric-text">{cell.value}</span>;
 }
 
+type ExpressionTab = "strains" | "compare" | "evidence";
+
 type ComparisonEntry = { key: string; name: string; subtitle: string; color: string; system: HostSystem; cells: MetricCell[]; chosen: boolean };
 
 /** Metrics down the rows, systems or strains across the columns. */
@@ -154,6 +157,7 @@ export function ExpressionJob({ bundle, onChanged }: { bundle: ProteinBundle; on
   const [inspector, setInspector] = useState<{ kind: "host" | "vector"; system: HostSystem; id: string } | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<ExpressionTab>("strains");
 
   useEffect(() => {
     if (!inspector) return;
@@ -205,99 +209,109 @@ export function ExpressionJob({ bundle, onChanged }: { bundle: ProteinBundle; on
   const inspectedVector = inspector?.kind === "vector" ? expressionVectors[inspector.system].find((entry) => entry.id === inspector.id) ?? null : null;
   const browsing = hostFamilies[family];
 
-  return <div className="expression-layout">
-      <Panel title="Host systems" hint="Five production routes. Pick a family to see its strains; the table below compares them on the criteria that usually decide the choice." className="host-family-panel expression-full">
-        <div className="host-family-rail" role="group" aria-label="Expression host families">
-          {hostSystems.map((system) => {
-            const entry = hostFamilies[system];
-            return <button key={system} className={`host-family-card ${family === system ? "browsing" : ""} ${chosen?.system === system ? "chosen" : ""}`} style={{ "--host-color": entry.color } as CSSProperties} aria-pressed={family === system} onClick={() => { setFamily(system); setCategory("All hosts"); setSearch(""); }}>
-              <HostCartoon system={system}/>
-              <strong>{entry.shortName}</strong>
-              <small>{entry.subtitle}</small>
-              <em>{expressionHosts[system].length} strains · {familyReferences(system).length} refs</em>
-              {chosen?.system === system && <span className="host-family-flag"><Check/> chosen</span>}
-            </button>;
-          })}
-        </div>
-      </Panel>
+  return <div className="expression-job">
+    <JobSummary label="Expression system summary" items={[
+      { label: "Cell line", value: chosen ? chosen.host.name : "Not chosen", detail: chosen ? `${hostFamilies[chosen.system].shortName} · ${chosen.host.category}` : "Choose a strain in the Strains tab", status: chosen ? (savedHostId === chosen.host.id ? { tone: "pass", label: "Saved" } : { tone: "review", label: "Not saved" }) : undefined },
+      { label: "Browsing", value: browsing.name, detail: `${options.length} strains · ${familyReferences(family).length} family references` },
+      { label: "Comparison", value: comparison.length ? `${comparison.length} strain${comparison.length === 1 ? "" : "s"} ticked` : "Host families", detail: comparison.length >= 2 ? "Side by side in the Compare tab" : "Tick Compare on two to four strains" },
+    ]} note={message ? <Notice message={message} error={/error|could not|choose/i.test(message)}/> : undefined} actions={<Button disabled={busy || !chosen} onClick={() => void saveHost()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save cell line</Button>}/>
 
-      <Panel title="Side-by-side comparison" hint={showStrains ? "The strains you ticked, on the same criteria. Values a strain does not change are marked as its family's typical value." : "Host families on the criteria that usually decide the choice. Tick two or more strains below to compare those instead."} className="metric-panel expression-full">
-        <div className="metric-mode" role="group" aria-label="Comparison scope">
-          <button className={compareMode === "families" ? "on" : ""} aria-pressed={compareMode === "families"} onClick={() => setCompareMode("families")}><Microscope/> Host families · 5</button>
-          <button className={compareMode === "strains" ? "on" : ""} aria-pressed={compareMode === "strains"} disabled={strainEntries.length < 2} onClick={() => setCompareMode("strains")}><Columns3/> Ticked strains · {strainEntries.length}/4</button>
-        </div>
-        {showStrains
-          ? <ComparisonTable entries={strainEntries} action="Choose the cell line for this project" chooseLabel="Choose" chosenLabel="Chosen" onChoose={(entry) => choose(entry.system, entry.key)} onRemove={(entry) => toggleCompare(entry.key)}/>
-          : <ComparisonTable entries={familyEntries} action="Open a family to see its strains" chooseLabel="Browse strains" onChoose={(entry) => { setFamily(entry.system); setCategory("All hosts"); setSearch(""); }}/>}
-        {compareMode === "strains" && strainEntries.length < 2 && <p className="expression-empty">Tick the Compare box on two to four strains to put them side by side.</p>}
-      </Panel>
-
-    <div className="expression-main">
-      <Panel title={`${browsing.name} strains`} hint={browsing.summary} className="expression-host-panel">
-        <div className="host-filter-row">
-          <label><Search/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search strains, genotypes, markers, or applications"/></label>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by strain category">{categories.map((value) => <option key={value}>{value}</option>)}</select>
-          <span>{visibleHosts.length} of {options.length} {browsing.shortName} strains</span>
-        </div>
-        <div className="host-grid">{visibleHosts.map((entry) => {
-          const cells = hostMetrics(family, entry);
-          const costCell = cells.find((cell) => cell.key === "cost")!;
-          const ptmCell = cells.find((cell) => cell.key === "ptm")!;
-          return <div key={entry.id} className={`host-card ${chosenId === entry.id ? "selected" : ""}`} style={{ "--host-color": entry.color } as CSSProperties}>
-            <button onClick={() => setInspector({ kind: "host", system: family, id: entry.id })} aria-label={`Open ${entry.name} details`}>
-              <HostCartoon system={family}/>
-              <span>
-                <strong>{entry.name}{entry.aka && <i>{entry.aka}</i>}</strong>
-                <small>{entry.category}</small>
-                <em>{entry.usefulFor}</em>
-                <span className="host-card-chips">
-                  <b title="Relative cost"><MetricValue cell={costCell}/></b>
-                  <b title="Post-translational modification">{isMeter(ptmCell.value) ? ptmCell.value.label : ""}</b>
-                  <b title="References on this strain"><BookOpen/>{hostReferences(entry).length} refs</b>
-                </span>
-              </span>
-              {chosenId === entry.id && <Check/>}
-            </button>
-            <div className="host-card-actions">
-              <label><input type="checkbox" checked={comparison.includes(entry.id)} disabled={!comparison.includes(entry.id) && comparison.length >= 4} onChange={() => toggleCompare(entry.id)}/>Compare</label>
-              <Button size="sm" variant={chosenId === entry.id ? "secondary" : "outline"} onClick={() => choose(family, entry.id)}>{chosenId === entry.id ? <><Check/> Chosen</> : "Choose"}</Button>
+    <JobTabs label="Expression system" active={tab} onActiveChange={(id) => setTab(id as ExpressionTab)} tabs={[
+      { id: "strains", label: "Strains", hint: `${browsing.shortName} · ${options.length} strains`, content: <div className="expression-layout">
+          <Panel title="Host systems" hint="Five production routes. Pick a family to see its strains; the Compare tab puts them side by side on the criteria that usually decide the choice." className="host-family-panel expression-full">
+            <div className="host-family-rail" role="group" aria-label="Expression host families">
+              {hostSystems.map((system) => {
+                const entry = hostFamilies[system];
+                return <button key={system} className={`host-family-card ${family === system ? "browsing" : ""} ${chosen?.system === system ? "chosen" : ""}`} style={{ "--host-color": entry.color } as CSSProperties} aria-pressed={family === system} onClick={() => { setFamily(system); setCategory("All hosts"); setSearch(""); }}>
+                  <HostCartoon system={system}/>
+                  <strong>{entry.shortName}</strong>
+                  <small>{entry.subtitle}</small>
+                  <em>{expressionHosts[system].length} strains · {familyReferences(system).length} refs</em>
+                  {chosen?.system === system && <span className="host-family-flag"><Check/> chosen</span>}
+                </button>;
+              })}
             </div>
-          </div>;
-        })}</div>
-        {!visibleHosts.length && <p className="expression-empty">No {browsing.shortName} strain matches “{search}”{category === "All hosts" ? "" : ` in ${category}`}. Clear the search or pick another category.</p>}
-      </Panel>
-    </div>
+          </Panel>
 
-    <div className="expression-side">
-      <Panel title="Chosen cell line" hint={chosen ? "Save this cell line to the project, then design its vector in the next job." : "Choose a strain from the catalog or the comparison table to continue."}>
-        {chosen
-          ? <>
-              <div className="host-profile-heading" style={{ "--host-color": chosen.host.color } as CSSProperties}><HostCartoon system={chosen.system}/><span><strong>{chosen.host.name}</strong><small>{hostFamilies[chosen.system].shortName} · {chosen.host.category}</small></span></div>
-              <dl className="host-metric-grid">{hostMetrics(chosen.system, chosen.host).map((cell) => <div key={cell.key}><dt>{cell.column.label}</dt><dd><MetricValue cell={cell}/></dd></div>)}</dl>
-              <dl className="host-details"><dt>Lineage</dt><dd>{chosen.host.lineage}</dd><dt>Promoter machinery</dt><dd>{chosen.host.promoter}</dd><dt>Genotype</dt><dd>{chosen.host.genotype}</dd><dt>Markers</dt><dd>{chosen.host.markers}</dd></dl>
-              <div className="host-tags">{chosen.host.bestFor.map((item) => <span key={item}>{item}</span>)}</div>
-              <Button className="wide" disabled={busy} onClick={() => void saveHost()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save cell line</Button>
-            </>
-          : <p className="expression-empty">No cell line chosen yet. Pick one to see its full profile, its references, and the vectors that are compatible with it.</p>}
-        <Notice message={message} error={/error|could not|choose/i.test(message)}/>
-      </Panel>
+        <div className="expression-main">
+          <Panel title={`${browsing.name} strains`} hint={browsing.summary} className="expression-host-panel">
+            <div className="host-filter-row">
+              <label><Search/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search strains, genotypes, markers, or applications"/></label>
+              <select value={category} onChange={(event) => setCategory(event.target.value)} aria-label="Filter by strain category">{categories.map((value) => <option key={value}>{value}</option>)}</select>
+              <span>{visibleHosts.length} of {options.length} {browsing.shortName} strains</span>
+            </div>
+            <div className="host-grid">{visibleHosts.map((entry) => {
+              const cells = hostMetrics(family, entry);
+              const costCell = cells.find((cell) => cell.key === "cost")!;
+              const ptmCell = cells.find((cell) => cell.key === "ptm")!;
+              return <div key={entry.id} className={`host-card ${chosenId === entry.id ? "selected" : ""}`} style={{ "--host-color": entry.color } as CSSProperties}>
+                <button onClick={() => setInspector({ kind: "host", system: family, id: entry.id })} aria-label={`Open ${entry.name} details`}>
+                  <HostCartoon system={family}/>
+                  <span>
+                    <strong>{entry.name}{entry.aka && <i>{entry.aka}</i>}</strong>
+                    <small>{entry.category}</small>
+                    <em>{entry.usefulFor}</em>
+                    <span className="host-card-chips">
+                      <b title="Relative cost"><MetricValue cell={costCell}/></b>
+                      <b title="Post-translational modification">{isMeter(ptmCell.value) ? ptmCell.value.label : ""}</b>
+                      <b title="References on this strain"><BookOpen/>{hostReferences(entry).length} refs</b>
+                    </span>
+                  </span>
+                  {chosenId === entry.id && <Check/>}
+                </button>
+                <div className="host-card-actions">
+                  <label><input type="checkbox" checked={comparison.includes(entry.id)} disabled={!comparison.includes(entry.id) && comparison.length >= 4} onChange={() => toggleCompare(entry.id)}/>Compare</label>
+                  <Button size="sm" variant={chosenId === entry.id ? "secondary" : "outline"} onClick={() => choose(family, entry.id)}>{chosenId === entry.id ? <><Check/> Chosen</> : "Choose"}</Button>
+                </div>
+              </div>;
+            })}</div>
+            {!visibleHosts.length && <p className="expression-empty">No {browsing.shortName} strain matches “{search}”{category === "All hosts" ? "" : ` in ${category}`}. Clear the search or pick another category.</p>}
+          </Panel>
+        </div>
 
-      {chosen && <Panel title="Evidence for this strain" hint="Every number and claim on this strain traces back to one of these." className="host-evidence-panel">
-        <ReferenceList references={hostReferences(chosen.host)}/>
-      </Panel>}
+        <div className="expression-side">
+          <Panel title="Chosen cell line" hint={chosen ? "Save this cell line to the project, then design its vector in the next job." : "Choose a strain from the catalog or the comparison table to continue."}>
+            {chosen
+              ? <>
+                  <div className="host-profile-heading" style={{ "--host-color": chosen.host.color } as CSSProperties}><HostCartoon system={chosen.system}/><span><strong>{chosen.host.name}</strong><small>{hostFamilies[chosen.system].shortName} · {chosen.host.category}</small></span></div>
+                  <dl className="host-metric-grid">{hostMetrics(chosen.system, chosen.host).map((cell) => <div key={cell.key}><dt>{cell.column.label}</dt><dd><MetricValue cell={cell}/></dd></div>)}</dl>
+                  <dl className="host-details"><dt>Lineage</dt><dd>{chosen.host.lineage}</dd><dt>Promoter machinery</dt><dd>{chosen.host.promoter}</dd><dt>Genotype</dt><dd>{chosen.host.genotype}</dd><dt>Markers</dt><dd>{chosen.host.markers}</dd></dl>
+                  <div className="host-tags">{chosen.host.bestFor.map((item) => <span key={item}>{item}</span>)}</div>
+                </>
+              : <p className="expression-empty">No cell line chosen yet. Pick one to see its full profile, its references, and the vectors that are compatible with it.</p>}
+          </Panel>
+        </div>
+      </div> },
+      { id: "compare", label: "Compare", hint: showStrains ? `${strainEntries.length} ticked strains` : "5 host families", content: <>
+        <Panel title="Side-by-side comparison" hint={showStrains ? "The strains you ticked, on the same criteria. Values a strain does not change are marked as its family's typical value." : "Host families on the criteria that usually decide the choice. Tick two or more strains in the Strains tab to compare those instead."} className="metric-panel expression-full">
+          <div className="metric-mode" role="group" aria-label="Comparison scope">
+            <button className={compareMode === "families" ? "on" : ""} aria-pressed={compareMode === "families"} onClick={() => setCompareMode("families")}><Microscope/> Host families · 5</button>
+            <button className={compareMode === "strains" ? "on" : ""} aria-pressed={compareMode === "strains"} disabled={strainEntries.length < 2} onClick={() => setCompareMode("strains")}><Columns3/> Ticked strains · {strainEntries.length}/4</button>
+          </div>
+          {showStrains
+            ? <ComparisonTable entries={strainEntries} action="Choose the cell line for this project" chooseLabel="Choose" chosenLabel="Chosen" onChoose={(entry) => choose(entry.system, entry.key)} onRemove={(entry) => toggleCompare(entry.key)}/>
+            : <ComparisonTable entries={familyEntries} action="Open a family to see its strains" chooseLabel="Browse strains" onChoose={(entry) => { setFamily(entry.system); setCategory("All hosts"); setSearch(""); setTab("strains"); }}/>}
+          {compareMode === "strains" && strainEntries.length < 2 && <p className="expression-empty">Tick the Compare box on two to four strains to put them side by side.</p>}
+        </Panel>
+      </> },
+      { id: "evidence", label: "Evidence", hint: chosen ? `${chosen.host.name} · references` : `About ${browsing.shortName}`, content: <div className="expression-evidence">
+        {chosen && <Panel title="Evidence for this strain" hint="Every number and claim on this strain traces back to one of these." className="host-evidence-panel">
+          <ReferenceList references={hostReferences(chosen.host)}/>
+        </Panel>}
 
-      {chosen && <Panel title="Compatible vector families" hint={`Reference only — ${vectorMatches.length} families work with ${chosen.host.name}. The vector itself is chosen in Expression vector design.`}>
-        <div className="vector-family-list">{vectorMatches.map(({ family: vectorFamily, level, note }) => <button key={vectorFamily.id} className={level} onClick={() => setInspector({ kind: "vector", system: chosen.system, id: vectorFamily.id })}><span><strong>{vectorFamily.name}</strong><small>{vectorFamily.promoter} · {vectorFamily.selection}</small><em>{note}</em></span>{level === "warning" ? <CircleAlert/> : <CircleCheck/>}</button>)}</div>
-        {!vectorMatches.length && <p className="expression-empty">No catalog vector family is listed for {chosen.host.name}.</p>}
-      </Panel>}
+        {chosen && <Panel title="Compatible vector families" hint={`Reference only — ${vectorMatches.length} families work with ${chosen.host.name}. The vector itself is chosen in Expression vector design.`}>
+          <div className="vector-family-list">{vectorMatches.map(({ family: vectorFamily, level, note }) => <button key={vectorFamily.id} className={level} onClick={() => setInspector({ kind: "vector", system: chosen.system, id: vectorFamily.id })}><span><strong>{vectorFamily.name}</strong><small>{vectorFamily.promoter} · {vectorFamily.selection}</small><em>{note}</em></span>{level === "warning" ? <CircleAlert/> : <CircleCheck/>}</button>)}</div>
+          {!vectorMatches.length && <p className="expression-empty">No catalog vector family is listed for {chosen.host.name}.</p>}
+        </Panel>}
 
-      <Panel title={`About ${browsing.name}`} hint="What this family is good at, where it runs out, and the reviews behind the figures." className="host-evidence-panel">
-        <p className="host-family-summary">{browsing.summary}</p>
-        <InsightList title="Strengths" items={browsing.strengths} tone="strength"/>
-        <InsightList title="Limits" items={browsing.limits} tone="limit"/>
-        <ReferenceList references={familyReferences(family)}/>
-      </Panel>
-    </div>
+        <Panel title={`About ${browsing.name}`} hint="What this family is good at, where it runs out, and the reviews behind the figures." className="host-evidence-panel">
+          <p className="host-family-summary">{browsing.summary}</p>
+          <InsightList title="Strengths" items={browsing.strengths} tone="strength"/>
+          <InsightList title="Limits" items={browsing.limits} tone="limit"/>
+          <ReferenceList references={familyReferences(family)}/>
+        </Panel>
+      </div> },
+    ]}/>
 
     {inspectedHost && <aside className="selection-inspector" role="dialog" aria-label={`${inspectedHost.name} details`}>
       <header><span><small>EXPRESSION HOST</small><strong>{inspectedHost.name}</strong></span><Button variant="ghost" size="icon" onClick={() => setInspector(null)} aria-label="Close details"><X/></Button></header>

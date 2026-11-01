@@ -12,6 +12,7 @@ import {
   assessmentCitations, CRYSTALLIZE_APP_TYPE, crystallizeConfig, factInfluences, formatProbability, INFLUENCE_LABELS, PREDICTOR_CITATIONS, readAssessment, scoreView,
   type Assessment, type FactInfluence, type InfluenceEffect, type Predictor, type ScoreView, type SpaceGroupSuggestion,
 } from "@/lib/crystallization";
+import { JobSummary, JobTabs } from "@/components/protein-labs/job-tabs";
 import { CrystallizationGuidance } from "@/components/protein-labs/crystallization-guidance";
 import { SpaceGroupExplorer } from "@/components/protein-labs/space-group-explorer";
 import { CrystalLatticePanel } from "@/components/protein-labs/crystal-lattice-panel";
@@ -96,6 +97,7 @@ export function CrystallizeJob({ bundle, onChanged, onOpenJob }: { bundle: Prote
       <div><span className="eyebrow">STRUCTURAL BIOLOGY</span><h2>Will this protein crystallise?</h2><p>To see a protein&apos;s atoms by X-ray crystallography you first need a crystal: billions of copies packed in a regular, repeating lattice. This job gathers what the project already knows about {bundle.protein.name}, asks the crystallization predictors what they make of it, and turns both into a starting plan.</p></div>
       <Button variant="outline" onClick={() => void assess()} disabled={load.state === "loading"}>{load.state === "loading" ? <LoaderCircle className="spin"/> : <RefreshCw/>} Re-run assessment</Button>
     </header>
+    <CrystallizeSummary load={load} facts={facts} selectedSpaceGroup={selectedSpaceGroup(savedJob?.config)} savedAt={typeof savedJob?.config.assessedAt === "string" ? savedJob.config.assessedAt : ""}/>
     {panels.length > 1 && <div className="crystallize-tabs" role="tablist" aria-label="Crystallize panels">{panels.map((panel) => <button key={panel.id} type="button" role="tab" id={`${tabsId}-${panel.id}`} aria-selected={panel.id === active.id} aria-controls={`${tabsId}-panel`} tabIndex={panel.id === active.id ? 0 : -1} onClick={() => setTab(panel.id)} onKeyDown={(event) => {
       const index = panels.indexOf(panel);
       const next = event.key === "ArrowRight" ? panels[(index + 1) % panels.length] : event.key === "ArrowLeft" ? panels[(index - 1 + panels.length) % panels.length] : null;
@@ -137,22 +139,25 @@ function PropensityPanel({ bundle, facts, assessment, onOpenJob, load, onRetry, 
       <Recommendation load={state} refs={refs}/>
     </section>
 
-    <section className="crystallize-explainer" aria-labelledby="crystallize-explainer-heading">
-      <h3 id="crystallize-explainer-heading">What “crystallization propensity” means</h3>
-      <div>
-        <div><h4>What it is</h4><p>A propensity is the chance, from 0 to 1, that a purified protein will form crystals good enough to solve its structure. Predictors learn it from records of past crystallization attempts and look for the sequence and structure features the successes shared.<CiteGroup scope={refs} ids={["shoebill2026", "mall2025plm"]}/></p><p>A range such as 0.55–0.70 is more honest than one number: it shows how sure the predictors are.</p></div>
-        <div><h4>What it cannot tell you</h4><ul>
-          <li>It is a chance, not a promise. A low score does not mean it will never crystallise, and a high one does not mean the first screen will work.</li>
-          <li>It describes the sequence you saved. A shorter construct, a bound ligand or a surface mutation can change the outcome a lot.<Cite scope={refs} id="dale2003"/></li>
-          <li>It says nothing about your sample&apos;s purity, concentration or buffer, which matter as much as the protein itself.<CiteGroup scope={refs} ids={["dale2003", "mcpherson2014"]}/></li>
-          <li>Membrane proteins need detergents or lipids to crystallise, which these predictors do not model, so treat their scores with extra care.<Cite scope={refs} id="caffrey2015"/></li>
-        </ul></div>
-      </div>
-    </section>
-
-    <Predictors assessment={assessment} refs={refs}/>
-    <SpaceGroups assessment={assessment} refs={refs} loading={state.state === "loading"}/>
-    <Influences influences={influences} refs={refs} onOpenJob={onOpenJob}/>
+    <JobTabs compact label="Propensity details" tabs={[
+      { id: "predictors", label: "Predictors", hint: assessment ? `${assessment.predictors.filter((item) => item.status === "ran").length} of ${assessment.predictors.length} ran` : "With the assessment", content: <Predictors assessment={assessment} refs={refs}/> },
+      { id: "space-groups", label: "Suggested space groups", hint: assessment ? `${assessment.spaceGroups.length} suggested` : "With the assessment", content: <SpaceGroups assessment={assessment} refs={refs} loading={state.state === "loading"}/> },
+      { id: "facts", label: "Project facts", hint: `${influences.filter((item) => item.effect !== "missing").length} of ${influences.length} known`, content: <Influences influences={influences} refs={refs} onOpenJob={onOpenJob}/> },
+      { id: "meaning", label: "What the score means", hint: "Limits of a propensity", content: <>
+        <section className="crystallize-explainer" aria-labelledby="crystallize-explainer-heading">
+          <h3 id="crystallize-explainer-heading">What “crystallization propensity” means</h3>
+          <div>
+            <div><h4>What it is</h4><p>A propensity is the chance, from 0 to 1, that a purified protein will form crystals good enough to solve its structure. Predictors learn it from records of past crystallization attempts and look for the sequence and structure features the successes shared.<CiteGroup scope={refs} ids={["shoebill2026", "mall2025plm"]}/></p><p>A range such as 0.55–0.70 is more honest than one number: it shows how sure the predictors are.</p></div>
+            <div><h4>What it cannot tell you</h4><ul>
+              <li>It is a chance, not a promise. A low score does not mean it will never crystallise, and a high one does not mean the first screen will work.</li>
+              <li>It describes the sequence you saved. A shorter construct, a bound ligand or a surface mutation can change the outcome a lot.<Cite scope={refs} id="dale2003"/></li>
+              <li>It says nothing about your sample&apos;s purity, concentration or buffer, which matter as much as the protein itself.<CiteGroup scope={refs} ids={["dale2003", "mcpherson2014"]}/></li>
+              <li>Membrane proteins need detergents or lipids to crystallise, which these predictors do not model, so treat their scores with extra care.<Cite scope={refs} id="caffrey2015"/></li>
+            </ul></div>
+          </div>
+        </section>
+      </> },
+    ]}/>
 
     <ReferenceList scope={refs} className="crystallize-references"/>
 
@@ -161,6 +166,21 @@ function PropensityPanel({ bundle, facts, assessment, onOpenJob, load, onRetry, 
       <Button disabled={busy || !assessment || !onSaveAssessment} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save assessment</Button>
     </footer>
   </div>;
+}
+
+/** The job at a glance above its tabs: the score, what ran, the chosen space group and how much the project already knows. */
+function CrystallizeSummary({ load, facts, selectedSpaceGroup: chosen, savedAt }: { load: Load; facts: CrystallizePanelProps["facts"]; selectedSpaceGroup: string | null; savedAt: string }) {
+  const assessment = load.state === "ready" ? load.assessment : null;
+  const view = assessment ? scoreView(assessment) : null;
+  const influences = factInfluences(facts);
+  const known = influences.filter((item) => item.effect !== "missing").length;
+  const cautions = influences.filter((item) => item.effect === "caution").length;
+  const ran = assessment?.predictors.filter((item) => item.status === "ran").length ?? 0;
+  return <JobSummary label="Crystallization summary" items={[
+    { label: "Combined propensity", value: load.state === "loading" ? "Assessing…" : load.state === "error" ? "Unavailable" : view?.kind === "range" ? `${formatProbability(view.lower)}–${formatProbability(view.upper)}` : view?.kind === "point" ? `≈ ${formatProbability(view.value)}` : "Not estimated", detail: load.state === "error" ? "The engine could not assess this protein" : assessment ? `${ran} of ${assessment.predictors.length} predictors ran` : undefined, status: load.state === "error" ? { tone: "error", label: "Error" } : view?.kind === "unavailable" ? { tone: "review", label: "No score" } : undefined },
+    { label: "Space group", value: chosen ?? "Not chosen", detail: chosen ? "Used by the lattice builder" : "Pick one in the Space groups tab" },
+    { label: "Project facts", value: `${known} of ${influences.length} known`, detail: cautions ? `${cautions} caution${cautions === 1 ? " changes" : "s change"} the advice` : "No caution from earlier jobs", status: cautions ? { tone: "attention", label: "Caution" } : undefined },
+  ]} note={savedAt ? `Assessment last saved ${new Date(savedAt).toLocaleString()}.` : "Assessment not saved to the project yet."}/>;
 }
 
 function ScoreCard({ load, refs, onRetry }: { load: Load; refs: CitationScope; onRetry?: () => void }) {

@@ -7,6 +7,7 @@
 @import "./compile-timeline.css";
 @import "./space-groups.css";
 @import "./crystal-lattice.css";
+@import "./job-tabs.css";
 
 /* Graphic novel is the default appearance, so its tokens also sit on :root:
    dialogs portal into <body>, outside .app-shell, and read them from here. */
@@ -6969,6 +6970,13 @@ html[data-nav-direction="back"]::view-transition-new(workspace) { animation-name
   justify-content: space-between;
   padding: 11px;
   border-bottom: 1px solid var(--border);
+}
+/* In Sequence research's tabs each result list has the page to itself. */
+.research-results.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.research-results.single > section > div {
+  max-height: none;
 }
 .research-results h3 {
   display: flex;

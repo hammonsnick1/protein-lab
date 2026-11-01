@@ -13,8 +13,10 @@ import { BlastResultsWindow } from "@/components/protein-labs/blast-results-wind
 import type { BlastWindowTab } from "@/components/protein-labs/blast-results-window";
 import { ConservationPanel } from "@/components/protein-labs/conservation-panel";
 import { ResearchProgress } from "@/components/protein-labs/research-progress";
+import { JobTabs } from "@/components/protein-labs/job-tabs";
 
 type LocalRun = { title: string; steps: readonly string[]; active: number; detail: string; startedAt: number; blast: boolean };
+type ResearchTab = "run" | "uniprot" | "pdb" | "blast" | "consurf";
 
 export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBundle; onChanged: () => Promise<void> }) {
   const [blastJobs, setBlastJobs] = useState<JsonObject[]>(bundle.blastJobs);
@@ -26,6 +28,7 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
   const [accession, setAccession] = useState("");
   const [selectedRid, setSelectedRid] = useState("");
   const conservation = useConservation(bundle, onChanged);
+  const [tab, setTab] = useState<ResearchTab>("run");
   const [windowState, setWindowState] = useState<{ open: boolean; tab: BlastWindowTab; focus: string }>({ open: false, tab: "pairwise", focus: "" });
   const sequence = bundle.protein.sequence.replace(/\s+/g, "").toUpperCase();
   const busy = Boolean(local);
@@ -84,7 +87,7 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
 
   /** Runs one search with honest steps: the remote call, then saving. A BLAST
    *  submission hands over to the queued-job panel once NCBI accepts it. */
-  async function perform(title: string, service: string, action: () => Promise<unknown>, after: (value: unknown) => void, source: string, blast = false) {
+  async function perform(title: string, service: string, action: () => Promise<unknown>, after: (value: unknown) => void, source: string, results: ResearchTab, blast = false) {
     if (!sequence) { setMessage({ text: "This project has no amino-acid sequence yet. Add it in the Sequence job, then run the search.", error: true }); return; }
     const steps = blast ? BLAST_STEPS : [`Contacting ${service}`, "Saving evidence", "Done"];
     const startedAt = Date.now();
@@ -96,16 +99,18 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
       setLocal({ title, steps, active: blast ? 0 : 1, detail: "Saving the evidence to this project…", startedAt, blast });
       await saveResearchSource(source, blast ? "in_progress" : "complete");
       await onChanged();
+      // The results live in their own tab; show it so the search visibly lands.
+      setTab(results);
       setMessage({ text: blast ? `${title} was accepted. Protein Lab checks the remote queue every few seconds.` : `${title} finished and its evidence was saved.`, error: false });
     } catch (reason) { setMessage({ text: `${title} failed: ${errorText(reason)}`, error: true }); }
     finally { setLocal(null); }
   }
 
-  function runUniProt() { return perform("UniProt sequence match", "UniProt", () => proteinLabsApi.uniprot(bundle.protein.id), (value) => setUniprot((value as { matches: JsonObject[] }).matches), "UniProt"); }
-  function runBlast() { return perform("NCBI protein BLAST", "NCBI", () => proteinLabsApi.blast(bundle.protein.id), (value) => { const job = value as JsonObject; setBlastJobs((jobs) => [job, ...jobs.filter((item) => item.rid !== job.rid)]); }, "NCBI BLAST", true); }
-  function runPdb() { return perform("RCSB PDB sequence search", "RCSB PDB", () => proteinLabsApi.pdb(bundle.protein.id), (value) => setPdb((value as { matches: JsonObject[] }).matches), "PDB"); }
-  function manualSearch() { if (!query.trim()) return; return perform("UniProt text search", "UniProt", () => proteinLabsApi.searchUniProt(bundle.protein.id, query.trim()), (value) => setUniprot((value as { matches: JsonObject[] }).matches), "UniProt"); }
-  function fetchAccession() { if (!accession.trim()) return; return perform("UniProt accession lookup", "UniProt", () => proteinLabsApi.fetchUniProt(bundle.protein.id, accession.trim().toUpperCase()), (value) => setUniprot((items) => [((value as { match: JsonObject }).match), ...items]), "UniProt"); }
+  function runUniProt() { return perform("UniProt sequence match", "UniProt", () => proteinLabsApi.uniprot(bundle.protein.id), (value) => setUniprot((value as { matches: JsonObject[] }).matches), "UniProt", "uniprot"); }
+  function runBlast() { return perform("NCBI protein BLAST", "NCBI", () => proteinLabsApi.blast(bundle.protein.id), (value) => { const job = value as JsonObject; setBlastJobs((jobs) => [job, ...jobs.filter((item) => item.rid !== job.rid)]); }, "NCBI BLAST", "blast", true); }
+  function runPdb() { return perform("RCSB PDB sequence search", "RCSB PDB", () => proteinLabsApi.pdb(bundle.protein.id), (value) => setPdb((value as { matches: JsonObject[] }).matches), "PDB", "pdb"); }
+  function manualSearch() { if (!query.trim()) return; return perform("UniProt text search", "UniProt", () => proteinLabsApi.searchUniProt(bundle.protein.id, query.trim()), (value) => setUniprot((value as { matches: JsonObject[] }).matches), "UniProt", "uniprot"); }
+  function fetchAccession() { if (!accession.trim()) return; return perform("UniProt accession lookup", "UniProt", () => proteinLabsApi.fetchUniProt(bundle.protein.id, accession.trim().toUpperCase()), (value) => setUniprot((items) => [((value as { match: JsonObject }).match), ...items]), "UniProt", "uniprot"); }
   async function pollNow(rid: string) {
     try {
       const value = await proteinLabsApi.pollBlast(rid);
@@ -132,60 +137,68 @@ export function SequenceResearchJob({ bundle, onChanged }: { bundle: ProteinBund
   return <div className="research-workspace">
     <header><div><span className="eyebrow">ONE-CLICK DATABASE RESEARCH</span><h2>Sequence, structure, PTM, and condition evidence</h2><p>Run each search directly from the entered sequence. Only these remote searches need an internet connection; the results stay attached to this project on this computer.</p></div></header>
     <QueryCard bundle={bundle} sequence={sequence} counts={{ blast: hits.length, uniprot: uniprot.length, pdb: pdb.length }}/>
-    <section className="research-actions">
-      <ResearchAction icon={Dna} title="UniProt sequence match" detail="Matches the sequence directly, then saves PTMs, maturation features, topology, cellular location, and cofactors." count={uniprot.length} busy={busy || !sequence} active={local?.title === "UniProt sequence match"} onRun={() => void runUniProt()} label="Find UniProt matches"/>
-      <ResearchAction icon={Search} title="NCBI protein BLAST" detail="Searches Swiss-Prot, follows the queue, saves every alignment, and enriches hits with UniProt evidence." count={blastJobs.length} countLabel="run" busy={busy || activeJobs.length > 0 || !sequence} active={Boolean(local?.blast) || activeJobs.length > 0} onRun={() => void runBlast()} label={activeJobs.length ? "BLAST running…" : "Run protein BLAST"}/>
-      <ResearchAction icon={Atom} title="PDB structures & conditions" detail="Finds experimental structures and evidence-linked crystallization and purification conditions." count={pdb.length} busy={busy || !sequence} active={local?.title === "RCSB PDB sequence search"} onRun={() => void runPdb()} label="Find PDB structures"/>
-      <ResearchAction
-        icon={Shield}
-        title="ConSurf conservation"
-        detail="Grades every residue 1–9 for evolutionary conservation. Looks for a pre-calculated ConSurf-DB entry first; ConSurf has no submission API, so a new run is prepared for their web server."
-        count={conservation.jobs.length}
-        countLabel="run"
-        busy={busy || conservation.busy || !sequence}
-        active={conservation.busy}
-        onRun={() => void conservation.lookupDb()}
-        label={conservation.busy ? "Working…" : "Find ConSurf grades"}
-        secondary={{ label: "Prepare ConSurf server job", icon: Upload, onRun: () => void conservation.prepare() }}
-      />
-    </section>
-    <section className="manual-research"><label>Optional UniProt text query<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. hemoglobin beta reviewed:true" onKeyDown={(event) => { if (event.key === "Enter") void manualSearch(); }}/></label><Button variant="outline" disabled={busy || !query.trim()} onClick={() => void manualSearch()}><Search/> Search</Button><label>Optional accession<input value={accession} onChange={(event) => setAccession(event.target.value.toUpperCase())} placeholder="e.g. P02067" onKeyDown={(event) => { if (event.key === "Enter") void fetchAccession(); }}/></label><Button variant="outline" disabled={busy || !accession.trim()} onClick={() => void fetchAccession()}><Database/> Fetch</Button></section>
     {local
       ? <ResearchProgress title={local.title} steps={local.steps} active={local.active} detail={local.detail} startedAt={local.startedAt} motif={sequence}/>
       : activeJobs.map((job) => <RemoteJobProgress key={String(job.rid)} job={job} motif={sequence} onPoll={pollNow} onTerminate={terminate}/>)}
     {message && <div className={`research-message${message.error ? " error" : ""}`} role={message.error ? "alert" : "status"}>{message.error ? <CircleAlert/> : <CircleCheck/>}<span>{message.text}</span><button type="button" onClick={() => setMessage(null)} aria-label="Dismiss message">×</button></div>}
 
-    <section className="research-section research-blast">
-      <header>
-        <span className="research-section-icon"><Search/></span>
-        <div><h3>BLAST hits</h3><p>{shownJob ? runLabel(shownJob) : "Similar sequences from Swiss-Prot appear here."}</p></div>
-        {blastRuns.length > 1 && <label className="research-run-picker">Run<select value={String(shownJob?.rid ?? "")} onChange={(event) => setSelectedRid(event.target.value)}>{blastRuns.map((job) => <option key={String(job.rid)} value={String(job.rid)}>{runLabel(job)}</option>)}</select></label>}
-        <div className="research-section-actions">
-          <Button variant="outline" disabled={!hits.length} onClick={() => openWindow("pairwise")}><Rows3/> View BLAST results</Button>
-          <Button disabled={!hits.length} onClick={() => openWindow("msa")}><ListChecks/> Multiple sequence alignment</Button>
-        </div>
-      </header>
-      <BlastHitsBody job={shownJob} hits={hits} running={activeJobs.length > 0 || Boolean(local?.blast)} onRun={() => void runBlast()} canRun={!busy && !activeJobs.length && Boolean(sequence)} onAlignment={(id) => openWindow("pairwise", id)}/>
-      {blastRuns.length > 0 && <details className="research-run-history"><summary><History/> Run history <span>{blastRuns.length}</span></summary>{blastRuns.map((job) => <BlastRunRow key={String(job.rid)} job={job} selected={job === shownJob} onShow={() => setSelectedRid(String(job.rid))} onPoll={pollNow} onTerminate={terminate}/>)}</details>}
-    </section>
-
-    <ConservationPanel
-      proteinId={bundle.protein.id}
-      jobs={conservation.jobs}
-      selectedId={conservation.selectedId}
-      onSelect={conservation.select}
-      loading={conservation.loading}
-      job={conservation.job}
-      error={conservation.error}
-      busy={conservation.busy}
-      onImport={conservation.importResult}
-      onDelete={conservation.remove}
-    />
-
-    <section className="research-results">
-      <ResultSection icon={Dna} title="UniProt matches and PTMs" count={uniprot.length}>{uniprot.length ? uniprot.map((match, index) => <UniProtCard key={`${String(match.accession)}-${index}`} match={match} featured={index === 0}/>) : <Empty text="No UniProt matches have been saved yet. Run a UniProt sequence match, or fetch an accession you already know."/>}</ResultSection>
-      <ResultSection icon={Atom} title="PDB structures and conditions" count={pdb.length}>{pdb.length > 0 && <p className="pdb-metrics-legend"><strong>Identity</strong> — identical residues. <strong>Similarity</strong> — identical or chemically similar (BLOSUM62). Both are measured over the aligned region; <strong>coverage</strong> is how much of your sequence that region spans.</p>}{pdb.length ? pdb.map((record, index) => <PdbCard key={`${String(record.pdbId)}-${index}`} record={record}/>) : <Empty text="No matching PDB structures have been saved yet."/>}</ResultSection>
-    </section>
+    <JobTabs label="Sequence research" active={tab} onActiveChange={(id) => setTab(id as ResearchTab)} tabs={[
+      { id: "run", label: "Run searches", hint: "UniProt · BLAST · PDB · ConSurf", content: <>
+        <section className="research-actions">
+          <ResearchAction icon={Dna} title="UniProt sequence match" detail="Matches the sequence directly, then saves PTMs, maturation features, topology, cellular location, and cofactors." count={uniprot.length} busy={busy || !sequence} active={local?.title === "UniProt sequence match"} onRun={() => void runUniProt()} label="Find UniProt matches"/>
+          <ResearchAction icon={Search} title="NCBI protein BLAST" detail="Searches Swiss-Prot, follows the queue, saves every alignment, and enriches hits with UniProt evidence." count={blastJobs.length} countLabel="run" busy={busy || activeJobs.length > 0 || !sequence} active={Boolean(local?.blast) || activeJobs.length > 0} onRun={() => void runBlast()} label={activeJobs.length ? "BLAST running…" : "Run protein BLAST"}/>
+          <ResearchAction icon={Atom} title="PDB structures & conditions" detail="Finds experimental structures and evidence-linked crystallization and purification conditions." count={pdb.length} busy={busy || !sequence} active={local?.title === "RCSB PDB sequence search"} onRun={() => void runPdb()} label="Find PDB structures"/>
+          <ResearchAction
+            icon={Shield}
+            title="ConSurf conservation"
+            detail="Grades every residue 1–9 for evolutionary conservation. Looks for a pre-calculated ConSurf-DB entry first; ConSurf has no submission API, so a new run is prepared for their web server."
+            count={conservation.jobs.length}
+            countLabel="run"
+            busy={busy || conservation.busy || !sequence}
+            active={conservation.busy}
+            onRun={() => { setTab("consurf"); void conservation.lookupDb(); }}
+            label={conservation.busy ? "Working…" : "Find ConSurf grades"}
+            secondary={{ label: "Prepare ConSurf server job", icon: Upload, onRun: () => { setTab("consurf"); void conservation.prepare(); } }}
+          />
+        </section>
+        <section className="manual-research"><label>Optional UniProt text query<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="e.g. hemoglobin beta reviewed:true" onKeyDown={(event) => { if (event.key === "Enter") void manualSearch(); }}/></label><Button variant="outline" disabled={busy || !query.trim()} onClick={() => void manualSearch()}><Search/> Search</Button><label>Optional accession<input value={accession} onChange={(event) => setAccession(event.target.value.toUpperCase())} placeholder="e.g. P02067" onKeyDown={(event) => { if (event.key === "Enter") void fetchAccession(); }}/></label><Button variant="outline" disabled={busy || !accession.trim()} onClick={() => void fetchAccession()}><Database/> Fetch</Button></section>
+      </> },
+      { id: "uniprot", label: "UniProt", hint: count(uniprot.length, "match", "matches"), content: <section className="research-results single">
+        <ResultSection icon={Dna} title="UniProt matches and PTMs" count={uniprot.length}>{uniprot.length ? uniprot.map((match, index) => <UniProtCard key={`${String(match.accession)}-${index}`} match={match} featured={index === 0}/>) : <Empty text="No UniProt matches have been saved yet. Run a UniProt sequence match, or fetch an accession you already know."/>}</ResultSection>
+      </section> },
+      { id: "pdb", label: "PDB", hint: count(pdb.length, "structure", "structures"), content: <section className="research-results single">
+        <ResultSection icon={Atom} title="PDB structures and conditions" count={pdb.length}>{pdb.length > 0 && <p className="pdb-metrics-legend"><strong>Identity</strong> — identical residues. <strong>Similarity</strong> — identical or chemically similar (BLOSUM62). Both are measured over the aligned region; <strong>coverage</strong> is how much of your sequence that region spans.</p>}{pdb.length ? pdb.map((record, index) => <PdbCard key={`${String(record.pdbId)}-${index}`} record={record}/>) : <Empty text="No matching PDB structures have been saved yet."/>}</ResultSection>
+      </section> },
+      { id: "blast", label: "BLAST", hint: activeJobs.length || local?.blast ? "running…" : count(hits.length, "hit", "hits"), content: <>
+        <section className="research-section research-blast">
+          <header>
+            <span className="research-section-icon"><Search/></span>
+            <div><h3>BLAST hits</h3><p>{shownJob ? runLabel(shownJob) : "Similar sequences from Swiss-Prot appear here."}</p></div>
+            {blastRuns.length > 1 && <label className="research-run-picker">Run<select value={String(shownJob?.rid ?? "")} onChange={(event) => setSelectedRid(event.target.value)}>{blastRuns.map((job) => <option key={String(job.rid)} value={String(job.rid)}>{runLabel(job)}</option>)}</select></label>}
+            <div className="research-section-actions">
+              <Button variant="outline" disabled={!hits.length} onClick={() => openWindow("pairwise")}><Rows3/> View BLAST results</Button>
+              <Button disabled={!hits.length} onClick={() => openWindow("msa")}><ListChecks/> Multiple sequence alignment</Button>
+            </div>
+          </header>
+          <BlastHitsBody job={shownJob} hits={hits} running={activeJobs.length > 0 || Boolean(local?.blast)} onRun={() => void runBlast()} canRun={!busy && !activeJobs.length && Boolean(sequence)} onAlignment={(id) => openWindow("pairwise", id)}/>
+          {blastRuns.length > 0 && <details className="research-run-history"><summary><History/> Run history <span>{blastRuns.length}</span></summary>{blastRuns.map((job) => <BlastRunRow key={String(job.rid)} job={job} selected={job === shownJob} onShow={() => setSelectedRid(String(job.rid))} onPoll={pollNow} onTerminate={terminate}/>)}</details>}
+        </section>
+      </> },
+      { id: "consurf", label: "ConSurf", hint: count(conservation.jobs.length, "run", "runs"), content: <>
+        <ConservationPanel
+          proteinId={bundle.protein.id}
+          jobs={conservation.jobs}
+          selectedId={conservation.selectedId}
+          onSelect={conservation.select}
+          loading={conservation.loading}
+          job={conservation.job}
+          error={conservation.error}
+          busy={conservation.busy}
+          onImport={conservation.importResult}
+          onDelete={conservation.remove}
+        />
+      </> },
+    ]}/>
 
     <BlastResultsWindow open={windowState.open} onOpenChange={(open) => setWindowState((state) => ({ ...state, open }))} tab={windowState.tab} onTabChange={(tab) => setWindowState((state) => ({ ...state, tab }))} focusHitId={windowState.focus} hits={hits} query={blastQuery} proteinName={bundle.protein.name || "Protein"} runLabel={shownJob ? `RID ${String(shownJob.rid ?? "")} · ${when(shownJob.submittedAt)}` : ""}/>
   </div>;
@@ -422,6 +435,7 @@ function PdbSimilarity({ record }: { record: JsonObject }) {
     <span><b>{Number.isFinite(coverage) ? percent(coverage) : "—"}</b><small>coverage{range ? ` · ${range}` : ""}</small></span>
   </span>;
 }
+function count(value: number, one: string, many: string) { return value ? `${value} ${value === 1 ? one : many}` : "none yet"; }
 function percent(value: unknown) { if (value === null || value === undefined || value === "") return "—"; const number = Number(value); return Number.isFinite(number) ? `${(number * 100).toFixed(1)}%` : "—"; }
 function summary(value: JsonObject) { return Object.entries(value).filter(([, item]) => item !== null && item !== "").map(([key, item]) => `${key}: ${String(item)}`).join(" · "); }
 function errorText(value: unknown) { return value instanceof Error ? value.message : String(value); }
