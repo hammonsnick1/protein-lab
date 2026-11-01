@@ -16667,8 +16667,10 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 
 /* Shared citations (components/ui/citations.tsx): inline [n] markers and the
    numbered reference list and licence table that go with them. */
+/* A fixed 12px, not a fraction of the text around it: .72em put the marker
+   at 8.6-10px, under the text floor (HOM-401). */
 .cite-marker {
-  font-size: .72em;
+  font-size: 12px;
   line-height: 0;
   font-weight: 600;
   color: var(--muted-foreground);

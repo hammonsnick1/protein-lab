@@ -8,7 +8,9 @@ import { describe, it } from "vitest";
 
 const FLOOR_PX = 12;
 const root = new URL("..", import.meta.url).pathname;
-const STYLESHEETS = ["app/globals.css", "app/vector-library.css", "app/protein-library.css", "app/compile-timeline.css", "app/space-groups.css", "app/crystal-lattice.css"];
+// Every stylesheet under app/, so a new one is covered without editing a list.
+const STYLESHEETS = readdirSync(join(root, "app")).filter((name) => name.endsWith(".css")).sort().map((name) => `app/${name}`);
+const ROOT_FONT_PX = 16;
 
 const EXEMPT: Record<string, string> = {
   // Chart axis ticks may stay at 11px.
@@ -41,7 +43,26 @@ const EXEMPT_FIGURES: Record<string, string> = {
   ".sec-curve-figure": "SEC calibration figure, 900×640: export-size figure preview; export output meets the floor",
 };
 
-interface SmallRule { file: string; line: number; selector: string; px: number }
+interface SmallRule { file: string; line: number; selector: string; size: string }
+
+/**
+ * The size a font-size / font value sets when it is under the floor, else null.
+ * px and rem resolve to pixels. em, % and the smaller / x-small / xx-small /
+ * small keywords scale with the parent, so they cannot be shown to meet the
+ * floor and count as under it unless wrapped in max(12px, …). A .72em
+ * citation marker that rendered at 8.6–10px slipped past the px-only scan (HOM-401).
+ */
+function sizeBelowFloor(value: string): string | null {
+  const floored = /max\(\s*(\d*\.?\d+)px\s*,/.exec(value);
+  if (floored && Number(floored[1]) >= FLOOR_PX) return null;
+  const size = /(?<![\w.-])(\d*\.?\d+)(px|rem|em|%)(?![\w-])|(?<![\w-])(smaller|x-small|xx-small|small)(?![\w-])/.exec(value);
+  if (!size) return null;
+  if (size[3]) return size[3];
+  const amount = Number(size[1]);
+  if (size[2] === "px") return amount < FLOOR_PX ? `${size[1]}px` : null;
+  if (size[2] === "rem") return amount * ROOT_FONT_PX < FLOOR_PX ? `${size[1]}rem` : null;
+  return `${size[1]}${size[2]}`;
+}
 
 /** Every font-size / font declaration under the floor, with the selector of its rule. */
 function smallFontRules(file: string, source = readFileSync(join(root, file), "utf8")): SmallRule[] {
@@ -58,13 +79,8 @@ function smallFontRules(file: string, source = readFileSync(join(root, file), "u
     } else if (char === "}" || char === ";") {
       const declaration = buffer.trim().replace(/\s+/g, " ");
       const match = /^(?:font-size|font)\s*:(.*)$/.exec(declaration);
-      if (match) {
-        for (const size of match[1].matchAll(/(?<![\w.-])(\d+(?:\.\d+)?)px/g)) {
-          const px = Number(size[1]);
-          if (px < FLOOR_PX) found.push({ file, line, selector: selectors.at(-1) ?? "", px });
-          break;
-        }
-      }
+      const size = match && sizeBelowFloor(match[1]);
+      if (size) found.push({ file, line, selector: selectors.at(-1) ?? "", size });
       buffer = "";
       if (char === "}") selectors.pop();
     } else {
@@ -85,17 +101,32 @@ function sourceFiles(dir: string): string[] {
 describe("app-wide text floor", () => {
   it("reads sizes from font-size, the font shorthand and nested rules", () => {
     const fixture = `.a { font-size: 11px; }\n/* .b { font-size: 9px; } */\n@media print {\n  .c, .d { font: 600 10.5px/1.4 var(--font-mono); }\n}\n.e { font-size: calc(11.5px * var(--k, 1)); }\n.f { font-size: 12px; letter-spacing: 1px; }`;
-    assert.deepEqual(smallFontRules("fixture.css", fixture).map(({ line, selector, px }) => [line, selector, px]), [
-      [1, ".a", 11],
-      [4, ".c, .d", 10.5],
-      [6, ".e", 11.5],
+    assert.deepEqual(smallFontRules("fixture.css", fixture).map(({ line, selector, size }) => [line, selector, size]), [
+      [1, ".a", "11px"],
+      [4, ".c, .d", "10.5px"],
+      [6, ".e", "11.5px"],
+    ]);
+  });
+
+  it("counts rem against the root size and parent-relative sizes as under the floor", () => {
+    const fixture = [
+      ".a { font-size: .7rem; }", ".b { font-size: .75rem; }", ".c { font-size: .72em; }",
+      ".d { font: 600 80%/1 serif; }", ".e { font-size: smaller; }", ".f { font: small-caps 13px serif; }",
+      ".g { font-size: max(12px, .72em); }", ".h { font-size: max(10px, .9em); }", ".i { font: inherit; }",
+    ].join("\n");
+    assert.deepEqual(smallFontRules("fixture.css", fixture).map(({ selector, size }) => [selector, size]), [
+      [".a", ".7rem"],
+      [".c", ".72em"],
+      [".d", "80%"],
+      [".e", "smaller"],
+      [".h", "10px"],
     ]);
   });
 
   it("keeps stylesheet text at 12px or more outside the listed exceptions", () => {
     const offenders = STYLESHEETS.flatMap((file) => smallFontRules(file))
       .filter((rule) => !(rule.selector in EXEMPT))
-      .map((rule) => `${rule.file}:${rule.line} ${rule.selector} → ${rule.px}px`);
+      .map((rule) => `${rule.file}:${rule.line} ${rule.selector} → ${rule.size}`);
     assert.deepEqual(offenders, [], `Text below ${FLOOR_PX}px; raise it or add the selector to EXEMPT with a reason`);
   });
 
@@ -106,8 +137,8 @@ describe("app-wide text floor", () => {
 
   it("uses no Tailwind arbitrary text size below 12px in components", () => {
     const offenders = ["app", "components"].flatMap(sourceFiles).flatMap((file) =>
-      [...readFileSync(join(root, file), "utf8").matchAll(/text-\[(\d+(?:\.\d+)?)px\]/g)]
-        .filter((match) => Number(match[1]) < FLOOR_PX)
+      [...readFileSync(join(root, file), "utf8").matchAll(/text-\[([^\]\s]+)\]/g)]
+        .filter((match) => sizeBelowFloor(match[1]) !== null)
         .map((match) => `${file}: ${match[0]}`));
     assert.deepEqual(offenders, []);
   });
