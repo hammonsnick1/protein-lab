@@ -32,7 +32,7 @@ export function HsqcSpectrum({ peaks, selectedId, onSelect, view, onView, bounds
   const clipId = useId();
   const helpId = useId();
   const [width, setWidth] = useState(720);
-  const [hover, setHover] = useState<{ h: number; n: number; peak: Peak | null } | null>(null);
+  const [hover, setHover] = useState<{ h: number; n: number; peak: Peak | null; count: number } | null>(null);
   const [showLabels, setShowLabels] = useState(true);
   const [showAllErrors, setShowAllErrors] = useState(false);
   const drag = useRef<{ x: number; y: number; view: SpectrumView; moved: boolean } | null>(null);
@@ -83,13 +83,16 @@ export function HsqcSpectrum({ peaks, selectedId, onSelect, view, onView, bounds
     const rect = svg.current!.getBoundingClientRect();
     return { px: event.clientX - rect.left, py: event.clientY - rect.top };
   }
-  function nearest(px: number, py: number): Peak | null {
-    let best: Peak | null = null, distance = HIT_RADIUS;
-    for (const peak of visible) {
-      const d = Math.hypot(x(peak.h) - px, y(peak.n) - py);
-      if (d <= distance) { best = peak; distance = d; }
-    }
-    return best;
+  /** Peaks under the pointer, nearest first. */
+  function under(px: number, py: number): Peak[] {
+    return visible.map((peak) => ({ peak, d: Math.hypot(x(peak.h) - px, y(peak.n) - py) })).filter((item) => item.d <= HIT_RADIUS)
+      .sort((one, other) => one.d - other.d || one.peak.position - other.peak.position).map((item) => item.peak);
+  }
+  /** Overlapping peaks: each click on the same spot selects the next one. */
+  function pickAt(px: number, py: number): Peak | null {
+    const hits = under(px, py);
+    const index = hits.findIndex((peak) => peak.id === selectedId);
+    return hits.length ? hits[(index + 1) % hits.length] : null;
   }
   const inPlot = (px: number, py: number) => px >= MARGIN.left && px <= MARGIN.left + plotW && py >= MARGIN.top && py <= MARGIN.top + plotH;
 
@@ -127,14 +130,15 @@ export function HsqcSpectrum({ peaks, selectedId, onSelect, view, onView, bounds
       if (start.moved) onView(panView(start.view, (dx / plotW) * (start.view.h[1] - start.view.h[0]), -(dy / plotH) * (start.view.n[1] - start.view.n[0]), bounds));
       return;
     }
-    setHover(inPlot(px, py) ? { ...ppmAt(px, py), peak: nearest(px, py) } : null);
+    const hits = inPlot(px, py) ? under(px, py) : [];
+    setHover(inPlot(px, py) ? { ...ppmAt(px, py), peak: hits[0] ?? null, count: hits.length } : null);
   }
   function pointerUp(event: PointerEvent<SVGSVGElement>) {
     const start = drag.current;
     drag.current = null;
     if (!start || start.moved) return;
     const { px, py } = local(event);
-    onSelect(nearest(px, py));
+    onSelect(pickAt(px, py));
   }
 
   function step(delta: 1 | -1) {
@@ -172,7 +176,7 @@ export function HsqcSpectrum({ peaks, selectedId, onSelect, view, onView, bounds
         <button type="button" aria-pressed={showLabels} className={showLabels ? "active" : ""} onClick={() => setShowLabels((value) => !value)}>Labels</button>
         <button type="button" aria-pressed={showAllErrors} className={showAllErrors ? "active" : ""} disabled={!hasErrors} title={hasErrors ? undefined : `${predictorLabel} has no published error to draw`} onClick={() => setShowAllErrors((value) => !value)}>Error on every peak</button>
       </div>
-      <span className="hsqc-readout" aria-live="off">{hover ? <>¹H {hover.h.toFixed(2)} · ¹⁵N {hover.n.toFixed(1)} ppm{hover.peak ? <b> · {hover.peak.label}</b> : null}</> : `¹H ${view.h[1].toFixed(2)}–${view.h[0].toFixed(2)} · ¹⁵N ${view.n[0].toFixed(1)}–${view.n[1].toFixed(1)} ppm`}</span>
+      <span className="hsqc-readout" aria-live="off">{hover ? <>¹H {hover.h.toFixed(2)} · ¹⁵N {hover.n.toFixed(1)} ppm{hover.peak ? <b> · {hover.peak.label}{hover.count > 1 ? ` and ${hover.count - 1} more (click again for the next)` : ""}</b> : null}</> : `¹H ${view.h[1].toFixed(2)}–${view.h[0].toFixed(2)} · ¹⁵N ${view.n[0].toFixed(1)}–${view.n[1].toFixed(1)} ppm`}</span>
     </div>
     <div ref={box} className="hsqc-canvas">
       <svg ref={svg} width={width} height={height} tabIndex={0} role="img" aria-roledescription="interactive spectrum" aria-describedby={helpId}
@@ -210,7 +214,7 @@ export function HsqcSpectrum({ peaks, selectedId, onSelect, view, onView, bounds
       {hasErrors && <span><svg width="18" height="14" aria-hidden="true"><ellipse className="hsqc-legend-ellipse" cx="9" cy="7" rx="7.5" ry="4.5"/></svg>Expected error (1 RMSE)</span>}
       {hiddenLabels > 0 && <span className="hsqc-hidden-labels">{hiddenLabels} labels hidden where peaks crowd; zoom in to see them.</span>}
     </div>
-    <p id={helpId} className="hsqc-help">Scroll to zoom, drag to pan, click a peak to select it. With the spectrum focused: arrow keys pan, + and − zoom, 0 shows the full spectrum, [ and ] step through peaks, Esc clears the selection.</p>
+    <p id={helpId} className="hsqc-help">Scroll to zoom, drag to pan, click a peak to select it; where peaks overlap, click again to step through them. With the spectrum focused: arrow keys pan, + and − zoom, 0 shows the full spectrum, [ and ] step through peaks, Esc clears the selection.</p>
   </div>;
 }
 

@@ -17119,7 +17119,7 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .hsqc-flags { display: inline-flex; gap: 4px; }
 .hsqc-molecule { height: clamp(420px, 56vh, 620px); }
 .hsqc-molecule .structure-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.hsqc-table-wrap { max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+.hsqc-table-wrap { position: relative; max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
 .hsqc-peaks { width: 100%; border-collapse: collapse; font-size: 13px; }
 .hsqc-peaks thead th {
   position: sticky;

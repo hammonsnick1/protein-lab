@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Check, CircleAlert, Info, LoaderCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/status-chip";
@@ -273,10 +273,19 @@ function SelectionDetails({ peak, result, note, refs }: { peak: Peak | null; res
 function PeakTable({ peaks, noPeak, selectedId, onSelect }: { peaks: Peak[]; noPeak: { position: number; residue: string; reason: string }[]; selectedId: string | null; onSelect: (peak: Peak) => void }) {
   const prolines = noPeak.filter((item) => item.reason === "proline");
   const missing = noPeak.filter((item) => item.reason !== "proline");
-  useEffect(() => { if (selectedId) document.getElementById(`hsqc-row-${selectedId}`)?.scrollIntoView({ block: "nearest" }); }, [selectedId]);
+  const wrap = useRef<HTMLDivElement | null>(null);
+  // Scroll only the list box, so a pick in the spectrum or in 3D never moves the page.
+  useEffect(() => {
+    const box = wrap.current, row = selectedId ? document.getElementById(`hsqc-row-${selectedId}`) : null;
+    if (!box || !row) return;
+    const header = box.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+    const top = row.offsetTop - header, bottom = row.offsetTop + row.offsetHeight;
+    if (top < box.scrollTop) box.scrollTop = top;
+    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
+  }, [selectedId]);
   return <section className="hsqc-section" aria-labelledby="hsqc-peaks-heading">
     <header><h3 id="hsqc-peaks-heading">Peak list</h3><small>Every predicted peak; choose a row to find it in the spectrum and the structure.{prolines.length ? ` Prolines without a peak: ${prolines.map((item) => `P${item.position}`).join(", ")}.` : ""}{missing.length ? ` No shift predicted for ${missing.map((item) => `${item.residue}${item.position}`).join(", ")}.` : ""}</small></header>
-    <div className="hsqc-table-wrap">
+    <div className="hsqc-table-wrap" ref={wrap}>
       <table className="hsqc-peaks">
         <thead><tr><th scope="col">Peak</th><th scope="col">Residue</th><th scope="col" className="num">¹H (ppm)</th><th scope="col" className="num">¹⁵N (ppm)</th><th scope="col">Notes</th></tr></thead>
         <tbody>{peaks.map((peak) => <tr key={peak.id} id={`hsqc-row-${peak.id}`} className={peak.id === selectedId ? "selected" : ""} aria-selected={peak.id === selectedId}>
