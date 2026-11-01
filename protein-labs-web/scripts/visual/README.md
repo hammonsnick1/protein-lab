@@ -73,7 +73,9 @@ the wrong bundle got driven for several minutes. `ports.mjs` derives ports from
 `$PAPERCLIP_RUN_ID`, and `start()` refuses to run until `assertServedBundle`
 has compared the served `index.html` and every entry asset against the bytes in
 `desktop-dist/`. Pass `marker: "some string only my change contains"` (or
-`$VISUAL_BUNDLE_MARKER`) to also prove the build includes your change.
+`$VISUAL_BUNDLE_MARKER`) to also prove the build includes your change — the
+marker is looked for in every emitted chunk, not just the entry ones, so a
+change that lands only in a lazily imported chunk still counts.
 
 If a port is taken anyway, pick another — **never `pkill` by port pattern**,
 that kills the other agent's run.
@@ -112,10 +114,18 @@ with `class="table-scroll"` or a `data-h-scroll` attribute.
 content simply sits on top of its neighbour — which is how the dashboard's
 COMPLETE badge ends up over the job title. Read it with the screenshot.
 
+One overflow is reported once. A `visible` box's `scrollWidth` includes its
+descendants' overflow, so a single long label makes every wrapper up to the
+clipping box look equally guilty; only the innermost gets a line. `clip` yields
+only to a nested `clip`, so the box where content actually disappears is still
+named.
+
 Not measured at all: `svg`, `canvas`, `.molecular-webgl`, `.sr-only`, anything
 inside an `inert` subtree (the hidden face of a flip card, content behind a
-modal), and boxes under 2px in either dimension (hairlines, and the 1x1
-visually-hidden idiom, whose nowrap text always "overflows").
+modal) or inside an `opacity: 0` one (a panel mid-fade — opacity does not
+inherit, so its children each report `1` while being just as invisible), and
+boxes under 2px in either dimension (hairlines, and the 1x1 visually-hidden
+idiom, whose nowrap text always "overflows").
 
 ### The bug this replaced
 

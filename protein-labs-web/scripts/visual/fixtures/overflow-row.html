@@ -36,6 +36,15 @@
          "overflows". Real examples on the dashboard made the first draft of
          this audit report four phantom findings. */
       .visually-hidden { display: block; width: 1px; height: 1px; overflow: hidden; white-space: nowrap; }
+      /* A panel mid-fade. Opacity does not inherit, so its children each
+         report opacity 1 while being exactly as invisible as their parent. */
+      .fading { opacity: 0; width: 180px; }
+      .fading .clipped { width: 100%; overflow: hidden; white-space: nowrap; font-size: 13px; }
+      /* A chain of plain wrappers around one long label: with overflow-x
+         visible, every one of them inherits the same scrollWidth, so only the
+         innermost should get a line. */
+      .chain { width: 200px; overflow: hidden; font-size: 13px; }
+      .chain span { white-space: nowrap; }
       /* The back face of a flip card: laid out, rotated away, marked inert. */
       .flip-back { position: absolute; width: 180px; transform: rotateY(180deg); backface-visibility: hidden; }
       .flip-back .ok-row { white-space: nowrap; width: 100%; overflow: hidden; }
@@ -73,6 +82,12 @@
       <span class="visually-hidden">Space group table, announced to screen readers only</span>
       <div class="flip-back" inert>
         <div class="ok-row"><span>Hidden face with a row far too wide for its card</span></div>
+      </div>
+      <div class="fading">
+        <div class="clipped">A panel still faded out, whose row does not fit either</div>
+      </div>
+      <div class="chain">
+        <div class="chain-a"><div class="chain-b"><div class="chain-c"><span>One long nowrap label inside three plain wrappers</span></div></div></div>
       </div>
       <div class="table-scroll">
         <table>

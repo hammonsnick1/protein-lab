@@ -23,11 +23,18 @@ export const collectExpression = (
   const contentRight = (el) => { const r = el.getBoundingClientRect(); return r.left + parseFloat(style(el).borderLeftWidth || 0) + el.clientWidth; };
   const label = (el) => { const c = typeof el.className === 'string' ? el.className.trim().split(/\\s+/).filter(Boolean).slice(0, 3).join('.') : ''; return c ? el.tagName + '.' + c : el.tagName; };
 
-  const kept = [], index = new Map();
+  const kept = [], index = new Map(), faded = new Set();
   for (const el of [root, ...root.querySelectorAll('*')]) {
     if (kept.length >= ${maxElements}) break;
     const cs = style(el);
-    if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue;
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    // Opacity does not inherit, so a transparent panel's children each report
+    // opacity 1 while being just as invisible: skip the whole subtree. (The
+    // walk is in document order, so a faded ancestor is always seen first.)
+    if (cs.opacity === '0') { faded.add(el); continue; }
+    let transparent = false;
+    for (let p = el.parentElement; p && !transparent; p = p.parentElement) transparent = faded.has(p);
+    if (transparent) continue;
     const rect = el.getBoundingClientRect();
     // Anything a pixel thin is either a hairline rule or the visually-hidden
     // idiom (1x1 box, overflow hidden) that screen readers use; neither has

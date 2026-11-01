@@ -102,6 +102,12 @@ try {
   // the collector learned to skip them.
   expect("ignores the visually-hidden 1x1 idiom", !has(findings, /visually-hidden|screen readers/));
   expect("ignores the inert back face of a flip card", !has(findings, /flip-back|Hidden face/));
+  expect("ignores a subtree inside a faded-out panel", !has(findings, /fading|clipped|still faded/));
+
+  // One long label must not accuse every wrapper around it.
+  const chain = findings.filter((finding) => /DIV\.chain-[abc]/.test(finding));
+  expect(`blames only the innermost wrapper in a chain (got ${chain.length}: ${chain.join(" | ") || "none"})`, chain.length === 1 && /chain-c/.test(chain[0]));
+  expect("still names the box that does the clipping", has(findings, /^clip DIV\.chain \+/));
   expect("does not report a sideways-scrolling page", !has(findings, /^page scrollX/));
 
   // The control: the old gate saw none of it.

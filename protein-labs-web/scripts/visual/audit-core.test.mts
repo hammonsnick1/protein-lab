@@ -54,6 +54,37 @@ describe("content wider than its box", () => {
   it("ignores a collapsed box with no width to overflow", () => {
     expect(run([element({ scrollWidth: 260, clientWidth: 0 })])).toEqual([]);
   });
+
+  // A visible box's scrollWidth includes its descendants' overflow, so one
+  // long label used to accuse every wrapper between it and the clipping box.
+  it("blames only the innermost wrapper in a chain", () => {
+    const wrapper = (cls: string, parent: number | null) => element({ cls, parent, scrollWidth: 312, clientWidth: 200 });
+    expect(run([wrapper("chain-a", null), wrapper("chain-b", 0), wrapper("chain-c", 1)])).toEqual(["wide DIV.chain-c +112px"]);
+  });
+
+  it("still names the box that does the clipping", () => {
+    const findings = run([
+      element({ cls: "col", overflowX: "hidden", scrollWidth: 312, clientWidth: 200 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 312, clientWidth: 200 }),
+    ]);
+    expect(findings).toEqual(["clip DIV.col +112px", "wide DIV.inner +112px"]);
+  });
+
+  it("yields a clipping box to a nested clipping box", () => {
+    const findings = run([
+      element({ cls: "outer", overflowX: "hidden", scrollWidth: 312, clientWidth: 200 }),
+      element({ cls: "inner", overflowX: "hidden", parent: 0, scrollWidth: 312, clientWidth: 200 }),
+    ]);
+    expect(findings).toEqual(["clip DIV.inner +112px"]);
+  });
+
+  it("keeps a wrapper whose child overflows by less", () => {
+    const findings = run([
+      element({ cls: "outer", scrollWidth: 312, clientWidth: 200 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 204, clientWidth: 200 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.outer +112px", "wide DIV.inner +4px"]);
+  });
 });
 
 describe("unintended horizontal scrollbars", () => {

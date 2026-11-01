@@ -7,7 +7,7 @@
 // it away. This compares the served bytes against the files on disk, so a
 // stale or foreign server fails before any screenshot is taken.
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const sha = (data) => createHash("sha256").update(data).digest("hex").slice(0, 12);
@@ -15,6 +15,17 @@ const sha = (data) => createHash("sha256").update(data).digest("hex").slice(0, 1
 /** Entry assets Vite references from index.html. */
 const entryAssets = (html) =>
   [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+\.(?:js|css))"/g)].map((match) => match[1]);
+
+/** Everything else the build emitted: lazily imported chunks and their css. */
+const lazyChunks = async (dist) => {
+  let names = [];
+  try {
+    names = await readdir(join(dist, "assets"));
+  } catch {
+    return [];
+  }
+  return names.filter((name) => /\.(js|css)$/.test(name)).map((name) => join(dist, "assets", name));
+};
 
 const fetchBytes = async (url) => {
   let response;
@@ -76,9 +87,24 @@ export async function assertServedBundle({ base, dist, marker }) {
     if (marker && overWire.includes(marker)) markerSeen = true;
   }
 
+  // The entry chunk is only part of the build: a change can land solely in a
+  // lazy chunk (molstar-stage-*.js and friends), which index.html never names.
+  // Identity is still proven — Vite content-hashes those filenames and the
+  // entry chunk imports them by name — so it is only the marker that has to
+  // look wider.
+  let searched = assets.length;
+  if (marker && !markerSeen) {
+    const entryNames = new Set(assets.map((asset) => asset.split("/").pop()));
+    for (const file of await lazyChunks(dist)) {
+      if (entryNames.has(file.split("/").pop())) continue;
+      searched += 1;
+      if ((await readFile(file)).includes(marker)) { markerSeen = true; break; }
+    }
+  }
+
   if (marker && !markerSeen) {
     throw new Error(
-      `Visual harness: none of the served assets (${assets.join(", ")}) contain the marker ${JSON.stringify(marker)}. ` +
+      `Visual harness: none of the ${searched} file(s) in ${dist}/assets contain the marker ${JSON.stringify(marker)}. ` +
         `The served bundle predates your change — rebuild before screenshotting.`,
     );
   }
