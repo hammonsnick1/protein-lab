@@ -8,8 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { citationScope, type CitationScope } from "@/lib/citations";
 import {
   componentRolesFor, crystallizationProfile, DROP_CITATIONS, DROP_METHODS, GUIDANCE_CITATIONS, ligandAdvice, membraneNote,
-  PRIORITY_LABELS, startingConcentration, suggestScreens, tailoringNotes, VAPOUR_DIFFUSION_STEPS,
-  type ComponentRole, type CrystallizationProfile, type DropMethodId, type ScreenPriority, type ScreenSuggestion,
+  PRIORITY_LABELS, PUBLISHED_STARTING_RANGE, READ_THE_FIRST_PLATE, startingConcentration, suggestScreens, tailoringNotes, VAPOUR_DIFFUSION_STEPS,
+  type ComponentRole, type CrystallizationProfile, type DropMethodId, type Reason, type ScreenPriority, type ScreenSuggestion,
 } from "@/lib/crystallization-guidance";
 import { formatTypicalRange } from "@/lib/buffer-component-library";
 import type { ProteinFacts } from "@/lib/protein-facts";
@@ -70,12 +70,12 @@ function ScreensTab({ profile, refs }: { profile: CrystallizationProfile; refs: 
         {concentration.startMicromolar !== null && <span>≈ {formatMicromolar(concentration.startMicromolar)}</span>}
         <span>try {concentration.low}–{concentration.high} mg/mL</span>
       </p>
-      <ul className="xtal-reasons">{concentration.why.map((line) => <li key={line}>{line}</li>)}</ul>
-      <p className="xtal-note">Most soluble proteins are first screened at 5–20 mg/mL<CiteGroup scope={refs} ids={concentration.citations}/>. Read the first plate after a day: if most drops hold heavy brown precipitate, halve the concentration; if nearly all stay clear, concentrate further<CiteGroup scope={refs} ids={["dessau2011"]}/>.</p>
+      <Reasons items={concentration.why} refs={refs}/>
+      <p className="xtal-note"><Sourced reason={PUBLISHED_STARTING_RANGE} refs={refs}/> <Sourced reason={READ_THE_FIRST_PLATE} refs={refs}/></p>
       {ligand && <p className="xtal-callout"><Info aria-hidden="true"/><span>{ligand}<CiteGroup scope={refs} ids={["hassell2007"]}/></span></p>}
     </section>
 
-    <PdbConditions profile={profile}/>
+    <PdbConditions profile={profile} refs={refs}/>
 
     <section className="xtal-card" aria-labelledby="xtal-screens">
       <h4 id="xtal-screens">Suggested commercial screens</h4>
@@ -94,16 +94,24 @@ function ScreenCard({ item, refs }: { item: ScreenSuggestion; refs: CitationScop
       <span>{screen.vendor} · {screen.conditions}</span>
     </div>
     <p>{screen.samples}<CiteGroup scope={refs} ids={screen.citations}/></p>
-    <ul className="xtal-reasons" aria-label={`Why ${screen.name}`}>{item.why.map((line) => <li key={line}>{line}</li>)}</ul>
-    {screen.sourcingNote && <p className="xtal-sourcing"><AlertTriangle aria-hidden="true"/>{screen.sourcingNote}</p>}
+    <Reasons items={item.why} refs={refs} label={`Why ${screen.name}`}/>
   </li>;
 }
 
-function PdbConditions({ profile }: { profile: CrystallizationProfile }) {
+/** A line of advice with its sources; the app's own rules of thumb cite `pl-crystal-rules`, so every line carries a marker. */
+function Sourced({ reason, refs }: { reason: Reason; refs: CitationScope }) {
+  return <>{reason.text}<CiteGroup scope={refs} ids={reason.citations}/></>;
+}
+
+function Reasons({ items, refs, label }: { items: Reason[]; refs: CitationScope; label?: string }) {
+  return <ul className="xtal-reasons" aria-label={label}>{items.map((reason) => <li key={reason.text}><Sourced reason={reason} refs={refs}/></li>)}</ul>;
+}
+
+function PdbConditions({ profile, refs }: { profile: CrystallizationProfile; refs: CitationScope }) {
   if (!profile.pdbConditions.length) return null;
   return <section className="xtal-card" aria-labelledby="xtal-pdb">
     <h4 id="xtal-pdb">Conditions that already worked for related structures</h4>
-    <p className="xtal-note">Copied from the crystal-growth records of the PDB entries Sequence research found. A close relative's condition is the strongest starting point there is: set it up alongside the screens.</p>
+    <p className="xtal-note">Copied from the crystal-growth records of the PDB entries Sequence research found<CiteGroup scope={refs} ids={["pdb2000"]}/>. A close relative's condition is a strong starting point: set it up alongside the screens<CiteGroup scope={refs} ids={["pl-crystal-rules"]}/>.</p>
     <div className="xtal-table-wrap">
       <table className="xtal-table">
         <thead><tr><th scope="col">PDB</th><th scope="col">Identity</th><th scope="col">Method</th><th scope="col">pH</th><th scope="col">Temp. (K)</th><th scope="col">Condition as deposited</th></tr></thead>
@@ -156,15 +164,15 @@ function RoleCard({ role, applies, membrane, refs }: { role: ComponentRole; appl
         <thead><tr><th scope="col">Example</th><th scope="col">Typical in crystallization</th><th scope="col">How it works</th></tr></thead>
         <tbody>{role.examples.map((example) => <tr key={example.name}>
           <th scope="row">{example.name}</th>
-          <td>{example.typical}</td>
+          <td>{example.typical}<CiteGroup scope={refs} ids={example.citations}/></td>
           <td>
             {example.how}
-            {example.library && <small className="xtal-library">From the buffer library: purification range {formatTypicalRange(example.library)}. {example.library.cautions[0]}</small>}
+            {example.library && <small className="xtal-library">From the buffer library: purification range {formatTypicalRange(example.library.entry)}. {example.library.entry.cautions[0]}<CiteGroup scope={refs} ids={example.library.citations}/></small>}
           </td>
         </tr>)}</tbody>
       </table>
     </div>}
-    {applies && <p className="xtal-tip"><b>Tip:</b> {role.tip}</p>}
+    {applies && <p className="xtal-tip"><b>Tip:</b> <Sourced reason={role.tip} refs={refs}/></p>}
   </section>;
 }
 
