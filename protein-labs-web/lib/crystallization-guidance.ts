@@ -11,10 +11,13 @@
 import { aminoAcid, waterMassDa } from "./amino-acids.ts";
 import { bufferComponentLibrary, type BufferLibraryEntry } from "./buffer-component-library.ts";
 import type { CitationId } from "./citations.ts";
-import type { CrystalGrowth, ProteinFacts } from "./protein-facts.ts";
+import type { CrystalGrowth, ProteinFacts, ReviewAnswer } from "./protein-facts.ts";
 
 /** "unknown" means no earlier job answered the question; the panel says which job would. */
 export type Answer = "yes" | "no" | "uncertain" | "unknown";
+
+/** One line of advice and the sources behind it; `pl-crystal-rules` marks the app's own rule of thumb. */
+export type Reason = { text: string; citations: CitationId[] };
 
 export type CrystallizationProfile = {
   residues: number | null;
@@ -24,6 +27,11 @@ export type CrystallizationProfile = {
   disorder: Answer;
   /** Cofactor or ligand names recorded by earlier jobs. */
   ligands: string[];
+  /**
+   * Whether anyone has answered the cofactor question: `missing` carries the
+   * protein-facts reason, so an empty `ligands` is never read as "none".
+   */
+  cofactorReview: { status: "missing"; reason: string } | { status: "known"; required: ReviewAnswer };
   /** Crystal-growth rows deposited with related PDB entries. */
   pdbConditions: { pdbId: string; identity: number | null; growth: CrystalGrowth }[];
 };
@@ -37,6 +45,9 @@ export function crystallizationProfile(facts: ProteinFacts): CrystallizationProf
     membrane: answer(facts.membrane),
     disorder: answer(facts.disorder),
     ligands: facts.cofactors.status === "known" ? facts.cofactors.value.cofactors.map((item) => item.name) : [],
+    cofactorReview: facts.cofactors.status === "known"
+      ? { status: "known", required: facts.cofactors.value.required }
+      : { status: "missing", reason: facts.cofactors.reason },
     pdbConditions: facts.pdbHits.status === "known"
       ? facts.pdbHits.value.hits.flatMap((hit) => hit.crystalGrowth
         .filter((growth) => growth.details || growth.pH !== null)
@@ -54,7 +65,10 @@ export function averageMassKDa(sequence: string): number {
 
 // ── Commercial screens ──────────────────────────────────────────────────────
 
-export type ScreenId = "jcsg-plus" | "index" | "peg-ion" | "pegs-ii" | "morpheus" | "memgold";
+// Only screens whose formulation can be read from the vendor or the design
+// paper are listed. NeXtal's PEGs II Suite was dropped (HOM-360): no current
+// vendor or formulation page could be found, and PEG/Ion covers the follow-up.
+export type ScreenId = "jcsg-plus" | "index" | "peg-ion" | "morpheus" | "memgold";
 
 export type Screen = {
   id: ScreenId;
@@ -65,8 +79,6 @@ export type Screen = {
   /** What chemical space it samples, in plain language. */
   samples: string;
   citations: CitationId[];
-  /** Shown when the vendor's formulation page could not be checked for this build. */
-  sourcingNote?: string;
 };
 
 export const SCREENS: Record<ScreenId, Screen> = {
@@ -78,22 +90,16 @@ export const SCREENS: Record<ScreenId, Screen> = {
   index: {
     id: "index", name: "Index", vendor: "Hampton Research", conditions: "96 conditions",
     samples: "Grid, sparse-matrix and incomplete-factorial ideas in one plate, in zones: salts versus pH, neutralized organic acids, high salt with low polymer, high polymer with low salt, and PEG with salt versus pH.",
-    citations: ["hampton-index", "jancarik1991"],
+    citations: ["hampton-index", "hampton-index-guide", "jancarik1991"],
   },
   "peg-ion": {
     id: "peg-ion", name: "PEG/Ion and PEG/Ion 2", vendor: "Hampton Research", conditions: "48 + 48 conditions",
     samples: "PEG 3,350 paired with 48 different salts (PEG/Ion), then with titrated organic acids from pH 3.7 to 8.8 (PEG/Ion 2). It asks one question cleanly: which ion and pH help PEG crystallize this protein.",
     citations: ["hampton-pegion"],
   },
-  "pegs-ii": {
-    id: "pegs-ii", name: "PEGs II Suite", vendor: "NeXtal suites (QIAGEN; check the current supplier)", conditions: "96 conditions",
-    samples: "PEGs of several chain lengths with salts and buffers. A second PEG-focused plate once the first screens show that PEG conditions give hits or near-misses.",
-    citations: ["mcpherson2014"],
-    sourcingNote: "The vendor formulation page could not be checked for this build; confirm the formulation with your supplier.",
-  },
   morpheus: {
     id: "morpheus", name: "Morpheus", vendor: "Molecular Dimensions", conditions: "96 conditions",
-    samples: "Precipitant mixes that are also cryoprotectants, crossed with additive mixes (small molecules, ions, ligand-like compounds) and three buffer systems. Crystals can go straight into liquid nitrogen.",
+    samples: "Precipitant mixes that are also cryoprotectants, crossed with additive mixes (small molecules, ions, ligand-like compounds) and three buffer systems.",
     citations: ["gorrec2009", "md-morpheus"],
   },
   memgold: {
@@ -105,7 +111,7 @@ export const SCREENS: Record<ScreenId, Screen> = {
 
 export type ScreenPriority = "first" | "next" | "later";
 
-export type ScreenSuggestion = { screen: Screen; priority: ScreenPriority; why: string[] };
+export type ScreenSuggestion = { screen: Screen; priority: ScreenPriority; why: Reason[] };
 
 export const PRIORITY_LABELS: Record<ScreenPriority, string> = {
   first: "Start here",
@@ -118,39 +124,36 @@ export function suggestScreens(profile: CrystallizationProfile): ScreenSuggestio
   const membrane = profile.membrane === "yes";
   const ligand = profile.ligands.length > 0;
   const list: ScreenSuggestion[] = [];
-  const add = (id: ScreenId, priority: ScreenPriority, why: string[]) => list.push({ screen: SCREENS[id], priority, why });
+  const add = (id: ScreenId, priority: ScreenPriority, why: Reason[]) => list.push({ screen: SCREENS[id], priority, why });
 
   if (membrane) {
     add("memgold", "first", [
-      "Earlier jobs mark this as a membrane protein. MemGold's conditions come from the membrane-protein structures that actually crystallized, so its hit rate for detergent-solubilized proteins is far higher than a soluble-protein screen's.",
-      "Its PEGs and low salt tolerate the detergent micelle that surrounds the protein.",
+      { text: "Earlier jobs mark this as a membrane protein. MemGold's conditions were distilled from the conditions that crystallized deposited α-helical membrane proteins, rather than soluble ones.", citations: ["newstead2008", "parker2012"] },
+      { text: "Those conditions are mostly PEGs, often of low molecular weight, with modest salt: chemistry that tolerates the detergent micelle around the protein.", citations: ["newstead2008"] },
     ]);
   }
   add("jcsg-plus", membrane ? "next" : "first", [
-    "A broad sparse-matrix screen: one plate samples the conditions that most often worked for other proteins, which is the efficient first question when nothing is known yet.",
-    ...(membrane ? ["Use it after MemGold, keeping detergent above its CMC in the protein sample."] : []),
+    { text: "A broad sparse-matrix screen: one plate samples the conditions that most often worked for other proteins, which is the efficient first question when nothing is known yet.", citations: ["jancarik1991", "newman2005"] },
+    ...(membrane ? [{ text: "Use it after MemGold, keeping detergent above its CMC in the protein sample.", citations: ["pl-crystal-rules", "seddon2004"] } satisfies Reason] : []),
   ]);
   add("index", membrane ? "later" : "first", [
-    "Covers salts, organic acids and PEG–salt mixtures in labelled zones, so even precipitate and clear drops tell you which reagent class and pH this protein tolerates.",
-    "Pairs well with JCSG-plus: the two overlap little.",
+    { text: "Covers salts, organic acids and PEG–salt mixtures in labelled zones, so even precipitate and clear drops tell you which reagent class and pH this protein tolerates.", citations: ["hampton-index-guide"] },
+    { text: "A second broad plate to run alongside JCSG-plus in the first round.", citations: ["pl-crystal-rules"] },
   ]);
   add("morpheus", ligand ? "first" : "next", [
-    "Every condition is already cryo-protected, so crystals can be frozen for data collection without a separate soak.",
-    ...(ligand
-      ? [`Earlier jobs record ${listNames(profile.ligands)}. Morpheus additive mixes include small molecules and ions that can stabilize ligand-bound states; add your own ligand to the protein first as well.`]
-      : ["Its additive mixes add chemistry that the classic screens do not sample."]),
+    { text: "Its precipitant mixes double as cryoprotectants, so crystals can often be frozen straight from the drop; the best cryoprotectant concentration still depends on the sample.", citations: ["gorrec2009"] },
+    ligand
+      ? { text: `Earlier jobs record ${listNames(profile.ligands)}. Morpheus additive mixes include small molecules and ions that can stabilize ligand-bound states; add your own ligand to the protein first as well.`, citations: ["gorrec2009", "hassell2007"] }
+      : { text: "Its additive mixes add chemistry that the classic screens do not sample.", citations: ["gorrec2009"] },
   ]);
   add("peg-ion", "next", [
-    "PEG is the most common precipitant among published crystal structures. When first-round hits come from PEG conditions, this screen finds the best salt and pH to go with it.",
+    { text: "PEG is the most popular precipitant, and PEG with salt is the most reported system for growing single crystals. When first-round hits come from PEG conditions, this screen finds the best salt and pH to go with it.", citations: ["mcpherson2014", "hampton-index-guide", "hampton-pegion"] },
   ]);
   if (profile.membrane === "unknown" || profile.membrane === "uncertain") {
     add("memgold", "later", [
-      "Only if this turns out to be a membrane protein — then it moves to the top of the list and every drop needs detergent. No earlier job has settled that yet.",
+      { text: "Only if this turns out to be a membrane protein — then it moves to the top of the list and every drop needs detergent. No earlier job has settled that yet.", citations: ["newstead2008"] },
     ]);
   }
-  add("pegs-ii", "later", [
-    "A further PEG-focused plate for proteins that only give near-misses (microcrystals, spherulites) in PEG conditions.",
-  ]);
   const order: ScreenPriority[] = ["first", "next", "later"];
   return list.sort((a, b) => order.indexOf(a.priority) - order.indexOf(b.priority));
 }
@@ -172,46 +175,56 @@ export type ConcentrationAdvice = {
   start: number;
   /** The same start as molarity, µM; null without a mass. */
   startMicromolar: number | null;
-  why: string[];
-  citations: CitationId[];
+  why: Reason[];
 };
 
 /**
- * A starting range by size, then adjusted for membrane proteins. The range is
- * a rule of thumb: the pre-crystallization test in the panel says how to move
- * it once the first drops have been read.
+ * Published first-screen ranges, for the line under the tailored range:
+ * Hampton recommends 5–25 mg/mL for Index; the reviews span 2–100 mg/mL.
+ */
+export const PUBLISHED_STARTING_RANGE: Reason = {
+  text: "Vendors recommend about 5–25 mg/mL for a first screen; reviews report working concentrations from about 2 up to 50–100 mg/mL, depending on the protein.",
+  citations: ["hampton-index-guide", "dessau2011", "mcpherson2014"],
+};
+
+/**
+ * A starting range by size, then adjusted for membrane proteins. The size
+ * cut-offs and ranges are the app's own rule of thumb inside the published
+ * span above; the panel says how to move them once the first drops are read.
  */
 export function startingConcentration(profile: CrystallizationProfile): ConcentrationAdvice {
   const mass = profile.massKDa;
   let low = 5, high = 20, start = 10;
-  const why: string[] = [];
+  const why: Reason[] = [];
+  const rule: CitationId[] = ["pl-crystal-rules"];
   if (mass === null) {
-    why.push("Without a saved sequence the size is unknown, so this is the general starting range for soluble proteins.");
+    why.push({ text: "Without a saved sequence the size is unknown, so this is the app's general starting range for soluble proteins.", citations: rule });
   } else if (mass < 15) {
     low = 10; high = 30; start = 20;
-    why.push(`At about ${mass.toFixed(1)} kDa this is a small protein. Small proteins need a higher mass concentration to reach the same number of molecules per drop, so start at the top of the usual range.`);
+    why.push({ text: `At about ${mass.toFixed(1)} kDa this is a small protein (under 15 kDa in this app's rule of thumb). Small proteins need a higher mass concentration to reach the same number of molecules per drop, so start at the top of the usual range.`, citations: rule });
   } else if (mass > 100) {
     low = 2; high = 10; start = 5;
-    why.push(`At about ${mass.toFixed(0)} kDa this is a large protein. Each molecule carries more mass, so fewer mg/mL already gives enough molecules; large proteins also aggregate sooner when over-concentrated.`);
+    why.push({ text: `At about ${mass.toFixed(0)} kDa this is a large protein (over 100 kDa in this app's rule of thumb). Each molecule carries more mass, so fewer mg/mL already gives enough molecules; large proteins also aggregate sooner when over-concentrated.`, citations: rule });
   } else {
-    why.push(`At about ${mass.toFixed(1)} kDa this is a mid-sized protein, so start in the middle of the usual range.`);
+    why.push({ text: `At about ${mass.toFixed(1)} kDa this is a mid-sized protein, so start in the middle of the usual range.`, citations: rule });
   }
   if (profile.membrane === "yes") {
     high = Math.min(high, 15);
     start = Math.min(start, 10);
     low = Math.min(low, start);
-    why.push("Membrane proteins are concentrated together with their detergent. Concentrators also pile up empty micelles, which can phase-separate in the drop, so stay at the lower end and use a concentrator cut-off above the micelle size.");
+    why.push({ text: "Membrane proteins are concentrated together with their detergent, and concentrators also pile up empty micelles. This app therefore caps the range at 15 mg/mL and suggests a concentrator cut-off above the micelle size.", citations: ["pl-crystal-rules"] });
   }
   if (profile.disorder === "yes") {
-    why.push("Disordered regions are recorded. Flexible stretches rarely pack into a lattice; trimming them from the construct often helps more than any change of concentration.");
+    why.push({ text: "Disordered regions are recorded. Flexible stretches rarely pack into a lattice; trimming them from the construct often helps more than any change of concentration.", citations: ["dale2003"] });
   }
-  return {
-    low, high, start,
-    startMicromolar: mass === null ? null : start / mass * 1000,
-    why,
-    citations: profile.membrane === "yes" ? ["mcpherson2014", "dessau2011", "newstead2008"] : ["mcpherson2014", "dessau2011"],
-  };
+  return { low, high, start, startMicromolar: mass === null ? null : start / mass * 1000, why };
 }
+
+/** How to move the concentration after reading the first plate (Hampton's Index guide). */
+export const READ_THE_FIRST_PLATE: Reason = {
+  text: "Read the plate once the drops have equilibrated. If most drops (Hampton suggests more than 70 of 96) hold precipitate and no crystals, halve the protein concentration and repeat the screen; if most stay clear, double it.",
+  citations: ["hampton-index-guide", "dessau2011"],
+};
 
 /** One sentence per fact that shaped the advice, for the panel's "What this is based on" list. */
 export function tailoringNotes(profile: CrystallizationProfile): { label: string; value: string; citations: CitationId[] }[] {
@@ -219,8 +232,17 @@ export function tailoringNotes(profile: CrystallizationProfile): { label: string
   notes.push({ label: "Size", value: profile.massKDa === null ? "Unknown — no sequence saved" : `${profile.residues} residues · ≈${profile.massKDa.toFixed(1)} kDa (average mass)`, citations: [] });
   notes.push({ label: "Membrane protein", value: answerText(profile.membrane), citations: [] });
   notes.push({ label: "Disordered regions", value: answerText(profile.disorder), citations: profile.disorder === "yes" ? ["dale2003"] : [] });
-  notes.push({ label: "Ligands and cofactors", value: profile.ligands.length ? listNames(profile.ligands) : "None recorded", citations: profile.ligands.length ? ["hassell2007"] : [] });
+  notes.push({ label: "Ligands and cofactors", value: ligandText(profile), citations: profile.ligands.length ? ["hassell2007"] : [] });
   return notes;
+}
+
+/** Never "none" unless someone said so: a missing cofactor fact names the job that would answer it. */
+function ligandText(profile: CrystallizationProfile) {
+  if (profile.ligands.length) return listNames(profile.ligands);
+  const review = profile.cofactorReview;
+  if (review.status === "missing") return `Not answered yet — ${review.reason}`;
+  if (review.required === "No") return "None needed, by the scientist's review";
+  return "A cofactor is needed but none is named yet; name it in Protein readiness check";
 }
 
 /** Ligand advice: co-crystallize or soak. */
@@ -247,8 +269,10 @@ export type CrystallizationExample = {
   typical: string;
   /** How this example does the job, in one or two sentences. */
   how: string;
-  /** Library entry reused for the purification-side caution, when the component is in the buffer library. */
-  library?: BufferLibraryEntry;
+  /** Sources for the typical amount; `pl-crystal-rules` where it is the app's own rule of thumb. */
+  citations: CitationId[];
+  /** Buffer-library entry reused for the purification-side caution, with the library's references for it. */
+  library?: { entry: BufferLibraryEntry; citations: CitationId[] };
 };
 
 export type ComponentRole = {
@@ -258,70 +282,79 @@ export type ComponentRole = {
   why: string;
   examples: CrystallizationExample[];
   /** Practical rule, e.g. what to keep out of the protein stock. */
-  tip: string;
+  tip: Reason;
   citations: CitationId[];
   /** True when it only applies to some proteins; the panel says which. */
   onlyFor?: "membrane";
 };
 
-function library(id: string): BufferLibraryEntry | undefined {
-  return bufferComponentLibrary.find((item) => item.id === id);
+/**
+ * A buffer-library entry and the registry ids of the references it records
+ * (`buffer-component-library.ts` keeps them as text). Handbooks without a
+ * registry entry are left out.
+ */
+function library(id: string, citations: CitationId[]): CrystallizationExample["library"] {
+  const entry = bufferComponentLibrary.find((item) => item.id === id);
+  return entry && { entry, citations };
 }
 
+// Typical amounts read from Hampton's Index formulation (hampton-index-guide)
+// unless another source is named; ranges the sources do not give are marked
+// as the app's own rule of thumb.
 export const COMPONENT_ROLES: ComponentRole[] = [
   {
     id: "precipitant", label: "Precipitant",
     why: "A crystal only grows from a supersaturated solution: one holding more protein than it can keep dissolved at equilibrium. Purified protein is deliberately kept soluble, so on its own it never gets there. The precipitant lowers the protein's solubility, pushing the drop into the supersaturated zone of the phase diagram where molecules start to leave solution — ideally in an ordered lattice rather than as amorphous precipitate.",
     examples: [
-      { name: "PEG 3,350 / 4,000 / 8,000", typical: "5–30 % (w/v)", how: "Long polymers take up volume the protein cannot enter (excluded volume), so protein molecules are crowded together. The most used precipitant in deposited structures." },
-      { name: "Ammonium sulfate", typical: "0.5–3 M", how: "Salting out: at high concentration the ions bind the water the protein surface needs, so proteins associate with each other instead." },
-      { name: "MPD (2-methyl-2,4-pentanediol)", typical: "10–50 % (v/v)", how: "A small organic that lowers the solvent's dielectric constant and competes for surface water; also a cryoprotectant." },
+      { name: "PEG 3,350 / 4,000 / 8,000", typical: "≈4–18 % (w/v) for most proteins; screens reach 25–30 %", how: "Long polymers take up volume the protein cannot enter (excluded volume), so protein molecules are crowded together. The most popular precipitant.", citations: ["mcpherson2014", "hampton-index-guide"] },
+      { name: "Ammonium sulfate", typical: "1–3.5 M as the main precipitant", how: "Salting out: at high concentration the ions bind the water the protein surface needs, so proteins associate with each other instead.", citations: ["hampton-index-guide"] },
+      { name: "MPD (2-methyl-2,4-pentanediol)", typical: "≈45 % (v/v) as the main precipitant; 1–5 % as an additive", how: "A small organic that lowers the solvent's dielectric constant and competes for surface water; also used in cryoprotecting precipitant mixes.", citations: ["hampton-index-guide", "mcpherson2014", "gorrec2009"] },
     ],
-    tip: "Screens vary the precipitant most of all. Precipitate in many drops means too much protein or precipitant; clear drops mean too little.",
+    tip: { text: "Screens vary the precipitant most of all. Precipitate in many drops means supersaturation is too high (too much protein or precipitant); clear drops mean it is too low.", citations: ["hampton-index-guide", "dessau2011"] },
     citations: ["mcpherson2014", "asherie2004", "chayen2008"],
   },
   {
     id: "buffer", label: "Buffer and pH",
     why: "pH sets the charge on every surface side chain. Crystal contacts are a handful of weak surface interactions, so a shift of half a pH unit can make or break them. Proteins are often least soluble near their isoelectric point, which some conditions exploit.",
     examples: [
-      { name: "HEPES", typical: "0.1 M in screens, pH 7–8", how: "Neutral-pH Good's buffer.", library: library("hepes") },
-      { name: "Tris-HCl", typical: "0.1 M in screens, pH 7.5–9", how: "Mildly basic conditions; temperature-sensitive pH.", library: library("tris") },
-      { name: "MES", typical: "0.1 M in screens, pH 5.5–6.7", how: "Slightly acidic conditions.", library: library("mes") },
-      { name: "Sodium acetate / citrate", typical: "0.1 M, pH 4–5.5", how: "Acidic conditions that standard purification buffers never reach." },
+      { name: "HEPES", typical: "0.1 M in screens, pH 7.0–7.5", how: "Neutral-pH Good's buffer.", citations: ["hampton-index-guide", "good1966"], library: library("hepes", ["good1966", "graslund2008"]) },
+      { name: "Tris-HCl", typical: "0.1 M in screens, pH 8.5", how: "Mildly basic conditions; temperature-sensitive pH.", citations: ["hampton-index-guide"], library: library("tris", ["good1966"]) },
+      { name: "MES", typical: "0.1 M in screens; buffers pH 5.5–6.7", how: "Slightly acidic conditions.", citations: ["good1966", "pl-crystal-rules"], library: library("mes", ["good1966"]) },
+      { name: "Sodium acetate / citric acid", typical: "0.1 M in screens, pH 3.5–4.5", how: "Acidic conditions that standard purification buffers never reach.", citations: ["hampton-index-guide"] },
     ],
-    tip: "Keep the protein's own buffer weak (about 10–25 mM) so the screen's 0.1 M buffer decides the drop's pH.",
+    tip: { text: "Keep the protein's own buffer weak (about 10–25 mM) so the screen's 0.1 M buffer decides the drop's pH.", citations: ["hampton-index-guide"] },
     citations: ["mcpherson2014", "dessau2011"],
   },
   {
     id: "salt", label: "Salt",
     why: "At low concentration salt screens charges and keeps proteins soluble (salting in); at high concentration it becomes a precipitant (salting out). Specific ions can also bridge two molecules and form a crystal contact, which is why screens like PEG/Ion test dozens of different salts.",
     examples: [
-      { name: "NaCl", typical: "≤150 mM in the protein stock; 0.2–2 M in screens", how: "General ionic strength.", library: library("nacl") },
-      { name: "Divalent salts (MgCl₂, CaCl₂, Zn acetate)", typical: "0.01–0.2 M", how: "Can bridge acidic side chains between neighbouring molecules.", library: library("mgcl2") },
+      { name: "NaCl", typical: "≤150 mM in the protein stock; 0.1–3 M in screens", how: "General ionic strength.", citations: ["pl-crystal-rules", "hampton-index-guide"], library: library("nacl", ["graslund2008", "bondos2003"]) },
+      { name: "Divalent salts (MgCl₂, CaCl₂, Zn acetate)", typical: "0.005–0.2 M in screens", how: "Can bridge acidic side chains between neighbouring molecules.", citations: ["hampton-index-guide"] },
     ],
-    tip: "Exchange the protein into low salt before screening; a high-salt stock shifts every condition on the plate.",
+    tip: { text: "Dialyse the protein into dilute buffer with little salt before screening; a high-salt stock shifts every condition on the plate.", citations: ["hampton-index-guide"] },
     citations: ["mcpherson2014", "hampton-pegion"],
   },
   {
     id: "additive", label: "Additives",
     why: "Small molecules that do not crystallize the protein alone but tip a near-miss into a crystal: they stabilize one conformation, fill a gap in a crystal contact, or slow nucleation so fewer, larger crystals grow.",
     examples: [
-      { name: "Ligands, cofactors and metal ions", typical: "Several-fold molar excess over the protein", how: "Lock the protein into one conformation, so molecules are more alike and pack better." },
-      { name: "TCEP", typical: "0.5–2 mM", how: "Keeps cysteines reduced so mixed disulfides do not make the sample heterogeneous.", library: library("tcep") },
-      { name: "Glycerol", typical: "≤5 % (v/v) in the stock", how: "Stabilizes the protein but raises its solubility, so it works against the precipitant.", library: library("glycerol") },
+      { name: "Ligands, cofactors and metal ions", typical: "Molar excess over the protein", how: "Lock the protein into one conformation, so molecules are more alike and pack better.", citations: ["hassell2007"] },
+      { name: "TCEP", typical: "0.5–2 mM", how: "Keeps cysteines reduced so mixed disulfides do not make the sample heterogeneous.", citations: ["pl-crystal-rules"], library: library("tcep", ["getz1999", "graslund2008"]) },
+      { name: "Glycerol", typical: "≤5 % (v/v) in the stock", how: "Stabilizes the protein but raises its solubility, so it works against the precipitant.", citations: ["pl-crystal-rules"], library: library("glycerol", ["vagenende2009", "bondos2003", "graslund2008"]) },
     ],
-    tip: "Screen additives after you have a hit; they optimize, they rarely create one.",
+    tip: { text: "Additive screens are usually run to improve a hit; mixes of small molecules can also give crystals where the plain screen gave none.", citations: ["pl-crystal-rules", "mcpherson2006"] },
     citations: ["mcpherson2006", "hassell2007"],
   },
   {
     id: "detergent", label: "Detergent", onlyFor: "membrane",
     why: "A membrane protein's transmembrane surface is greasy. Outside the lipid bilayer, detergent molecules form a micelle belt around it; without that belt the protein unfolds and aggregates. In the drop, the detergent must stay above its critical micelle concentration (CMC), and the micelle itself becomes part of every crystal contact.",
     examples: [
-      { name: "DDM", typical: "A few × CMC (≈0.02–0.05 % w/v)", how: "Gentle maltoside, the most common choice for extraction and purification.", library: library("ddm") },
-      { name: "LDAO, OG, C₈E₄", typical: "Above CMC", how: "Smaller micelles that leave more protein surface free for crystal contacts; harsher on fragile proteins." },
-      { name: "Lipidic cubic phase (monoolein)", typical: "≈60 % lipid : 40 % protein", how: "Puts the protein back into a lipid bilayer (in meso); the route for many GPCR and transporter structures." },
+      { name: "DDM", typical: "A few × CMC (≈0.02–0.05 % w/v)", how: "Gentle maltoside, the most common choice for extraction and purification.", citations: ["seddon2004", "newstead2008"], library: library("ddm", ["seddon2004"]) },
+      { name: "LDAO, OG, C₈E₄", typical: "Above CMC", how: "Smaller micelles that leave more protein surface free for crystal contacts; harsher on fragile proteins.", citations: ["newstead2008", "parker2012"] },
+      { name: "Lipidic cubic phase (monoolein)", typical: "3 parts lipid : 2 parts protein (60 : 40)", how: "Puts the protein back into a lipid bilayer (in meso); the route for many GPCR and transporter structures.", citations: ["caffrey2015"] },
     ],
-    tip: "Exchange to the detergent you want to crystallize in during the last purification step, not in the drop.",
+    tip: { text: "Exchange to the detergent you want to crystallize in during the last purification step, not in the drop.", citations: ["pl-crystal-rules"] },
     citations: ["newstead2008", "parker2012", "caffrey2015"],
   },
 ];
@@ -379,7 +412,8 @@ export const DROP_CITATIONS: CitationId[] = ["dessau2011", "chayen2008", "mcpher
 
 /** Every citation the panel can show, in reading order, for one reference list. */
 export const GUIDANCE_CITATIONS: CitationId[] = [
-  "mcpherson2014", "dessau2011", "chayen2008", "asherie2004", "jancarik1991",
+  "mcpherson2014", "dessau2011", "hampton-index-guide", "pl-crystal-rules", "pdb2000", "chayen2008", "asherie2004", "jancarik1991",
   "newman2005", "md-jcsg-plus", "hampton-index", "hampton-pegion", "gorrec2009", "md-morpheus",
   "newstead2008", "parker2012", "md-memgold", "caffrey2015", "dale2003", "hassell2007", "mcpherson2006",
+  "good1966", "graslund2008", "bondos2003", "getz1999", "vagenende2009", "seddon2004",
 ];
