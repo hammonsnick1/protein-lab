@@ -70,7 +70,6 @@ describe("compile workflow timeline", () => {
     check("pass", "Cleavage site recorded"),
     check("warning", "TEV reducing environment is not documented"),
     check("warning", "Buffer pH is close to predicted pI 6.10"),
-    check("error", "Buffers are missing"),
   ];
 
   it("shows every check exactly once and none before the first step", () => {
@@ -91,7 +90,16 @@ describe("compile workflow timeline", () => {
     assert.deepEqual(into("Subtractive cleanup").findings.map((item) => item.title), ["Subtractive cleanup selection saved"]);
     assert.deepEqual(into("SEC polish and final buffer exchange").findings.map((item) => item.title), ["SEC polishing selection saved"]);
     assert.deepEqual(into("Quality control and storage").findings, []);
-    assert.deepEqual(timeline.general.map((item) => item.title), ["Buffers are missing", "Buffer pH is close to predicted pI 6.10"]);
+    assert.deepEqual(timeline.general.map((item) => item.title), ["Buffer pH is close to predicted pI 6.10"]);
+  });
+
+  it("puts a job's unsaved buffers on that job's hand-off and says where to save them", () => {
+    const missing = [check("warning", "Affinity capture is missing its saved wash and elution buffers"), check("warning", "Subtractive cleanup is missing its saved cleavage buffer")];
+    const timeline = compileTimeline(missing, cleaved);
+    const into = (title: string) => timeline.steps.find((item) => item.title === title)!.into!;
+    assert.deepEqual(into("Equilibrate and capture").findings.map((item) => item.title), ["Affinity capture is missing its saved wash and elution buffers"]);
+    assert.deepEqual(into("Subtractive cleanup").findings.map((item) => item.title), ["Subtractive cleanup is missing its saved cleavage buffer"]);
+    assert.equal(fixFor(missing[0]), "Open Affinity capture, check the buffer its composer shows, and save the job.");
   });
 
   it("rates each hand-off by its worst check", () => {
