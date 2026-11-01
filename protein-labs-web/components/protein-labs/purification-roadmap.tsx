@@ -245,7 +245,7 @@ function newComponent(type: ComponentType): RoadmapComponent { const defaults: R
 function newRoadmapStep(templateId: string): RoadmapStep {
   const template = stepTemplates.find((value) => value.id === templateId) ?? stepTemplates[0];
   const jobs: Record<string, [string, string]> = {
-    expression: ["transformation-expression", "Transformation and Expression"], lysis: ["purification-lysis", "Cell lysis job"], affinity: ["purification-affinity", "Affinity capture job"], cleavage: ["purification-subtractive", "Subtractive-cleanup job"], cleanup: ["purification-subtractive", "Subtractive-cleanup job"], sec: ["purification-sec", "SEC polishing job"], qc: ["purification-sec", "SEC polishing job"], storage: ["purification-sec", "SEC polishing job"],
+    expression: ["transformation-expression", "Transformation and Expression"], lysis: ["purification-lysis", "Cell lysis job"], affinity: ["purification-affinity", "Affinity capture job"], cleavage: ["purification-subtractive", "Protease choice · Subtractive cleanup job"], cleanup: ["purification-subtractive", "Subtractive cleanup job"], sec: ["purification-sec", "SEC polishing job"], qc: ["purification-sec", "Storage buffer · SEC polishing job"], storage: ["purification-sec", "Storage buffer · SEC polishing job"],
   };
   const linked = jobs[templateId] ?? ["", "User-defined step"];
   return { id: `added-${crypto.randomUUID()}`, title: template.title, instruction: template.instruction, record: template.record, ready: false, jobId: linked[0], jobLabel: linked[1], planDetails: [], components: [], custom: true };
