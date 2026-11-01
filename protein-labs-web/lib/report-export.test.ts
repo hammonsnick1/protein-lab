@@ -119,4 +119,11 @@ describe("report exports", () => {
     assert.ok(!html.includes("Expressed construct"));
     assert.ok(markdown.includes("- **Tag:** His6"));
   });
+
+  it("puts the structure picture on the cover only when it is a PNG", () => {
+    const png = "data:image/png;base64,iVBORw0KGgo=";
+    assert.ok(reportHtml(reference, "Report", "Summary", [], [], png).includes(`<img src="${png}"`));
+    assert.ok(!reportHtml(reference, "Report", "Summary", [], []).includes("cover-structure\"><img"));
+    assert.ok(!reportHtml(reference, "Report", "Summary", [], [], "javascript:alert(1)").includes("javascript:"));
+  });
 });

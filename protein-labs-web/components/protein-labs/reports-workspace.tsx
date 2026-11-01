@@ -18,6 +18,7 @@ import { headingIgnoresKey, singleLineHeading } from "@/lib/report-headings";
 import type { ConstructNumbers } from "@/lib/construct-numbers";
 import { useConstructNumbers } from "@/lib/use-construct-numbers";
 import { StructureViewer } from "@/components/protein-labs/structure-viewer";
+import { structureSnapshot, type StructureSnapshot } from "@/components/protein-labs/structure-snapshot";
 
 /**
  * Publication-quality purification report.
@@ -62,6 +63,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
   const [picker, setPicker] = useState<string>("");
   const [geometry, setGeometry] = useState<JsonObject | null>(null);
   const [vectors, setVectors] = useState<JsonObject[]>([]);
+  const [picture, setPicture] = useState<StructurePicture>({ state: "none" });
   const hydrated = useRef(false);
 
   const analyses = useMemo(
@@ -89,6 +91,20 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
       .catch(() => undefined);
     return () => { active = false; };
   }, [bundle.protein.id, bundle.alphaFoldModels]);
+
+  // A live 3D canvas neither prints nor exports, so the model is drawn once
+  // into a PNG that the cover, page 1, and the HTML export all reuse.
+  useEffect(() => {
+    const structureText = typeof geometry?.structureText === "string" ? geometry.structureText : "";
+    if (!structureText) return;
+    let active = true;
+    const modelId = String(bundle.alphaFoldModels[0]?.modelId ?? "");
+    queueMicrotask(() => { if (active) setPicture({ state: "loading" }); });
+    structureSnapshot(`${bundle.protein.id}:${modelId}:${structureText.length}`, structureText, bundle.protein.id)
+      .then((snapshot) => { if (active) setPicture({ state: "ready", snapshot }); })
+      .catch((reason: unknown) => { if (active) setPicture({ state: "error", message: reason instanceof Error ? reason.message : String(reason) }); });
+    return () => { active = false; };
+  }, [geometry, bundle.protein.id, bundle.alphaFoldModels]);
 
   useEffect(() => {
     let active = true;
@@ -153,7 +169,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
   }
 
   function exportHtml() {
-    const blob = new Blob([reportHtml(bundle, title, summary, pages, analyses, numbers)], { type: "text/html" });
+    const blob = new Blob([reportHtml(bundle, title, summary, pages, analyses, picture.state === "ready" ? picture.snapshot.dataUri : null, numbers)], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url; link.download = `${safeName(title)}.html`; link.click();
@@ -209,6 +225,10 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
           <span className="report-kicker">PROTEIN LAB · PURIFICATION RECORD</span>
           <HeadingField className="report-title-input" value={title} onChange={(value) => { setTitle(value); setDirty(true); }}/>
           <textarea className="report-summary-input" rows={2} value={summary} onChange={(event) => { setSummary(event.target.value); setDirty(true); }}/>
+          {picture.state !== "none" && <figure className="report-cover-structure">
+            <StructurePictureFrame picture={picture} name={bundle.protein.name}/>
+            {picture.state === "ready" && <figcaption>{modelCaption(bundle, geometry, picture)}</figcaption>}
+          </figure>}
           <dl className="report-title-facts">
             <div><dt>Construct</dt><dd>{bundle.protein.name}</dd></div>
             <div><dt>Length</dt><dd>{bundle.protein.sequence.length} aa</dd></div>
@@ -234,7 +254,7 @@ export function ReportsWorkspace({ bundle, onChanged }: { bundle: ProteinBundle;
               <span className="report-page-number">{pageNumber ? `Page ${pageNumber}` : "Not included"}</span>
             </header>
 
-            {page.templateId === "properties" && <PropertiesBlocks bundle={bundle} numbers={numbers} geometry={geometry}/>}
+            {page.templateId === "properties" && <PropertiesBlocks bundle={bundle} numbers={numbers} geometry={geometry} picture={picture}/>}
             {page.templateId === "vector" && <VectorBlocks bundle={bundle} vectors={vectors}/>}
 
             {page.showFacts && facts.length > 0 && <section className="report-facts">
@@ -303,18 +323,39 @@ function HeadingField({ className, value, placeholder, onChange }: { className: 
   return <textarea className={className} rows={1} value={value} placeholder={placeholder} onKeyDown={(event) => { if (headingIgnoresKey(event.key)) event.preventDefault(); }} onChange={(event) => onChange(singleLineHeading(event.target.value))}/>;
 }
 
-function PropertiesBlocks({ bundle, numbers, geometry }: { bundle: ProteinBundle; numbers: ConstructNumbers; geometry: JsonObject | null }) {
-  const { properties, construct, constructFacts } = proteinProperties(bundle, numbers);
+type StructurePicture =
+  | { state: "none" }
+  | { state: "loading" }
+  | { state: "ready"; snapshot: StructureSnapshot }
+  | { state: "error"; message: string };
+
+function StructurePictureFrame({ picture, name }: { picture: StructurePicture; name: string }) {
+  if (picture.state === "ready") return <img src={picture.snapshot.dataUri} alt={`Cartoon of the ${name} model${picture.snapshot.confidence ? ", coloured by pLDDT" : ""}`}/>;
+  if (picture.state === "loading") return <p className="report-missing" role="status"><LoaderCircle className="spin"/> Drawing the structure…</p>;
+  if (picture.state === "error") return <p className="report-missing">The structure picture could not be drawn. {picture.message}</p>;
+  return null;
+}
+
+function modelCaption(bundle: ProteinBundle, geometry: JsonObject | null, picture: StructurePicture) {
   const model = bundle.alphaFoldModels[0];
+  if (!model) return "Predicted structure";
+  const confidence = picture.state === "ready" && picture.snapshot.confidence;
+  return `${text(model.name, text(model.modelId))} · ${text(model.source, "AlphaFold")}${geometry?.meanPlddt ? ` · mean pLDDT ${text(geometry.meanPlddt)}` : ""}${confidence ? " · coloured by pLDDT: blue confident, orange low" : ""}`;
+}
+
+function PropertiesBlocks({ bundle, numbers, geometry, picture }: { bundle: ProteinBundle; numbers: ConstructNumbers; geometry: JsonObject | null; picture: StructurePicture }) {
+  const { properties, construct, constructFacts } = proteinProperties(bundle, numbers);
   return <>
     <section className="report-properties">
       <div className="report-structure">
         <div className="report-structure-frame">
-          {geometry
+          {picture.state !== "none"
+            ? <StructurePictureFrame picture={picture} name={bundle.protein.name}/>
+            : geometry
             ? <StructureViewer geometry={geometry} compact paletteKey={bundle.protein.id} label=""/>
             : <p className="report-missing">No predicted structure has been saved. Run the Structure Viewer job to include it.</p>}
         </div>
-        <small>{model ? `${text(model.name, text(model.modelId))} · ${text(model.source, "AlphaFold")}${geometry?.meanPlddt ? ` · mean pLDDT ${text(geometry.meanPlddt)}` : ""}` : "Predicted structure"}</small>
+        <small>{modelCaption(bundle, geometry, picture)}</small>
       </div>
       <dl className="report-property-grid">
         {properties.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
