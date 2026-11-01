@@ -274,7 +274,7 @@ function knownInfluence(key: FactKey, facts: ProteinFacts): KnownInfluence {
     case "pdbHits": {
       const fact = facts.pdbHits;
       if (fact.status !== "known") break;
-      if (fact.value.searchedWithoutHits) return { effect: "neutral", finding: "The PDB search found no related structures.", advice: "There is no known crystal form to copy, so start from a broad sparse-matrix screen.", citations: ["pdb2000"] };
+      if (fact.value.searchedWithoutHits) return { effect: "neutral", finding: "The PDB search found no related structures.", advice: "There is no known crystal form to copy, so start from a broad sparse-matrix screen.", citations: ["pdb2000", "jancarik1991"] };
       const crystal = fact.value.hits.filter((hit) => /x-ray|crystal/i.test(hit.method ?? ""));
       const grown = crystal.filter((hit) => hit.crystalGrowth.length).length;
       const groups = new Set(crystal.map((hit) => spaceGroupSymbol(hit.spaceGroup)).filter(Boolean));

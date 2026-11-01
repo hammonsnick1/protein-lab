@@ -67,16 +67,6 @@ const entries = [
     source: "Proteins 93:1747–1766", doi: "10.1002/prot.26844",
   },
   {
-    id: "dale2003", kind: "article", authors: "Dale GE, Oefner C, D’Arcy A", year: "2003",
-    title: "The protein as a variable in protein crystallization",
-    source: "J Struct Biol 142:88–97", doi: "10.1016/S1047-8477(03)00041-8",
-  },
-  {
-    id: "caffrey2015", kind: "article", name: "Lipidic cubic phase (in meso)", authors: "Caffrey M", year: "2015",
-    title: "A comprehensive review of the lipid cubic phase or in meso method for crystallizing membrane and soluble proteins and complexes",
-    source: "Acta Crystallogr F 71:3–18", doi: "10.1107/S2053230X14026843",
-  },
-  {
     id: "pdb2000", kind: "database", name: "Protein Data Bank", authors: "Berman HM, et al.", year: "2000",
     title: "The Protein Data Bank",
     source: "Nucleic Acids Res 28:235–242", doi: "10.1093/nar/28.1.235", url: "https://www.rcsb.org",

@@ -12,6 +12,7 @@ import {
   CRYSTALLIZE_APP_TYPE, crystallizeConfig, factInfluences, formatProbability, INFLUENCE_LABELS, PREDICTOR_CITATIONS, readAssessment, scoreView,
   type Assessment, type FactInfluence, type InfluenceEffect, type Predictor, type ScoreView, type SpaceGroupSuggestion,
 } from "@/lib/crystallization";
+import { CrystallizationGuidance } from "@/components/protein-labs/crystallization-guidance";
 import { CRYSTALLIZE_PANELS, panelState, selectedSpaceGroup, withPanelState, type CrystallizePanelId, type CrystallizePanelProps } from "@/lib/crystallize-panels";
 
 const JOB_LABEL = "Crystallize your protein";
@@ -20,10 +21,11 @@ const JOB_LABEL = "Crystallize your protein";
 // space-group, lattice and practical-guidance panels register here.
 const panelComponents: Partial<Record<CrystallizePanelId, ComponentType<CrystallizePanelProps>>> = {
   propensity: PropensityPanel,
+  guidance: ({ facts }) => <CrystallizationGuidance facts={facts}/>,
 };
 
 // Every source this job cites, in first-use order down the page.
-const REFERENCES: CitationId[] = ["shoebill2026", "mall2025plm", "mascl2025", "ita2016", "pdb2000", "uniprot2023", "caffrey2015", "dale2003", "consurf2023", "alphafold2021"];
+const REFERENCES: CitationId[] = ["shoebill2026", "mall2025plm", "mascl2025", "ita2016", "pdb2000", "uniprot2023", "caffrey2015", "dale2003", "consurf2023", "alphafold2021", "jancarik1991"];
 
 type Load = { state: "loading" } | { state: "ready"; assessment: Assessment } | { state: "error"; message: string };
 
