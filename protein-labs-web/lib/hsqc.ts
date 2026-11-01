@@ -119,10 +119,17 @@ function regionPositions(regions: StructureRegion[], keep: (region: StructureReg
  * every mapped residue, so a predictor's per-residue output (numbered from the
  * file) lands on the right construct position. The engine has no renumbering
  * step for predictor output yet, so any other structure goes as sequence only.
+ *
+ * The engine also keys predictor output by residue number alone, not by chain.
+ * So a modelled residue outside the construct (a partner protein's chain, or a
+ * tag) whose author number is also a construct position, 1 to `length`, would
+ * overwrite the construct's shift there; such a file is refused too.
  */
-export function numberingMatchesConstruct(mapping: MappedResidue[] | undefined): boolean {
-  const rows = (mapping ?? []).filter((row) => typeof row.constructPosition === "number" && row.authSeqId != null && row.modeled !== false);
-  return rows.length > 0 && rows.every((row) => String(row.authSeqId) === String(row.constructPosition) && !row.insertionCode);
+export function numberingMatchesConstruct(mapping: MappedResidue[] | undefined, length: number): boolean {
+  const modelled = (mapping ?? []).filter((row) => row.authSeqId != null && row.modeled !== false);
+  const rows = modelled.filter((row) => typeof row.constructPosition === "number");
+  const collides = modelled.some((row) => typeof row.constructPosition !== "number" && /^\d+$/.test(String(row.authSeqId)) && Number(row.authSeqId) >= 1 && Number(row.authSeqId) <= length);
+  return rows.length > 0 && !collides && rows.every((row) => String(row.authSeqId) === String(row.constructPosition) && !row.insertionCode);
 }
 
 export type HsqcInputs = {
@@ -139,7 +146,7 @@ export function hsqcInputs(sequence: string, detail: StructureDetail | null, reg
   const ligandAdjacent = regionPositions(regions, (region) => region.type === "ligand_binding_site" && !isAdditive(region));
   const request: JsonObject = { sequence, predictor: "auto", disorderedPositions: disordered, ligandAdjacentPositions: ligandAdjacent };
   if (!detail?.structureText) return { request, disordered, ligandAdjacent, structure: { sent: false, reason: "none" } };
-  if (!numberingMatchesConstruct(detail.mapping?.residues)) return { request, disordered, ligandAdjacent, structure: { sent: false, reason: "numbering" } };
+  if (!numberingMatchesConstruct(detail.mapping?.residues, sequence.length)) return { request, disordered, ligandAdjacent, structure: { sent: false, reason: "numbering" } };
   return { request: { ...request, structureText: detail.structureText, structureFormat: detail.format ?? "cif" }, disordered, ligandAdjacent, structure: { sent: true } };
 }
 
@@ -184,13 +191,15 @@ export function hsqcPeaks(prediction: HsqcPrediction): { peaks: Peak[]; noPeak: 
     if (row.h === null || row.n === null) { noPeak.push({ position: row.position, residue: row.residue, reason: "no_shift" }); continue; }
     peaks.push({ id: `bb-${row.position}`, position: row.position, residue: row.residue, label: `${row.residue}${row.position}`, h: row.h, n: row.n, kind: "backbone", description: `${threeLetter(row.residue)} ${row.position} backbone N–H`, disordered: row.flags.disordered, ligandAdjacent: row.flags.ligandAdjacent, crowded: row.flags.collapsedAmideRegion });
   }
-  // Side-chain NH: pair each predicted H with the N of the same group.
+  // Side-chain NH: pair each predicted H with the N of the same group. The
+  // engine repeats side-chain rows once per chain of a homo-oligomer; keep the first.
   const byResidue = new Map(prediction.residues.map((row) => [row.position, row]));
+  const sideChains = [...new Map(prediction.sideChains.map((item) => [`${item.position}:${item.atom}`, item] as const).reverse()).values()].reverse();
   for (const [nAtom, group] of Object.entries(SIDE_CHAIN_NH)) {
-    for (const nRow of prediction.sideChains.filter((item) => item.atom === nAtom)) {
+    for (const nRow of sideChains.filter((item) => item.atom === nAtom)) {
       const residue = byResidue.get(nRow.position);
       if (residue && residue.residue !== group.residue) continue;
-      for (const hRow of prediction.sideChains.filter((item) => item.position === nRow.position && group.hAtoms.includes(item.atom))) {
+      for (const hRow of sideChains.filter((item) => item.position === nRow.position && group.hAtoms.includes(item.atom))) {
         const suffix = H_ATOM_SUFFIX[hRow.atom];
         peaks.push({ id: `sc-${nRow.position}-${hRow.atom}`, position: nRow.position, residue: group.residue, label: `${group.residue}${nRow.position}${suffix}`, h: hRow.shift, n: nRow.shift, kind: "sidechain", description: `${threeLetter(group.residue)} ${nRow.position} side-chain ${group.name}`, disordered: residue?.flags.disordered ?? false, ligandAdjacent: residue?.flags.ligandAdjacent ?? false, crowded: false });
       }

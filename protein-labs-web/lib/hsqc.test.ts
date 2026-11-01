@@ -62,6 +62,14 @@ describe("peaks", () => {
     assert.equal(peaks.find((peak) => peak.label === "G6")?.disordered, true);
   });
 
+  it("keeps one side-chain peak per atom when the engine repeats rows for each chain", () => {
+    const body = structuredClone(structureAware);
+    body.sideChainPeaks = [...(body.sideChainPeaks as JsonObject[]), { sequencePosition: 4, atomType: "NE1", chemicalShiftPpm: 131 }, { sequencePosition: 4, atomType: "HE1", chemicalShiftPpm: 10.5 }];
+    const side = hsqcPeaks(readHsqcPrediction(body)).peaks.filter((peak) => peak.kind === "sidechain");
+    assert.equal(new Set(side.map((peak) => peak.id)).size, side.length);
+    assert.deepEqual(side.filter((peak) => peak.label === "W4ε1").map((peak) => [peak.h, peak.n]), [[10.12, 129.6]]);
+  });
+
   it("pairs side-chain N and H into Trp indole and Asn amide peaks", () => {
     const { peaks } = hsqcPeaks(readHsqcPrediction(structureAware));
     const side = peaks.filter((peak) => peak.kind === "sidechain").map((peak) => [peak.label, peak.h, peak.n]);
@@ -88,7 +96,19 @@ describe("request inputs", () => {
     const shifted = hsqcInputs("MKPWNGS", detail([1, 2, 3].map((position) => row(position, "A", position, String(position + 20)))), []);
     assert.equal(shifted.request.structureText, undefined);
     assert.deepEqual(shifted.structure, { sent: false, reason: "numbering" });
-    assert.equal(numberingMatchesConstruct([]), false);
+    assert.equal(numberingMatchesConstruct([], 7), false);
+  });
+
+  it("refuses a complex whose partner chain reuses construct numbers, since the engine keys shifts by number alone", () => {
+    const construct = [1, 2, 3].map((position) => row(position, "A", position, String(position)));
+    const partner = (auth: string): MappedResidue => ({ ...row(0, "B", 1, auth), constructPosition: null, uniprotPosition: null });
+    assert.equal(numberingMatchesConstruct([...construct, partner("2")], 3), false);
+    assert.equal(numberingMatchesConstruct([...construct, partner("201")], 3), true);
+    assert.equal(numberingMatchesConstruct([...construct, { ...partner("2"), modeled: false }], 3), true);
+    // A second copy of the construct (homo-dimer) numbers the same and is fine.
+    assert.equal(numberingMatchesConstruct([...construct, ...[1, 2, 3].map((position) => row(position, "B", position, String(position)))], 3), true);
+    const complex = hsqcInputs("MKP", detail([...construct, partner("1")]), []);
+    assert.deepEqual(complex.structure, { sent: false, reason: "numbering" });
   });
 });
 
