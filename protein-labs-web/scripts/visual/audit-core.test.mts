@@ -99,7 +99,19 @@ describe("content wider than its box", () => {
     expect(findings).toEqual(["wide DIV.chips +20px", "wide SPAN.chip-a +73px"]);
   });
 
-  it("falls back to the overflow amount when a snapshot has no reach", () => {
+  // Equal reach only says the child holds the far edge. Here the last chip is
+  // pushed right by a sibling, so its box pokes out of the row: it reaches
+  // the same point while overflowing by less, and the row — too wide on box
+  // geometry alone, 150 + 80 in 200 — must keep its line.
+  it("keeps a row whose last chip is pushed out of it", () => {
+    const findings = run([
+      element({ tag: "DIV", cls: "row", scrollWidth: 292, clientWidth: 200, right: 200, reach: 292 }),
+      element({ tag: "SPAN", cls: "last", parent: 0, scrollWidth: 142, clientWidth: 80, right: 230, reach: 292 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.row +92px", "wide SPAN.last +62px"]);
+  });
+
+  it("estimates reach from the right edge when a snapshot has none", () => {
     const findings = run([
       element({ cls: "outer", scrollWidth: 312, clientWidth: 200, right: 200 }),
       element({ cls: "inner", parent: 0, scrollWidth: 312, clientWidth: 200, right: 200 }),

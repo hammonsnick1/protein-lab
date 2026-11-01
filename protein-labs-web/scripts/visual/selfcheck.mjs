@@ -112,6 +112,10 @@ try {
   // is too wide, and must not suppress it. The row is the HOM-332 shape.
   expect("keeps a too-wide row whose chip spills further inside it", has(findings, /^wide DIV\.chips \+\d+px/));
   expect("still blames the chip itself", has(findings, /^wide SPAN\.chip-a \+\d+px/));
+  // The mirror: the chip reaches exactly as far as the row, so reach alone
+  // would hide a row that is too wide before any text is measured.
+  expect("keeps a row whose last chip is pushed out of it", has(findings, /^wide DIV\.pushed \+\d+px/));
+  expect("still blames the pushed-out chip", has(findings, /^wide SPAN\.push-last \+\d+px/));
   expect("does not report a sideways-scrolling page", !has(findings, /^page scrollX/));
 
   // The control: the old gate saw none of it.

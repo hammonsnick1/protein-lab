@@ -55,6 +55,14 @@
       .chip-a { width: 80px; }
       .chip-gap { width: 40px; }
       .chip-b { width: 100px; }
+      /* And the mirror of it: a row whose last chip is pushed out by a
+         sibling *and* spills its own text. The chip reaches the same point
+         as the row, so reach alone would hide the row — which is 30px too
+         wide on box geometry alone, before any text. */
+      .pushed { width: 200px; display: flex; font-size: 13px; }
+      .pushed span { flex: none; white-space: nowrap; }
+      .push-spacer { width: 150px; }
+      .push-last { width: 80px; }
       /* The back face of a flip card: laid out, rotated away, marked inert. */
       .flip-back { position: absolute; width: 180px; transform: rotateY(180deg); backface-visibility: hidden; }
       .flip-back .ok-row { white-space: nowrap; width: 100%; overflow: hidden; }
@@ -116,6 +124,13 @@
       <div class="wrap">
         <div class="chips">
           <span class="chip-a">A much longer chip label</span><span class="chip-gap"></span><span class="chip-b">B fits</span>
+        </div>
+      </div>
+      <!-- …and a chip pushed out of its row by a sibling, which reaches the
+           same point as the row without being the whole reason for it. -->
+      <div class="wrap">
+        <div class="pushed">
+          <span class="push-spacer"></span><span class="push-last">A much longer chip label</span>
         </div>
       </div>
     </section>
