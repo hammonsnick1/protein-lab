@@ -1183,6 +1183,7 @@ class ProteinPlanner:
             "chromatogram-studio": "Chromatogram analysis",
             "gel-analysis": "Gel purity analysis",
             "crystallization": "Crystallization assessment",
+            "hsqc-prediction": "HSQC spectrum prediction",
         }
         if app_type not in labels:
             raise ValueError("Select a valid Protein Labs application")
