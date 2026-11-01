@@ -16857,8 +16857,6 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
 .xtal-screen-head strong { font-size: 14px; }
 .xtal-screen-head > span:last-child { color: var(--muted-foreground); font-size: 12px; }
 .xtal-screen .xtal-reasons { margin-bottom: 0; }
-.xtal-sourcing { display: flex; gap: 6px; align-items: center; margin: 6px 0 0 !important; font-size: 12px; color: var(--muted-foreground); }
-.xtal-sourcing svg { width: 14px; height: 14px; color: #df9a36; flex: none; }
 .xtal-table-wrap { overflow-x: auto; margin-bottom: 8px; }
 .xtal-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; }
 .xtal-table th, .xtal-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }

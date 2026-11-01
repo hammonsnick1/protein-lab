@@ -12,7 +12,8 @@
 // - Code that is actually copied or bundled also gets a full section in
 //   `protein-labs/THIRD_PARTY_NOTICES.md` (see the template at its top).
 
-export type CitationKind = "article" | "book" | "software" | "database" | "website";
+/** `rule`: a rule of thumb the app chose itself; the entry links to the code that applies it. */
+export type CitationKind = "article" | "book" | "software" | "database" | "website" | "rule";
 
 /**
  * How far the licence lets the app reuse the code, as opposed to citing it:
@@ -296,6 +297,48 @@ const entries = [
     id: "md-memgold", kind: "website", name: "MemGold • MemGold2", authors: "Molecular Dimensions", year: "2026",
     title: "MemGold and MemGold2: product pages and formulation sheets",
     source: "Molecular Dimensions (Calibre Scientific)", url: "https://moleculardimensions.com/en/category/memgold",
+  },
+  {
+    id: "hampton-index-guide", kind: "website", name: "Index user guide", authors: "Hampton Research", year: "2026",
+    title: "Index (HR2-144) user guide: sample preparation, interpreting results and reagent formulation",
+    source: "Hampton Research, Aliso Viejo, CA", url: "https://hamptonresearch.com/uploads/support_materials/HR2-144_docs.pdf",
+  },
+  {
+    id: "pl-crystal-rules", kind: "rule", name: "Protein Labs rule of thumb", authors: "Protein Labs", year: "2026",
+    title: "Starting points chosen for the Crystallize job, not taken from one published source; adjust them from what the first plate shows",
+    source: "protein-labs-web/lib/crystallization-guidance.ts", url: "https://github.com/hammonsnick1/protein-lab/blob/main/protein-labs-web/lib/crystallization-guidance.ts",
+  },
+  // Buffer components (lib/buffer-component-library.ts): the references behind
+  // the purification cautions the Crystallize guidance reuses.
+  {
+    id: "good1966", kind: "article", name: "Good's buffers", authors: "Good NE, Winget GD, Winter W, Connolly TN, Izawa S, Singh RMM", year: "1966",
+    title: "Hydrogen ion buffers for biological research",
+    source: "Biochemistry 5:467–477", doi: "10.1021/bi00866a011",
+  },
+  {
+    id: "graslund2008", kind: "article", authors: "Structural Genomics Consortium, et al.", year: "2008",
+    title: "Protein production and purification",
+    source: "Nat Methods 5:135–146", doi: "10.1038/nmeth.f.202",
+  },
+  {
+    id: "bondos2003", kind: "article", authors: "Bondos SE, Bicknell A", year: "2003",
+    title: "Detection and prevention of protein aggregation before, during, and after purification",
+    source: "Anal Biochem 316:223–231", doi: "10.1016/S0003-2697(03)00059-9",
+  },
+  {
+    id: "getz1999", kind: "article", authors: "Getz EB, Xiao M, Chakrabarty T, Cooke R, Selvin PR", year: "1999",
+    title: "A comparison between the sulfhydryl reductants tris(2-carboxyethyl)phosphine and dithiothreitol for use in protein biochemistry",
+    source: "Anal Biochem 273:73–80", doi: "10.1006/abio.1999.4203",
+  },
+  {
+    id: "vagenende2009", kind: "article", authors: "Vagenende V, Yap MGS, Trout BL", year: "2009",
+    title: "Mechanisms of protein stabilization and prevention of protein aggregation by glycerol",
+    source: "Biochemistry 48:11084–11096", doi: "10.1021/bi900649t",
+  },
+  {
+    id: "seddon2004", kind: "article", authors: "Seddon AM, Curnow P, Booth PJ", year: "2004",
+    title: "Membrane proteins, lipids and detergents: not just a soap opera",
+    source: "Biochim Biophys Acta 1666:105–117", doi: "10.1016/j.bbamem.2004.04.011",
   },
   // Crystal packing (HOM-311): contact rules and the PDB learning examples.
   {
