@@ -120,6 +120,77 @@ def test_approximate_uniprot_sequence_matching_saves_alignment_metrics(tmp_path)
     assert saved["queryCoverage"] == 1.0
 
 
+# Human carbonic anhydrase II, UniProtKB P00918 (CC BY 4.0), as stored by the
+# HOM-302 seed project. Its single cysteine is UniProt Cys205 (Cys206 in the
+# CA I-based numbering used in the CA II literature).
+CA2_P00918 = (
+    "MSHHWGYGKHNGPEHWHKDFPIAKGERQSPVDIDTHTAKYDPSLKPLSVSYDQATSLRILNNGHAFNVE"
+    "FDDSQDKAVLKGGPLDGTYRLIQFHFHWGSLDGQGSEHTVDKKKYAAELHLVHWNTKYGDFGKAVQQPD"
+    "GLAVLGIFLKVGSAKPGLQKVVDVLDSIKTKGKSADFTNFDPRGLLPESLDYWTYPGSLTTPPLLECVT"
+    "WIVLKEPISVSSEQVLKFRKLNFNGEGEPEELMVDNWRPAQPLKNRQIKASFK"
+)
+
+
+def test_uniprot_saved_by_accession_gets_local_identity(tmp_path):
+    """HOM-390: an exact match saved by accession showed 0.0 % identity."""
+    assert CA2_P00918[204] == "C"
+    c206s = CA2_P00918[:204] + "S" + CA2_P00918[205:]
+
+    class FakeUniProt:
+        def fetch(self, accession):
+            return {"accession": accession, "sequence": {"value": CA2_P00918}}
+
+    service = planner(tmp_path)
+    service.uniprot = FakeUniProt()
+    exact = service.create_protein({"sequence": CA2_P00918})["protein"]["id"]
+    mutant = service.create_protein({"sequence": c206s})["protein"]["id"]
+    tagged = service.create_protein({"sequence": "MHHHHHH" + CA2_P00918})["protein"]["id"]
+    for protein_id in (exact, mutant, tagged):
+        service.fetch_uniprot(protein_id, "P00918")
+
+    def saved(protein_id):
+        return service.database.get_bundle(protein_id)["uniprotMatches"][0]
+
+    assert saved(exact)["identity"] == 1.0
+    assert saved(exact)["queryCoverage"] == 1.0
+    assert saved(mutant)["identity"] == 259 / 260
+    assert saved(mutant)["queryCoverage"] == 1.0
+    # The His6 tag has no UniProt counterpart: 260 of 267 construct residues
+    # align, all of them identical.
+    assert saved(tagged)["identity"] == 1.0
+    assert saved(tagged)["queryCoverage"] == 260 / 267
+
+
+def test_bundle_backfills_legacy_null_uniprot_metrics(tmp_path):
+    service = planner(tmp_path)
+    protein_id = service.create_protein({"sequence": CA2_P00918})["protein"]["id"]
+    # Rows saved before HOM-390 have no metrics; one record carries no sequence.
+    service.database.save_uniprot_match(
+        protein_id, {"accession": "P00918", "sequence": {"value": CA2_P00918}},
+        "UniProt accession",
+    )
+    service.database.save_uniprot_match(
+        protein_id, {"accession": "Q00000"}, "UniProt search"
+    )
+    service.database.save_uniprot_match(
+        protein_id, {"accession": "P00915", "sequence": {"value": CA2_P00918}},
+        "NCBI BLAST", {"identity": 0.6, "queryCoverage": 0.98},
+    )
+
+    matches = service.database.get_bundle(protein_id)["uniprotMatches"]
+
+    assert [match["accession"] for match in matches] == ["P00918", "P00915", "Q00000"]
+    assert matches[0]["identity"] == 1.0
+    assert matches[0]["queryCoverage"] == 1.0
+    assert matches[0]["metricsSource"] == "local global alignment"
+    # Stored metrics are never recomputed.
+    assert matches[1]["identity"] == 0.6
+    assert "metricsSource" not in matches[1]
+    # Nothing to align against: stays "not calculated", never 0.
+    assert matches[2]["identity"] is None
+    assert matches[2]["queryCoverage"] is None
+
+
 def test_uniprot_one_click_uses_rcsb_cross_reference_when_direct_search_is_empty(tmp_path):
     sequence = "GAMDNQRQYPRTPLKCRIRISHPLFGELMAQTRDLSDTGVYVKHPDLTQLPTGSVVTGQVQDLPIDAPILQMEVVRVDAEGVGLRFLSEA"
 

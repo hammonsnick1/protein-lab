@@ -138,7 +138,7 @@ The workflow page has two sections of numbered jobs, then the **Purify your prot
 | Section | Jobs |
 | --- | --- |
 | **Understanding your protein** | Protein sequence, Protein properties, Sequence research, Choose reference match, Structure Viewer, Protein readiness check |
-| **Plan your purification** | Affinity capture, Subtractive cleanup, SEC polishing, Choose expression system, Expression vector design, Cell lysis, Compile workflow |
+| **Plan your purification** | Choose expression system, Expression vector design, Affinity capture, Subtractive cleanup, Cell lysis, SEC polishing, Compile workflow |
 | **Purify your protein** (from the roadmap) | Transformation and Expression, Chromatogram Studio, Gel densitometry |
 | **Crystallize your protein** | Crystallize your protein |
 | **Study it by NMR** | Predict the ¹H–¹⁵N HSQC spectrum |
@@ -148,7 +148,7 @@ The workflow page has two sections of numbered jobs, then the **Purify your prot
 
 The bench jobs in **Purify your protein** open from the steps of the [purification roadmap](#purification-roadmap), or with **Next job** after **Compile workflow**.
 
-You plan the purification from the protein outwards. First choose the capture, cleanup and polishing steps. Then choose the host, the vector and the lysis that feed them.
+You plan the purification in bench order. Choose the host first, then the vector that carries the construct. Then choose the affinity capture, the tag cleavage and cleanup, the lysis and the SEC polishing. Each job can use what the jobs before it saved: the vector is designed for the host, the affinity tag is checked against the vector, and the lysis buffer starts from the capture column's binding buffer.
 
 ### Work in a job
 
@@ -432,9 +432,22 @@ The **Evidence ledger** shows the evidence for each answer. Click **Send this se
 
 ## Planning the purification
 
-The **Plan your purification** jobs choose the columns, buffers, host, vector and lysis. Most jobs show option cards. Click a card to read its details, then click **Use this option** or **Use this choice**. Each job checks compatibility while you change your choices, and shows the result in a **Compatibility check**.
+The **Plan your purification** jobs choose the host, vector, columns, lysis and buffers, in the order you use them at the bench. Most jobs show option cards. Click a card to read its details, then click **Use this option** or **Use this choice**. Each job checks compatibility while you change your choices, and shows the result in a **Compatibility check**.
 
 > **Note:** If a finding is blocking, the job saves a draft. The job stays in progress until you solve the blocking finding.
+
+### Choose expression system
+
+1. Open **Choose expression system**.
+2. In **Host systems**, compare the five families: *E. coli*, yeast, insect, mammalian and cell-free.
+3. Use **Side-by-side comparison** to compare yield, time, cost, PTMs, disulfide bonds, scale, uses and limits. Click **Browse strains** to open a family.
+4. In the strain list, search by strain, genotype, marker or application. Tick **Compare** on two to four strains to put them in the table.
+5. Click **Choose** on a strain. Read **Evidence for this strain** and the compatible vector families.
+6. Click **Save cell line**.
+
+### Expression vector design
+
+Click **Load backbone** to load a vector from the library, or **Import GenBank / FASTA / .dna** to import a file. Annotate the vector with **Auto annotate**, **Annotate selection** or **Detect and annotate ORFs**. Click **Save** or press <kbd>Ctrl+S</kbd>. Export the vector as **GenBank**, **SnapGene .dna** or **FASTA**. Press <kbd>?</kbd> in the job to see its keyboard shortcuts.
 
 ### Affinity capture
 
@@ -475,43 +488,6 @@ After the update, **PLAN UPDATED FROM CONSTRUCT** tells you what changed and fro
 4. Under **Buffer starting point**, click a preset and click **Load into composer**. Edit the **Cleavage buffer** in the composer.
 5. Read the **Compatibility check**, then click **Save job**.
 
-### SEC polishing
-
-1. Open **SEC polishing**.
-2. Enter the **Expected native mass / complex size (kDa)** and the **Injection volume (mL)**. The mass starts at the mass of the cleaved construct.
-3. Choose an SEC column. Each card shows the fractionation range and the total volume. Chromatogram Studio uses the same columns.
-4. Load a buffer preset into the composer and edit the **Storage buffer**.
-5. Read the **Compatibility check**. It compares the mass, the injection volume and the buffer pH with the column, and the buffer pH with the predicted pI.
-6. Click **Save job**.
-
-### Buffer composer
-
-Affinity capture, Subtractive cleanup, SEC polishing and Cell lysis use the same buffer composer.
-
-1. Set the **pH** and the **Purpose** of the buffer.
-2. Click **Add component**. Type in the component box to search the component library by name, alias or purpose.
-3. Select a component. The library fills in a typical concentration and unit. If the name is not in the library, Protein Lab keeps it as a **Custom** component.
-4. Enter the **Concentration**, then choose the **Unit** and the **Purpose**. Choose **Custom…** to describe your own purpose.
-5. Read the panel for the selected component: other names, typical range, uses, cautions and references.
-6. To remove a component, click the bin button on its row.
-
-The composer marks a concentration that is outside the typical range. It also shows cautions for known problems. For example, EDTA removes Ni²⁺ and Co²⁺ from IMAC resins.
-
-> **Note:** Use 1–5 mM TCEP as the reducing agent with Ni-NTA and other IMAC resins. TCEP does not reduce the nickel or remove it from the resin. DTT or β-mercaptoethanol at higher concentration can reduce Ni²⁺, so the IMAC presets, the lysis suggestion and the reverse-IMAC buffer use TCEP. Compile workflow warns about DTT above 1 mM or β-mercaptoethanol above 20 mM in an IMAC buffer.
-
-### Choose expression system
-
-1. Open **Choose expression system**.
-2. In **Host systems**, compare the five families: *E. coli*, yeast, insect, mammalian and cell-free.
-3. Use **Side-by-side comparison** to compare yield, time, cost, PTMs, disulfide bonds, scale, uses and limits. Click **Browse strains** to open a family.
-4. In the strain list, search by strain, genotype, marker or application. Tick **Compare** on two to four strains to put them in the table.
-5. Click **Choose** on a strain. Read **Evidence for this strain** and the compatible vector families.
-6. Click **Save cell line**.
-
-### Expression vector design
-
-Click **Load backbone** to load a vector from the library, or **Import GenBank / FASTA / .dna** to import a file. Annotate the vector with **Auto annotate**, **Annotate selection** or **Detect and annotate ORFs**. Click **Save** or press <kbd>Ctrl+S</kbd>. Export the vector as **GenBank**, **SnapGene .dna** or **FASTA**. Press <kbd>?</kbd> in the job to see its keyboard shortcuts.
-
 ### Cell lysis
 
 1. Open **Cell lysis**. Each method card shows if it suits the saved host.
@@ -529,6 +505,30 @@ Click **Load backbone** to load a vector from the library, or **Import GenBank /
 
 > **Note:** A cell-free host has no cells to lyse, so Protein Lab does not suggest a lysis enzyme. Clarify the reaction mix by centrifugation before you load it.
 
+### SEC polishing
+
+1. Open **SEC polishing**.
+2. Enter the **Expected native mass / complex size (kDa)** and the **Injection volume (mL)**. The mass starts at the mass of the cleaved construct.
+3. Choose an SEC column. Each card shows the fractionation range and the total volume. Chromatogram Studio uses the same columns.
+4. Load a buffer preset into the composer and edit the **Storage buffer**.
+5. Read the **Compatibility check**. It compares the mass, the injection volume and the buffer pH with the column, and the buffer pH with the predicted pI.
+6. Click **Save job**.
+
+### Buffer composer
+
+Affinity capture, Subtractive cleanup, Cell lysis and SEC polishing use the same buffer composer.
+
+1. Set the **pH** and the **Purpose** of the buffer.
+2. Click **Add component**. Type in the component box to search the component library by name, alias or purpose.
+3. Select a component. The library fills in a typical concentration and unit. If the name is not in the library, Protein Lab keeps it as a **Custom** component.
+4. Enter the **Concentration**, then choose the **Unit** and the **Purpose**. Choose **Custom…** to describe your own purpose.
+5. Read the panel for the selected component: other names, typical range, uses, cautions and references.
+6. To remove a component, click the bin button on its row.
+
+The composer marks a concentration that is outside the typical range. It also shows cautions for known problems. For example, EDTA removes Ni²⁺ and Co²⁺ from IMAC resins.
+
+> **Note:** Use 1–5 mM TCEP as the reducing agent with Ni-NTA and other IMAC resins. TCEP does not reduce the nickel or remove it from the resin. DTT or β-mercaptoethanol at higher concentration can reduce Ni²⁺, so the IMAC presets, the lysis suggestion and the reverse-IMAC buffer use TCEP. Compile workflow warns about DTT above 1 mM or β-mercaptoethanol above 20 mM in an IMAC buffer.
+
 ### Compile workflow
 
 **Compile workflow** turns your saved planning choices into a timeline of bench steps, from expression and harvest to QC and storage. It checks each hand-off from one step to the next.
@@ -544,7 +544,7 @@ Click **Load backbone** to load a vector from the library, or **Import GenBank /
 6. Click **Copy report** to copy the workflow to the clipboard.
 7. Click **Save workflow**. If there are blocking findings, the button is **Save draft**. Solve the blocking findings, then save again.
 
-> **Tip:** If nothing is saved yet, the timeline shows **Nothing saved to compile yet** and generic placeholder steps. Save **Affinity capture**, **Subtractive cleanup**, **SEC polishing** and **Cell lysis** first.
+> **Tip:** If nothing is saved yet, the timeline shows **Nothing saved to compile yet** and generic placeholder steps. Save **Affinity capture**, **Subtractive cleanup**, **Cell lysis** and **SEC polishing** first.
 
 ## Transformation and Expression
 

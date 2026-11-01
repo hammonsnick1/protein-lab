@@ -19,6 +19,7 @@ fork — including its bugs.
 | `audit.mjs` | measures the rendered DOM into a snapshot |
 | `audit-core.mjs` | the layout rules, as pure functions over that snapshot |
 | `selfcheck.mjs` | drives `fixtures/overflow-row.html` and asserts the audit still catches the bug |
+| `text-floor-audit.mjs` | opens Crystallize (every tab) and HSQC and fails on any rendered text under 12px |
 | `seed-fixture-project.py` | builds a database with a fixture project the checks can open |
 
 ## Running a check
@@ -171,8 +172,11 @@ nothing. `audit-core.test.mts` covers the rules themselves
 - **A clean audit is not proof.** It measures boxes, not whether the screen
   reads well. Take the screenshot and look at it; for a dense component take a
   2x crop (`start({ scale: 2 })` plus `page.box(sel)`).
-- The citation superscripts (`.cite-marker`, 8.64px) are a known, pre-existing
-  text-floor finding, not something your change introduced.
+- The citation superscripts (`.cite-marker`) are a fixed 12px since HOM-401;
+  they used to be `.72em` and rendered at 8.6–10px. `lib/text-floor.test.ts`
+  now treats em, % and the smaller/small keywords as under the floor unless
+  wrapped in `max(12px, …)`, and `text-floor-audit.mjs` checks the rendered
+  pages. Run it after touching citations or the Crystallize/HSQC screens.
 - `start()` injects a stub for `window.proteinLabDesktop`, which the Electron
   preload normally provides. Pass `desktopBridge: false` to check the browser's
   own fallback path.
