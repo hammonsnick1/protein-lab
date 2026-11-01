@@ -16377,3 +16377,162 @@ section.manual-empty button { border: 1px solid var(--border); border-radius: 7p
   font-weight: 400;
   color: var(--muted-foreground);
 }
+
+/* Crystallization guidance (components/protein-labs/crystallization-guidance.tsx):
+   screens, starting concentration, drop components, phase diagram and the
+   hanging- and sitting-drop drawings. */
+.xtal-guide {
+  display: grid;
+  gap: 14px;
+  max-width: 1180px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.xtal-guide-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.xtal-guide-head h3 svg { width: 18px; height: 18px; color: var(--primary); }
+.xtal-guide-head p { margin: 0; color: var(--muted-foreground); font-size: 12px; }
+.xtal-guide-tabs [data-slot="tabs-list"] { flex-wrap: wrap; height: auto; }
+.xtal-tab { display: grid; gap: 12px; }
+.xtal-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 16px 18px;
+  min-width: 0;
+}
+.xtal-card h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.xtal-card h4 { margin: 0 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+.xtal-card p { margin: 0 0 8px; }
+.xtal-card p:last-child { margin-bottom: 0; }
+.xtal-note { color: var(--muted-foreground); }
+.xtal-basis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.xtal-basis div { border-left: 3px solid color-mix(in srgb, var(--primary) 45%, var(--border)); padding-left: 8px; }
+.xtal-basis dt { font-size: 12px; color: var(--muted-foreground); }
+.xtal-basis dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.xtal-callout {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 10px !important;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.xtal-callout.warning { border-color: color-mix(in srgb, #df9a36 55%, var(--border)); background: color-mix(in srgb, #df9a36 9%, var(--card)); }
+.xtal-callout svg { width: 16px; height: 16px; flex: none; margin-top: 2px; }
+.xtal-callout.warning svg { color: #df9a36; }
+.xtal-conc-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-variant-numeric: tabular-nums;
+}
+.xtal-conc-value strong { font-size: 22px; }
+.xtal-conc-value span { color: var(--muted-foreground); }
+.xtal-reasons, .xtal-zones, .xtal-steps, .xtal-proscons ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+}
+.xtal-reasons, .xtal-zones, .xtal-proscons ul { list-style: disc; }
+.xtal-steps { list-style: decimal; }
+.xtal-screens { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.xtal-screen {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 12px;
+}
+.xtal-screen.first { border-left-color: #36ad89; }
+.xtal-screen.next { border-left-color: #8b79d4; }
+.xtal-screen.later { border-left-color: #df9a36; }
+.xtal-screen-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 4px; }
+.xtal-screen-head strong { font-size: 14px; }
+.xtal-screen-head > span:last-child { color: var(--muted-foreground); font-size: 12px; }
+.xtal-screen .xtal-reasons { margin-bottom: 0; }
+.xtal-sourcing { display: flex; gap: 6px; align-items: center; margin: 6px 0 0 !important; font-size: 12px; color: var(--muted-foreground); }
+.xtal-sourcing svg { width: 14px; height: 14px; color: #df9a36; flex: none; }
+.xtal-table-wrap { overflow-x: auto; margin-bottom: 8px; }
+.xtal-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: 12px; }
+.xtal-table th, .xtal-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+.xtal-table thead th { color: var(--muted-foreground); font-weight: 700; }
+.xtal-table tbody th { font-weight: 700; white-space: nowrap; }
+.xtal-table td { font-variant-numeric: tabular-nums; }
+.xtal-table a { color: var(--primary); }
+.xtal-library { display: block; margin-top: 3px; color: var(--muted-foreground); font-size: 12px; }
+.xtal-tip { border-top: 1px dashed var(--border); padding-top: 6px; }
+.xtal-role.muted > p { color: var(--muted-foreground); }
+.xtal-phase { display: grid; grid-template-columns: minmax(280px, 420px) 1fr; gap: 6px 18px; align-items: start; }
+.xtal-phase h3 { grid-column: 1 / -1; }
+.xtal-figure { margin: 0; }
+.xtal-figure svg { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.xtal-figure figcaption { margin-top: 6px; color: var(--muted-foreground); font-size: 12px; }
+.xtal-drop .xtal-figure svg { max-width: 380px; margin: 0 auto; }
+.xtal-drop .xg-label.small { font-size: 11px; }
+.xtal-drop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.xtal-proscons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.xtal-proscons ul.pros li::marker { content: "+  "; color: #36ad89; font-weight: 700; }
+.xtal-proscons ul.cons li::marker { content: "−  "; color: #e56565; font-weight: 700; }
+@media (max-width: 760px) {
+  .xtal-phase, .xtal-proscons { grid-template-columns: 1fr; }
+}
+/* SVG parts */
+.xg-zone.under { fill: color-mix(in srgb, var(--muted-foreground) 6%, transparent); }
+.xg-zone.metastable { fill: color-mix(in srgb, var(--primary) 8%, transparent); }
+.xg-zone.nucleation { fill: color-mix(in srgb, var(--primary) 20%, transparent); }
+.xg-zone.precipitation { fill: color-mix(in srgb, var(--foreground) 14%, transparent); }
+.xg-curve { fill: none; stroke: var(--foreground); stroke-width: 1.8; }
+.xg-curve.faint { stroke-opacity: .5; stroke-width: 1.2; stroke-dasharray: 4 3; }
+.xg-axis { fill: none; stroke: var(--muted-foreground); stroke-width: 1.4; }
+.xg-label { fill: var(--foreground); font-size: 12px; font-weight: 600; }
+.xg-label.small { font-size: 12px; font-weight: 500; fill: var(--muted-foreground); }
+.xg-label.axis { font-size: 12px; font-weight: 500; fill: var(--muted-foreground); }
+.xg-path { stroke: var(--primary); stroke-width: 2; stroke-dasharray: 5 4; }
+.xg-point { fill: var(--primary); stroke: var(--card); stroke-width: 1; }
+.xg-point.start { fill: var(--card); stroke: var(--primary); stroke-width: 2; }
+.xg-well { fill: color-mix(in srgb, var(--muted-foreground) 5%, transparent); stroke: var(--muted-foreground); stroke-width: 1.6; }
+.xg-reservoir { fill: color-mix(in srgb, #5b8fd6 24%, transparent); stroke: none; }
+.xg-glass { fill: color-mix(in srgb, #5b8fd6 14%, var(--card)); stroke: var(--muted-foreground); stroke-width: 1.2; }
+.xg-tape { fill: color-mix(in srgb, var(--muted-foreground) 18%, var(--card)); stroke: var(--muted-foreground); stroke-width: 1; }
+.xg-grease { stroke: #c9a04a; stroke-width: 4; stroke-linecap: round; }
+.xg-post { fill: color-mix(in srgb, var(--muted-foreground) 12%, var(--card)); stroke: var(--muted-foreground); stroke-width: 1.4; }
+.xg-post-cup { fill: none; stroke: var(--muted-foreground); stroke-width: 1; }
+.xg-drop { fill: color-mix(in srgb, var(--primary) 32%, transparent); stroke: var(--primary); stroke-width: 1.4; }
+.xg-vapour path { fill: none; stroke: #5b8fd6; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.xg-vapour-shaft { stroke-dasharray: 4 3; }
+.xg-crystals path { fill: var(--card); stroke: var(--foreground); stroke-width: 1.2; }
+.xg-anim .xg-drop-shrink { transform-box: fill-box; }
+.xg-anim .xg-drop-shrink.hanging { transform-origin: 50% 0; }
+.xg-anim .xg-drop-shrink.sitting { transform-origin: 50% 100%; }
+.xg-anim .xg-drop-shrink { animation: xg-shrink 8s ease-in-out infinite; }
+.xg-anim .xg-crystals { animation: xg-crystals 8s ease-in-out infinite; }
+.xg-anim .xg-vapour-shaft { animation: xg-vapour 2.4s linear infinite; }
+@keyframes xg-shrink { 0%, 8% { transform: scale(1); } 70%, 100% { transform: scale(.78); } }
+@keyframes xg-crystals { 0%, 60% { opacity: 0; } 78%, 100% { opacity: 1; } }
+@keyframes xg-vapour { from { stroke-dashoffset: 14; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .xg-anim .xg-drop-shrink, .xg-anim .xg-crystals, .xg-anim .xg-vapour-shaft { animation: none; }
+}
