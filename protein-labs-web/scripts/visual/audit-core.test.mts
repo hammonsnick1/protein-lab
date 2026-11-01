@@ -54,6 +54,83 @@ describe("content wider than its box", () => {
   it("ignores a collapsed box with no width to overflow", () => {
     expect(run([element({ scrollWidth: 260, clientWidth: 0 })])).toEqual([]);
   });
+
+  // A visible box's scrollWidth includes its descendants' overflow, so one
+  // long label used to accuse every wrapper between it and the clipping box.
+  // Boxes in such a chain all start at the same x and their content reaches
+  // the same point, which is what identifies them as one problem.
+  it("blames only the innermost wrapper in a chain", () => {
+    const wrapper = (cls: string, parent: number | null) => element({ cls, parent, scrollWidth: 312, clientWidth: 200, reach: 312 });
+    expect(run([wrapper("chain-a", null), wrapper("chain-b", 0), wrapper("chain-c", 1)])).toEqual(["wide DIV.chain-c +112px"]);
+  });
+
+  it("still names the box that does the clipping", () => {
+    const findings = run([
+      element({ cls: "col", overflowX: "hidden", scrollWidth: 312, clientWidth: 200, reach: 312 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 312, clientWidth: 200, reach: 312 }),
+    ]);
+    expect(findings).toEqual(["clip DIV.col +112px", "wide DIV.inner +112px"]);
+  });
+
+  it("yields a clipping box to a nested clipping box", () => {
+    const findings = run([
+      element({ cls: "outer", overflowX: "hidden", scrollWidth: 312, clientWidth: 200, reach: 312 }),
+      element({ cls: "inner", overflowX: "hidden", parent: 0, scrollWidth: 312, clientWidth: 200, reach: 312 }),
+    ]);
+    expect(findings).toEqual(["clip DIV.inner +112px"]);
+  });
+
+  it("keeps a wrapper whose child overflows by less", () => {
+    const findings = run([
+      element({ cls: "outer", scrollWidth: 312, clientWidth: 200, reach: 312 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 204, clientWidth: 200, reach: 204 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.outer +112px", "wide DIV.inner +4px"]);
+  });
+
+  // A chip that spills 73px *inside* a 200px row is not the reason the row is
+  // 20px too wide. Comparing overflow amounts rather than reach lost the row
+  // entirely — and a chip row is the shape this audit exists for.
+  it("keeps a too-wide row whose chip spills further inside it", () => {
+    const findings = run([
+      element({ tag: "DIV", cls: "chips", scrollWidth: 220, clientWidth: 200, right: 200, reach: 220 }),
+      element({ tag: "SPAN", cls: "chip-a", parent: 0, scrollWidth: 153, clientWidth: 80, right: 80, reach: 153 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.chips +20px", "wide SPAN.chip-a +73px"]);
+  });
+
+  // Equal reach only says the child holds the far edge. Here the last chip is
+  // pushed right by a sibling, so its box pokes out of the row: it reaches
+  // the same point while overflowing by less, and the row — too wide on box
+  // geometry alone, 150 + 80 in 200 — must keep its line.
+  it("keeps a row whose last chip is pushed out of it", () => {
+    const findings = run([
+      element({ tag: "DIV", cls: "row", scrollWidth: 292, clientWidth: 200, right: 200, reach: 292 }),
+      element({ tag: "SPAN", cls: "last", parent: 0, scrollWidth: 142, clientWidth: 80, right: 230, reach: 292 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.row +92px", "wide SPAN.last +62px"]);
+  });
+
+  // The two split across siblings: the chip holding the far edge is not the
+  // chip whose box pokes out, so no single child tells the row's story. The
+  // row is 20px too narrow for its children (80 + 40 + 100 in 200) before
+  // any text is measured.
+  it("keeps a row whose spilling and pushed-out chips are different", () => {
+    const findings = run([
+      element({ tag: "DIV", cls: "sib", scrollWidth: 396, clientWidth: 200, right: 200, contentRight: 200, reach: 396 }),
+      element({ tag: "SPAN", cls: "sib-a", parent: 0, scrollWidth: 276, clientWidth: 80, right: 80, contentRight: 80, reach: 396 }),
+      element({ tag: "SPAN", cls: "sib-b", parent: 0, scrollWidth: 100, clientWidth: 100, right: 220, contentRight: 220, reach: 220 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.sib +196px", "wide SPAN.sib-a +196px"]);
+  });
+
+  it("estimates reach from the right edge when a snapshot has none", () => {
+    const findings = run([
+      element({ cls: "outer", scrollWidth: 312, clientWidth: 200, right: 200 }),
+      element({ cls: "inner", parent: 0, scrollWidth: 312, clientWidth: 200, right: 200 }),
+    ]);
+    expect(findings).toEqual(["wide DIV.inner +112px"]);
+  });
 });
 
 describe("unintended horizontal scrollbars", () => {

@@ -65,7 +65,49 @@ export function auditFindings(snapshot, { limit = 25 } = {}) {
     add("page", `page scrollX ${page.scrollWidth} vs ${page.width}`);
   }
 
-  for (const element of elements) {
+  // How each box overflows itself, worked out before anything is reported:
+  // a `visible` box's scrollWidth includes its descendants' overflow, so one
+  // long label makes every wrapper up to the clipping box look guilty. Only
+  // the innermost box in such a chain is worth a line.
+  const boxes = elements.map((element) => {
+    const by = Math.round(element.scrollWidth - element.clientWidth);
+    if (!(element.clientWidth > 0 && by > 1)) return null;
+    if (scrollsX(element)) return element.hScrollAllowed ? null : { kind: "hscroll", by };
+    if (element.textOverflow === "ellipsis") return null;
+    return { kind: clipsX(element) ? "clip" : "wide", by };
+  });
+  const children = elements.map(() => []);
+  elements.forEach((element, index) => {
+    if (typeof element.parent === "number" && elements[element.parent]) children[element.parent].push(index);
+  });
+  // `wide` yields to a child that is wide or clipped; `clip` only to a child
+  // that clips, so the box where content actually disappears is still named.
+  //
+  // When is a box's line just a restatement of its child's?
+  //
+  // Only when the box is not a problem in its own right. Ask that directly:
+  // if any direct child's *box* lands past where this box's children are
+  // supposed to stop, the box is too small for its own contents whatever the
+  // text inside those children does, and it keeps its line. Otherwise, a
+  // child that holds the box's reach is telling the whole story and the
+  // outer line is noise.
+  //
+  // Inferring this from one child's overflow numbers instead was wrong three
+  // times: a chip spilling inside a wide row, a chip pushed out of its row,
+  // and the two split across sibling chips. Each is just "the row is too
+  // narrow for its children", which this asks outright.
+  const reachOf = (index) => (typeof elements[index].reach === "number" ? elements[index].reach : elements[index].right + boxes[index].by);
+  // Falls back to the border-box edge, which is a pixel or two wider than the
+  // content edge and so errs toward keeping the parent's line.
+  const edgeOf = (index) => (typeof elements[index].contentRight === "number" ? elements[index].contentRight : elements[index].right);
+  const innermost = (index) => {
+    const kids = children[index];
+    if (kids.some((child) => elements[child].right > edgeOf(index) + 1)) return true;
+    const yieldsTo = boxes[index].kind === "clip" ? ["clip"] : ["clip", "wide"];
+    return !kids.some((child) => boxes[child] && yieldsTo.includes(boxes[child].kind) && reachOf(child) >= reachOf(index) - 1);
+  };
+
+  for (const [index, element] of elements.entries()) {
     const name = describe(element);
 
     // Text floor. This one keeps the own-text-node gate: a wrapper's computed
@@ -77,23 +119,24 @@ export function auditFindings(snapshot, { limit = 25 } = {}) {
 
     // Content wider than the box. Deliberately *not* gated on own text:
     // overflow is a box property and does not need a text node.
-    const overflowBy = Math.round(element.scrollWidth - element.clientWidth);
-    if (element.clientWidth > 0 && overflowBy > 1) {
-      if (scrollsX(element)) {
+    const box = boxes[index];
+    if (box) {
+      if (box.kind === "hscroll") {
         // A horizontal scrollbar nobody asked for: `overflow-y: auto` alone
         // computes overflow-x to `auto`, so a box meant to scroll vertically
         // silently gains one. Report it and let a human decide.
-        if (!element.hScrollAllowed) add("hscroll", withText(`hscroll ${name} ${element.scrollWidth} vs ${element.clientWidth}`, element.text));
-      } else if (element.textOverflow !== "ellipsis") {
+        add("hscroll", withText(`hscroll ${name} ${element.scrollWidth} vs ${element.clientWidth}`, element.text));
+      } else if (innermost(index)) {
         // Cut off here, or spilling into whatever sits beside it.
-        const kind = clipsX(element) ? "clip" : "wide";
-        add(kind, withText(`${kind} ${name} +${overflowBy}px`, element.text));
+        add(box.kind, withText(`${box.kind} ${name} +${box.by}px`, element.text));
       }
     }
 
     // Reaching out of the box that is supposed to contain it. Only the
     // outermost offender in a chain is interesting: if the parent escapes the
-    // same box by at least as much, this element is just its content.
+    // same box by at least as much, this element is just its content. (A
+    // child that overflows by less than the parent's right border width is
+    // shadowed too; that is a pixel or two, and worth the quieter output.)
     const parent = typeof element.parent === "number" ? elements[element.parent] : undefined;
     const shadowed = (edge) => parent && parent.right >= element.right && parent.right > edge + 1;
 

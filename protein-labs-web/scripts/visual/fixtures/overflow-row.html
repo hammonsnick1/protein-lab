@@ -36,6 +36,46 @@
          "overflows". Real examples on the dashboard made the first draft of
          this audit report four phantom findings. */
       .visually-hidden { display: block; width: 1px; height: 1px; overflow: hidden; white-space: nowrap; }
+      /* A panel mid-fade. Opacity does not inherit, so its children each
+         report opacity 1 while being exactly as invisible as their parent. */
+      .fading { opacity: 0; width: 180px; }
+      .fading .clipped { width: 100%; overflow: hidden; white-space: nowrap; font-size: 13px; }
+      /* A chain of plain wrappers around one long label: with overflow-x
+         visible, every one of them inherits the same scrollWidth, so only the
+         innermost should get a line. */
+      .chain { width: 200px; overflow: hidden; font-size: 13px; }
+      .chain span { white-space: nowrap; }
+      /* The inverse case: a chip spills a long way *inside* a row that is
+         itself only a little too wide, for a different reason. Suppressing
+         the row because the chip's number is bigger loses the row entirely —
+         and a chip row is exactly the shape this audit exists for. */
+      .wrap { width: 600px; overflow: hidden; }
+      .chips { width: 200px; display: flex; font-size: 13px; }
+      .chips span { flex: none; white-space: nowrap; }
+      .chip-a { width: 80px; }
+      .chip-gap { width: 40px; }
+      .chip-b { width: 100px; }
+      /* And the mirror of it: a row whose last chip is pushed out by a
+         sibling *and* spills its own text. The chip reaches the same point
+         as the row, so reach alone would hide the row — which is 30px too
+         wide on box geometry alone, before any text. */
+      .pushed { width: 200px; display: flex; font-size: 13px; }
+      .pushed span { flex: none; white-space: nowrap; }
+      .push-spacer { width: 150px; }
+      .push-last { width: 80px; }
+      /* And the two split across siblings: one chip spills its text, a
+         *different* one is pushed out. Neither chip alone tells the row's
+         story — the row is 20px too narrow for 80 + 40 + 100. */
+      .sib { width: 200px; display: flex; font-size: 13px; }
+      .sib span { flex: none; white-space: nowrap; }
+      .sib-a { width: 80px; }
+      .sib-gap { width: 40px; }
+      .sib-b { width: 100px; }
+      /* A padded card around a chain: Chromium counts the end padding in
+         scrollWidth, so card and inner reach the same point and the chain
+         must still collapse even though the inner box is inset. */
+      .card { width: 200px; padding: 0 12px; overflow: hidden; font-size: 13px; }
+      .card-inner span { white-space: nowrap; }
       /* The back face of a flip card: laid out, rotated away, marked inert. */
       .flip-back { position: absolute; width: 180px; transform: rotateY(180deg); backface-visibility: hidden; }
       .flip-back .ok-row { white-space: nowrap; width: 100%; overflow: hidden; }
@@ -74,12 +114,48 @@
       <div class="flip-back" inert>
         <div class="ok-row"><span>Hidden face with a row far too wide for its card</span></div>
       </div>
+      <div class="fading">
+        <div class="clipped">A panel still faded out, whose row does not fit either</div>
+      </div>
       <div class="table-scroll">
         <table>
           <tbody>
             <tr><td>Intentionally</td><td>wide</td><td>table</td><td>row</td></tr>
           </tbody>
         </table>
+      </div>
+    </section>
+
+    <section class="nesting">
+      <h2>Nested boxes</h2>
+      <!-- One long label in three plain wrappers: one problem, so one line. -->
+      <div class="chain">
+        <div class="chain-a"><div class="chain-b"><div class="chain-c"><span>One long nowrap label inside three plain wrappers</span></div></div></div>
+      </div>
+      <!-- …but a chip spilling further *inside* a row is a different problem
+           from the row being too wide, so both get a line. -->
+      <div class="wrap">
+        <div class="chips">
+          <span class="chip-a">A much longer chip label</span><span class="chip-gap"></span><span class="chip-b">B fits</span>
+        </div>
+      </div>
+      <!-- …and a chip pushed out of its row by a sibling, which reaches the
+           same point as the row without being the whole reason for it. -->
+      <div class="wrap">
+        <div class="pushed">
+          <span class="push-spacer"></span><span class="push-last">A much longer chip label</span>
+        </div>
+      </div>
+      <!-- …and the two split across siblings: the chip that holds the far
+           edge is not the chip whose box pokes out. -->
+      <div class="wrap">
+        <div class="sib">
+          <span class="sib-a">A much much longer chip label that keeps going</span><span class="sib-gap"></span><span class="sib-b">B fits</span>
+        </div>
+      </div>
+      <!-- Padding must not look like a child poking out of its parent. -->
+      <div class="card">
+        <div class="card-inner"><span>A long nowrap label inside a padded card</span></div>
       </div>
     </section>
 

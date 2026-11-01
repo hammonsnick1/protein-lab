@@ -23,11 +23,18 @@ export const collectExpression = (
   const contentRight = (el) => { const r = el.getBoundingClientRect(); return r.left + parseFloat(style(el).borderLeftWidth || 0) + el.clientWidth; };
   const label = (el) => { const c = typeof el.className === 'string' ? el.className.trim().split(/\\s+/).filter(Boolean).slice(0, 3).join('.') : ''; return c ? el.tagName + '.' + c : el.tagName; };
 
-  const kept = [], index = new Map();
+  const kept = [], index = new Map(), faded = new Set();
   for (const el of [root, ...root.querySelectorAll('*')]) {
     if (kept.length >= ${maxElements}) break;
     const cs = style(el);
-    if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue;
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    // Opacity does not inherit, so a transparent panel's children each report
+    // opacity 1 while being just as invisible: skip the whole subtree. (The
+    // walk is in document order, so a faded ancestor is always seen first.)
+    if (cs.opacity === '0') { faded.add(el); continue; }
+    let transparent = false;
+    for (let p = el.parentElement; p && !transparent; p = p.parentElement) transparent = faded.has(p);
+    if (transparent) continue;
     const rect = el.getBoundingClientRect();
     // Anything a pixel thin is either a hairline rule or the visually-hidden
     // idiom (1x1 box, overflow hidden) that screen readers use; neither has
@@ -59,6 +66,14 @@ export const collectExpression = (
       scrollWidth: el.scrollWidth,
       clientWidth: el.clientWidth,
       right: Math.round(rect.right * 100) / 100,
+      // How far the box's *content* reaches, which is not where the box ends.
+      // Two boxes in a chain reach the same point; a child spilling inside a
+      // wider parent does not.
+      reach: Math.round((rect.left + parseFloat(cs.borderLeftWidth || 0) + el.scrollWidth) * 100) / 100,
+      // Where this box's children are supposed to stop. A child whose box
+      // lands past it means the box is too small for its own contents,
+      // whatever the text inside those children is doing.
+      contentRight: Math.round(contentRight(el) * 100) / 100,
       hasOwnText: [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()),
       hScrollAllowed: !!(ALLOW && el.matches(ALLOW)),
       inHScroller: !!(ALLOW && el.closest(ALLOW)),
