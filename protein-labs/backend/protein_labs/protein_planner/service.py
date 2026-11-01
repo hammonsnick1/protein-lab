@@ -1261,6 +1261,10 @@ class ProteinPlanner:
             raise ValueError("Project job configuration must be an object")
         if existing["appType"] == RUN_APP_TYPE:
             config = normalize_run(config)
+            # Provenance is fixed at import: clearing it would let the next
+            # import create a second "Run 1".
+            if existing["config"].get("importedFrom") is not None:
+                config["importedFrom"] = existing["config"]["importedFrom"]
         return self.database.update_project_job(
             protein_id,
             job_id,

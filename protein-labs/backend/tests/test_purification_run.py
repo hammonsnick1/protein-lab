@@ -127,7 +127,12 @@ def test_roadmap_board_imports_as_run_1_with_ids_order_and_records(tmp_path):
     # Plan side: the corrected job pointers (report R8) and liveSteps() details.
     assert steps["cleavage"]["plan"]["appType"] == "purification-cleavage"
     assert steps["cleavage"]["plan"]["jobId"] == plan["purification-cleavage"]["id"]
-    assert steps["quality-storage"]["plan"]["appType"] == "purification-buffer"
+    # QC/storage reads the SEC job's storage buffer (finalStorageBuffer); here a
+    # legacy named preset on the shared buffer record.
+    assert steps["quality-storage"]["plan"]["appType"] == "purification-sec"
+    assert steps["quality-storage"]["plan"]["details"] == ["Storage buffer: Tris/NaCl"]
+    assert steps["quality-storage"]["plan"]["ready"] is True
+    assert steps["sec"]["plan"]["record"].startswith("Sample concentration and volume")
     assert steps["affinity"]["plan"]["details"] == ["Column: HisTrap HP 5 mL", "Tag: His6"]
     assert steps["affinity"]["plan"]["buffers"] == ["purification-buffer:binding", "purification-buffer:elution"]
     assert steps["lysis"]["plan"]["buffers"] == ["purification-lysis:selected"]
@@ -138,6 +143,7 @@ def test_roadmap_board_imports_as_run_1_with_ids_order_and_records(tmp_path):
 
     # Records: buffer → bench, measurement → measurements, analyses → attachments.
     buffer = steps["lysis"]["bench"]["buffersUsed"][0]
+    assert buffer["id"] == "buf-1"
     assert (buffer["bufferKey"], buffer["mode"], buffer["pH"]) == ("purification-lysis:selected", "as-planned", "8.0")
     assert buffer["ingredients"] == [{"name": "Tris-HCl", "concentration": "50", "unit": "mM", "role": "Buffer"}]
     m = steps["affinity"]["measurements"]
@@ -349,3 +355,48 @@ def test_http_new_run_creates_one_job_per_call(tmp_path):
         jobs = planner.database.get_bundle(protein_id)["projectJobs"]
     assert statuses == [201, 201] and too_long == 400
     assert sorted(j["name"] for j in jobs if j["appType"] == "purification-run") == ["Run 1", "Run 2"]
+
+
+def test_storage_step_follows_the_sec_buffer_and_retained_tag_has_no_cleavage_buffer(tmp_path):
+    service = build_planner(tmp_path)
+    protein_id = make_protein(service)
+    add_job(service, protein_id, "purification-sec", {"columnId": "s200", "bufferStep": "storage", "bufferName": "HEPES/KCl", "bufferPH": "7.4", "bufferEdited": True})
+    # "per-job" is a marker on the shared record, not a buffer (finalStorageBuffer).
+    add_job(service, protein_id, "purification-buffer", {"presetId": "per-job", "steps": {"cleavage": {"pH": "8"}, "storage": {"pH": "7.4"}}})
+    add_job(service, protein_id, "purification-cleavage", {"proteaseId": "retain"})
+    add_job(service, protein_id, "expression-planning", {"vectorName": ""})
+    add_job(service, protein_id, "expression-system", {"projectVectorName": "pET-28a"})
+
+    steps = {s["id"]: s for s in service.create_purification_run(protein_id, {})["config"]["steps"]}
+
+    assert steps["quality-storage"]["plan"]["details"] == ["Storage buffer: HEPES/KCl (edited), pH 7.4"]
+    assert steps["sec"]["plan"]["buffers"] == ["purification-buffer:storage", "purification-sec:selected"]
+    assert steps["cleavage"]["plan"]["buffers"] == []
+    assert steps["subtractive"]["plan"]["buffers"] == ["purification-buffer:cleavage"]
+    # TS `vector.vectorName ?? …` keeps "", so no Vector row (not "pET-28a").
+    assert not any(d.startswith("Vector") for d in steps["transformation-expression"]["plan"]["details"])
+
+
+def test_long_titles_are_reported_and_provenance_survives_a_put(tmp_path):
+    service = build_planner(tmp_path)
+    protein_id = make_protein(service)
+    long_title = "Dialysis " + "x" * 200
+    add_job(service, protein_id, "purification-roadmap", {"steps": [{"id": "added-1", "title": long_title, "components": []}]})
+    run = service.import_purification_roadmap(protein_id)["run"]
+    config = run["config"]
+    assert len(config["steps"][0]["title"]) == 200
+    assert config["importWarnings"] == [
+        f"Step title was 209 characters; it was shortened to 200. Full title: “{long_title}”"
+    ]
+
+    cleared = {**config, "importedFrom": None}
+    updated = service.update_project_job(protein_id, run["id"], {"config": cleared})
+    assert updated["config"]["importedFrom"] == config["importedFrom"]
+    assert service.import_purification_roadmap(protein_id)["created"] is False
+
+
+def test_unknown_buffer_ingredient_keys_are_rejected():
+    run = valid_run()
+    run["steps"][0]["bench"] = {"buffersUsed": [{"bufferKey": "k", "ingredients": [{"name": "NaCl", "grams": 3}]}]}
+    with pytest.raises(ValueError, match=r"buffer ingredient has unknown field\(s\): grams"):
+        normalize_run(run)

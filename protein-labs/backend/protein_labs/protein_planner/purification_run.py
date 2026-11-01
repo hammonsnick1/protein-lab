@@ -50,8 +50,9 @@ PLAN_APP_TYPES = (
     "purification-workflow",
 )
 
-# The planning job each step kind reads. The roadmap pointed cleavage and
-# QC/storage at the SEC and subtractive jobs (report R8); the run does not.
+# The planning job each step kind reads. The roadmap pointed cleavage at the
+# subtractive job (report R8); the run does not. QC/storage reads the SEC job,
+# which saves the final storage buffer (``finalStorageBuffer`` in roadmap-steps.ts).
 KIND_PLAN_APP_TYPE = {
     "expression": "transformation-expression",
     "harvest": "transformation-expression",
@@ -62,8 +63,8 @@ KIND_PLAN_APP_TYPE = {
     "cleavage": "purification-cleavage",
     "reverse-affinity": "purification-subtractive",
     "sec": "purification-sec",
-    "qc": "purification-buffer",
-    "formulate-store": "purification-buffer",
+    "qc": "purification-sec",
+    "formulate-store": "purification-sec",
 }
 
 # Buffer records (``purification-buffer`` config.steps keys) each kind uses.
@@ -73,6 +74,7 @@ KIND_BUFFER_STEPS = {
     "capture": ("binding", "wash", "elution"),
     "wash-elute": ("wash", "elution"),
     "cleavage": ("cleavage",),
+    "reverse-affinity": ("cleavage",),
     "sec": ("storage",),
     "formulate-store": ("storage",),
 }
@@ -89,6 +91,16 @@ LIVE_ROADMAP_STEPS = (
     ("quality-storage", "qc", "Quality control and storage"),
 )
 _LIVE_KIND = {step_id: kind for step_id, kind, _ in LIVE_ROADMAP_STEPS}
+_LIVE_RECORD = {
+    "transformation-expression": "Starting material, medium, supplements, culture conditions, induction, harvest, and deviations.",
+    "lysis": "Pellet mass, resuspension volume, lysis settings, centrifugation, filtration, and retained samples.",
+    "affinity": "Column, load amount, flow, washes, elution, fraction IDs, recovery, and purity.",
+    "cleavage": "Reaction conditions, completion, samples, and downstream tag/protease removal.",
+    "subtractive": "Load, flow-through, wash, elution, recovery, purity, and evidence of contaminant removal.",
+    "sec": "Sample concentration and volume, flow, trace, fractions, yield, purity, and oligomeric state.",
+    "quality-storage": "Final concentration, yield, purity, identity, activity, storage, aliquots, freeze–thaw history, gels, and images.",
+}
+_TITLE_LIMIT = 200
 
 # Steps added from the board's template picker get a random id, so their kind
 # is read from the template title they were created with (purification-roadmap.tsx
@@ -140,7 +152,7 @@ _ATTACHMENT_KEYS = {
     "fileName", "mimeType", "dataUrl",
 }
 _BUFFER_KEYS = {
-    "bufferKey", "mode", "title", "purpose", "pH", "ingredients", "sourceJobId",
+    "id", "bufferKey", "mode", "title", "purpose", "pH", "ingredients", "sourceJobId",
     "notes",
 }
 _RECORD_KEYS = {
@@ -374,11 +386,13 @@ def _normalize_buffer(value: Any, label: str) -> dict[str, Any]:
     ingredients = []
     for item in _list(buffer.get("ingredients"), f"{label} buffer ingredients"):
         ingredient = _object(item, f"{label} buffer ingredient")
+        _reject_unknown(ingredient, {"name", "concentration", "unit", "role"}, f"{label} buffer ingredient")
         ingredients.append({
             key: str(ingredient.get(key) or "")
             for key in ("name", "concentration", "unit", "role")
         })
     return {
+        "id": _optional_text(buffer.get("id"), f"{label} buffer id"),
         "bufferKey": str(buffer.get("bufferKey") or ""),
         "mode": _enum(buffer.get("mode", "as-planned"), BUFFER_MODES, f"{label} buffer mode"),
         "title": str(buffer.get("title") or ""),
@@ -541,20 +555,21 @@ def _live_step(step_id: str, kind: str, title: str, configs: dict[str, dict[str,
     expression, vector = cfg("expression-system"), cfg("expression-planning")
     transformation, lysis = cfg("transformation-expression"), cfg("purification-lysis")
     affinity, cleavage = cfg("purification-affinity"), cfg("purification-cleavage")
-    subtractive, sec, buffer = cfg("purification-subtractive"), cfg("purification-sec"), cfg("purification-buffer")
+    subtractive, sec = cfg("purification-subtractive"), cfg("purification-sec")
     retain = str(cleavage.get("proteaseId") or "") == "retain"
+    storage = final_storage_buffer(sec, cfg("purification-buffer"))
     table = {
         "transformation-expression": (
             bool(expression.get("strainId") or transformation.get("mediaId")),
             [("Host", expression.get("strainName")),
-             ("Vector", _first(vector.get("vectorName"), expression.get("projectVectorName"), expression.get("vectorFamilyName"))),
+             ("Vector", _coalesce(vector.get("vectorName"), expression.get("projectVectorName"), expression.get("vectorFamilyName"))),
              ("Medium", transformation.get("mediaName"))],
         ),
         "lysis": (bool(lysis.get("methodId")), [("Method", lysis.get("methodName")), ("Buffer", lysis.get("bufferName"))]),
         "affinity": (bool(affinity.get("columnId")), [("Column", affinity.get("columnName")), ("Tag", affinity.get("tag"))]),
         "cleavage": (
             bool(cleavage.get("proteaseId")),
-            [("Strategy", _first(cleavage.get("proteaseName"), cleavage.get("proteaseId"))), ("Conditions", cleavage.get("conditions"))],
+            [("Strategy", _coalesce(cleavage.get("proteaseName"), cleavage.get("proteaseId"))), ("Conditions", cleavage.get("conditions"))],
         ),
         "subtractive": (retain or bool(subtractive.get("columnId")), [("Column", subtractive.get("columnName")), ("Buffer", subtractive.get("bufferName"))]),
         "sec": (
@@ -562,13 +577,26 @@ def _live_step(step_id: str, kind: str, title: str, configs: dict[str, dict[str,
             [("Column", sec.get("columnName")), ("Buffer", sec.get("bufferName")),
              ("Expected mass", f"{sec['expectedMassKDa']} kDa" if sec.get("expectedMassKDa") else "")],
         ),
-        "quality-storage": (bool(buffer.get("presetId")), [("Buffer plan", _first(buffer.get("presetName"), buffer.get("presetId")))]),
+        "quality-storage": (
+            storage is not None,
+            [("Storage buffer", storage and (f"{storage['name']}, pH {storage['pH']}" if storage["pH"] else storage["name"]))],
+        ),
     }
     ready, rows = table[step_id]
     if step_id == "cleavage" and retain:
         title = "Retain affinity tag"
     details = [f"{name}: {value}" for name, value in rows if value is not None and str(value).strip()]
-    return {"id": step_id, "kind": kind, "title": title, "ready": ready, "details": details}
+    return {"id": step_id, "kind": kind, "title": title, "ready": ready, "details": details, "retain": retain}
+
+
+def final_storage_buffer(sec: dict[str, Any], legacy: dict[str, Any]) -> dict[str, str] | None:
+    """Port of ``finalStorageBuffer``: the SEC job's storage buffer, else a legacy preset."""
+    if sec.get("bufferId") or sec.get("bufferStep"):
+        name = _first(sec.get("bufferName"), "Composed storage buffer")
+        return {"name": name + (" (edited)" if sec.get("bufferEdited") is True else ""), "pH": _first(sec.get("bufferPH"))}
+    if legacy.get("presetId") and legacy.get("presetId") != "per-job":
+        return {"name": _first(legacy.get("presetName"), legacy.get("presetId")), "pH": ""}
+    return None
 
 
 def _plan_step(base: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -584,9 +612,9 @@ def _plan_step(base: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]
             "jobId": _snapshot_job_id(snapshot, app_type),
             "ready": base["ready"],
             "details": base["details"],
-            "buffers": _plan_buffers(kind, snapshot),
+            "buffers": [] if base["retain"] and base["id"] == "cleavage" else _plan_buffers(kind, snapshot),
             "instruction": "",
-            "record": "",
+            "record": _LIVE_RECORD[base["id"]],
         },
     }
 
@@ -600,6 +628,11 @@ def _imported_step(
     new_id,
 ) -> dict[str, Any]:
     title = str(prior.get("title") or (live or {}).get("title") or "Custom purification step").strip()
+    if len(title) > _TITLE_LIMIT:
+        warnings.append(
+            f"Step title was {len(title)} characters; it was shortened to {_TITLE_LIMIT}. Full title: “{title}”"
+        )
+    retained = bool(live and live["retain"] and step_id == "cleavage")
     if live:
         kind = live["kind"]
         app_type = KIND_PLAN_APP_TYPE.get(kind)
@@ -616,14 +649,14 @@ def _imported_step(
     step = {
         "id": step_id,
         "kind": kind,
-        "title": title[:200] or "Custom purification step",
+        "title": title[:_TITLE_LIMIT] or "Custom purification step",
         "status": "planned",
         "plan": {
             "appType": app_type,
             "jobId": _snapshot_job_id(snapshot, app_type),
             "ready": ready,
             "details": details,
-            "buffers": _plan_buffers(kind, snapshot),
+            "buffers": [] if retained else _plan_buffers(kind, snapshot),
             "instruction": str(prior.get("instruction") or ""),
             "record": str(prior.get("record") or ""),
         },
@@ -653,13 +686,17 @@ def _import_component(step: dict[str, Any], component: dict[str, Any], warnings:
     title, notes = str(component.get("title") or ""), str(component.get("notes") or "")
     if kind == "buffer":
         step["bench"]["buffersUsed"].append({
+            "id": component_id,
             "bufferKey": str(component.get("sourceBufferKey") or ""),
             # The board copied the saved planning buffer and could not edit it.
             "mode": "as-planned",
             "title": title,
             "purpose": str(component.get("purpose") or ""),
             "pH": str(component.get("pH") or ""),
-            "ingredients": [item for item in component.get("ingredients") or [] if isinstance(item, dict)],
+            "ingredients": [
+                {key: str(item.get(key) or "") for key in ("name", "concentration", "unit", "role")}
+                for item in component.get("ingredients") or [] if isinstance(item, dict)
+            ],
             "sourceJobId": component.get("sourceJobId") or None,
             "notes": notes,
         })
@@ -745,6 +782,14 @@ def _snapshot_job_id(snapshot: dict[str, Any], app_type: str | None) -> str | No
 def _first(*values: Any) -> str:
     for value in values:
         if value is not None and str(value).strip():
+            return str(value)
+    return ""
+
+
+def _coalesce(*values: Any) -> str:
+    """TS ``a ?? b``: the first value that is not null, even an empty string."""
+    for value in values:
+        if value is not None:
             return str(value)
     return ""
 

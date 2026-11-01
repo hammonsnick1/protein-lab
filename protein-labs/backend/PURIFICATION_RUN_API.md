@@ -100,7 +100,7 @@ Planning appTypes allowed in `planSnapshot.jobs`: `expression-system`,
     "inputSampleId": null,        // must be a sample from an earlier step
     "parameters": {},             // free-form per kind (CV, flow, fractions…)
     "buffersUsed": [{
-      "bufferKey": "purification-buffer:binding", "mode": "as-planned",   // or "edited"
+      "id": null, "bufferKey": "purification-buffer:binding", "mode": "as-planned",   // or "edited"
       "title": "", "purpose": "", "pH": "",
       "ingredients": [{"name": "", "concentration": "", "unit": "", "role": ""}],
       "sourceJobId": null, "notes": ""
@@ -165,7 +165,9 @@ How the importer maps the board:
 | Saved `steps[]` in board order, then any live plan step the board never saved (the same merge as `mergeSavedSteps`) | `steps[]`. Ids are kept, so gel-lane `stageId` bindings still resolve. |
 | Fixed step id (`lysis`, `affinity`, …) or a template title for added steps | `kind`. A renamed custom step becomes `custom`. |
 | `ready` | `plan.ready`. Every step's `status` is `planned`. |
-| Cleavage → subtractive job and QC/storage → SEC job (R8) | `plan.appType` is set from the kind: `purification-cleavage` and `purification-buffer`. |
+| Cleavage → subtractive job (R8) | `plan.appType` is set from the kind: cleavage reads `purification-cleavage`. QC/storage reads `purification-sec`, which holds the final storage buffer (`finalStorageBuffer`). |
+| Live step text | `plan.record` keeps the static "what to record" text. `plan.instruction` is left empty for live steps, because the board fills it with placeholder prose for unsaved choices (R9). |
+| Step title over 200 characters | Shortened to 200, with the full title in `importWarnings`. |
 | `buffer` component | `bench.buffersUsed[]`, `mode: "as-planned"` |
 | `measurement` component | `measurementRecords[]` (verbatim). If a step has exactly one record, it also fills `measurements`: yield in mg/µg becomes `totalMg`, and purity 0–100 % becomes `purityPct`. |
 | `gel` / `chromatogram` with `sourceJobId` | An attachment of that kind. A gel preview `dataUrl` is kept, because it may be the only copy of a gel that was later overwritten (R3). |
@@ -188,6 +190,9 @@ line is added to `importWarnings`. This happens when:
 ```json
 {"appType": "purification-roadmap", "jobId": "<roadmap job id or null>", "jobUpdatedAt": "…", "importedAt": "…"}
 ```
+
+`importedFrom` is fixed once set: a `PUT` that clears or changes it keeps the
+stored value, so a later import cannot create a second "Run 1".
 
 `jobId` is `null` when the protein had no saved board. In that case the run is
 built from the live plan.
