@@ -86,22 +86,29 @@ export function SpaceGroupExplorer({
   const copies = multiplicity(group);
   const evidence = highlights.get(group.n);
 
-  return <section className="sg-explorer">
-    <header className="sg-head">
-      <span className="sg-head-icon"><Boxes aria-hidden="true"/></span>
-      <div>
-        <h3>Space group</h3>
-        <p>
-          A crystal is one copy of {proteinName} — the <em>asymmetric unit</em> — repeated by a fixed set of
-          rotations, screw axes and translations. The 230 space groups are every set that fills space;
-          only the 65 <em>Sohncke</em> groups leave a protein's handedness alone, so those are the ones a
-          protein crystal can use<Cite scope={scope} id="ita2016"/>. A few of the 65 turn up far more often
-          than the rest, for packing reasons<Cite scope={scope} id="wukovitz1995"/>.
-        </p>
-      </div>
-    </header>
+  return <div className="sg-explorer">
+    <section className="crystallize-section sg-intro" aria-labelledby="sg-intro-heading">
+      <header className="sg-head">
+        <span className="sg-head-icon"><Boxes aria-hidden="true"/></span>
+        <div>
+          <h3 id="sg-intro-heading">Space group</h3>
+          <small>
+            A crystal is one copy of {proteinName} — the <em>asymmetric unit</em> — repeated by a fixed set of
+            rotations, screw axes and translations. The 230 space groups are every set that fills space;
+            only the 65 <em>Sohncke</em> groups leave a protein's handedness alone, so those are the ones a
+            protein crystal can use<Cite scope={scope} id="ita2016"/>. A few of the 65 turn up far more often
+            than the rest, for packing reasons<Cite scope={scope} id="wukovitz1995"/>.
+          </small>
+        </div>
+      </header>
+    </section>
 
-    <div className="sg-body">
+    <section className="crystallize-section sg-chooser" aria-labelledby="sg-chooser-heading">
+      <header>
+        <h3 id="sg-chooser-heading">Pick a group</h3>
+        <small>Groups your own PDB homologues crystallised in are flagged in the list. The group you pick is saved with the project and is the one the lattice builder packs. Its two International Tables plates are drawn on the right.</small>
+      </header>
+      <div className="sg-body">
       <div className="sg-picker">
         <div className="sg-mode" role="radiogroup" aria-label="Which groups to list">
           {[false, true].map((mode) => <button
@@ -163,42 +170,47 @@ export function SpaceGroupExplorer({
         </div>
         <p className="sg-summary">{spaceGroupSummary(group)}<Cite scope={scope} id="gemmi"/></p>
 
-        <Evidence group={group} highlight={evidence} predictorNote={predictorNote} hits={hits} unresolved={unresolved} scope={scope}/>
+        <Evidence group={group} highlight={evidence} predictorNote={predictorNote} predicted={suggestions.length > 0} hits={hits} unresolved={unresolved} scope={scope}/>
 
+        {/* The two plates stay beside the list: they are what reading the
+            chosen group means, and they fill the column the list sets. */}
         <div className="sg-diagrams">
           <ElementFigure group={group} frame={frame} drawn={drawn} chosen={chosen} scope={scope}/>
           <PositionFigure group={group} frame={frame} positions={positions} proteinName={proteinName}/>
         </div>
-
-        <div className="sg-operations">
-          <h5>Symmetry operations<span>{elements.length}</span></h5>
-          <p>
-            Each one makes one copy of {proteinName} in the cell. Pick one to see it move.
-            {classes.length < elements.length && ` They come in ${classes.length} kinds; a chip marked ×n stands for n of the same kind in different places.`}
-          </p>
-          <ul>
-            {classes.map((entry) => <li key={entry.id}>
-              <button
-                type="button"
-                aria-pressed={entry.element === chosen}
-                className={`sg-op ${entry.element.category}${entry.element === chosen ? " selected" : ""}`}
-                onClick={() => setElementId(entry.id)}
-              >
-                <CategoryMark category={entry.element.category} order={entry.element.order}/>
-                <span className="sg-op-symbol">{entry.element.symbol}</span>
-                <span className="sg-op-where">{operationLabel(entry.element)}</span>
-                {entry.count > 1 && <span className="sg-op-count">×{entry.count}</span>}
-              </button>
-            </li>)}
-          </ul>
-        </div>
-
-        <Animation group={group} element={chosen} frame={wideFrame} cell={cell} proteinName={proteinName}/>
-
-        <ReferenceList scope={scope} className="sg-references"/>
       </div>
-    </div>
-  </section>;
+      </div>
+    </section>
+
+    <section className="crystallize-section sg-operations" aria-labelledby="sg-operations-heading">
+      <header>
+        <h3 id="sg-operations-heading">Symmetry operations<span>{elements.length}</span></h3>
+        <small>
+          Each one makes one copy of {proteinName} in the cell. Pick one to see it move.
+          {classes.length < elements.length && ` They come in ${classes.length} kinds; a chip marked ×n stands for n of the same kind in different places.`}
+        </small>
+      </header>
+      <ul>
+        {classes.map((entry) => <li key={entry.id}>
+          <button
+            type="button"
+            aria-pressed={entry.element === chosen}
+            className={`sg-op ${entry.element.category}${entry.element === chosen ? " selected" : ""}`}
+            onClick={() => setElementId(entry.id)}
+          >
+            <CategoryMark category={entry.element.category} order={entry.element.order}/>
+            <span className="sg-op-symbol">{entry.element.symbol}</span>
+            <span className="sg-op-where">{operationLabel(entry.element)}</span>
+            {entry.count > 1 && <span className="sg-op-count">×{entry.count}</span>}
+          </button>
+        </li>)}
+      </ul>
+    </section>
+
+    <Animation group={group} element={chosen} frame={wideFrame} cell={cell} proteinName={proteinName}/>
+
+    <ReferenceList scope={scope} className="sg-references"/>
+  </div>;
 }
 
 /**
@@ -283,10 +295,12 @@ function crystalForms(facts: ProteinFacts | null): SpaceGroupHit[] {
     .map((hit) => ({ pdbId: hit.pdbId, spaceGroup: hit.spaceGroup, unitCell: hit.unitCell }));
 }
 
-function Evidence({ group, highlight, predictorNote, hits, unresolved, scope }: {
+function Evidence({ group, highlight, predictorNote, predicted = false, hits, unresolved, scope }: {
   group: SpaceGroup;
   highlight?: SpaceGroupHighlight;
   predictorNote?: string;
+  /** True once a predictor really suggested something, so the note stops saying none did. */
+  predicted?: boolean;
   hits: SpaceGroupHit[];
   unresolved: string[];
   scope: ReturnType<typeof citationScope>;
@@ -313,7 +327,9 @@ function Evidence({ group, highlight, predictorNote, hits, unresolved, scope }: 
       {unresolved.length === 1 ? "One saved homologue reports a space group" : `${unresolved.length} saved homologues report space groups`} this table does not recognise ({unresolved.join(", ")}). They are left unflagged rather than guessed at.
     </p>}
     <p className="quiet">
-      {predictorNote ?? <>MASCL predicts likely space groups from symmetrical docking<Cite scope={scope} id="mascl2025"/>, but no redistributable MASCL model ships with this installation, so nothing here is a prediction — only what your own evidence says.</>}
+      {predictorNote ?? (predicted
+        ? <>MASCL predicts likely space groups by docking the protein against itself<Cite scope={scope} id="mascl2025"/>; the groups it ranked are flagged in the list. A prediction is not evidence — only the groups your own homologues really crystallised in are.</>
+        : <>MASCL predicts likely space groups from symmetrical docking<Cite scope={scope} id="mascl2025"/>, but no redistributable MASCL model ships with this installation, so nothing here is a prediction — only what your own evidence says.</>)}
     </p>
   </div>;
 }
@@ -551,9 +567,9 @@ function Animation({ group, element, frame, cell, proteinName }: {
     : { ...lerpTransform(startTransform, endTransform, reduced ? 1 : progress), rotate: 0 };
   const caption = steps[Math.min(step, steps.length - 1)].caption;
 
-  return <div className="sg-animation">
-    <div className="sg-animation-head">
-      <h5>Step through <span className="sg-op-symbol">{element.symbol}</span> {operationLabel(element)}</h5>
+  return <section className="crystallize-section sg-animation" aria-labelledby="sg-animation-heading">
+    <header className="sg-animation-head">
+      <h3 id="sg-animation-heading">Step through <span className="sg-op-symbol">{element.symbol}</span> {operationLabel(element)}</h3>
       <div className="sg-animation-controls">
         <Button type="button" size="sm" variant={playing ? "secondary" : "default"} onClick={() => setPlaying(!playing)} disabled={reduced}>
           {playing ? <><Pause aria-hidden="true"/>Pause</> : <><Play aria-hidden="true"/>Play</>}
@@ -568,7 +584,7 @@ function Animation({ group, element, frame, cell, proteinName }: {
         </Button>
         <span className="sg-animation-count">Step {Math.min(step + 1, steps.length)} of {steps.length}</span>
       </div>
-    </div>
+    </header>
     <div className="sg-animation-stage">
       <svg width={frame.width} height={frame.height} viewBox={`0 0 ${frame.width} ${frame.height}`} role="img"
         aria-label={`${element.symbol} operation of ${symbolText(group)}, step ${Math.min(step + 1, steps.length)} of ${steps.length}`}>
@@ -592,7 +608,7 @@ function Animation({ group, element, frame, cell, proteinName }: {
         <p className="sg-step-hint"><ChevronRight aria-hidden="true"/>The copy may leave the cell. The faint cell next door shows where it reappears: the lattice repeats for ever.</p>
       </div>
     </div>
-  </div>;
+  </section>;
 }
 
 const SEED: [number, number, number] = [0.22, 0.14, 0.12];

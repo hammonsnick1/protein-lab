@@ -1,19 +1,20 @@
 /* Space-group explorer (components/protein-labs/space-group-explorer.tsx).
-   Two columns: the group list on the left, the chosen group's diagrams and
-   one animated symmetry operation on the right. Everything is drawn from the
-   theme tokens, and every change category carries a shape as well as a
-   colour, so the diagrams still read in greyscale.
+   A stack of the Crystallize job's `.crystallize-section` cards — intro,
+   selector, diagrams, operations, animation — at the same 13px gap as the
+   propensity tab, so both tabs read as one component set. The card itself
+   (border, radius, background, padding, title and hint sizes) is defined once
+   in `globals.css`; nothing here repeats those numbers. What is here is
+   specific to the selector and the diagrams.
 
-   The diagrams are drawn at 1:1, so SVG labels are real pixels and stay at or
-   above the app's 12px text floor. Below about 860px the columns stack and the
-   two figures sit one under the other rather than scaling down. */
+   Every change category carries a shape as well as a colour, so the diagrams
+   still read in greyscale. The diagrams are drawn at 1:1, so SVG labels are
+   real pixels and stay at or above the app's 12px text floor. Below about
+   860px the selector's two columns stack and the two figures sit one under the
+   other rather than scaling down. */
 
 .sg-explorer {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  margin: 12px 0;
-  overflow: hidden;
+  display: grid;
+  gap: 13px;
   --sg-rotation: var(--primary);
   --sg-screw: color-mix(in srgb, var(--primary) 55%, var(--accent));
   --sg-centring: var(--muted-foreground);
@@ -22,22 +23,14 @@
   --sg-identity: var(--muted-foreground);
 }
 
-.sg-head {
-  display: flex;
+/* The intro card puts its icon beside the title, so its header is a row. */
+.sg-intro > header.sg-head {
+  flex-direction: row;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 0;
 }
 .sg-head > div { min-width: 0; }
-.sg-head h3 { margin: 0; font-size: 15px; }
-.sg-head p {
-  margin: 4px 0 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted-foreground);
-  max-width: 82ch;
-}
 .sg-head em { font-style: normal; font-weight: 700; color: var(--foreground); }
 .sg-head-icon {
   width: 34px;
@@ -51,6 +44,8 @@
 }
 .sg-head-icon svg { width: 17px; height: 17px; }
 
+/* The selector: list on the left, the chosen group on the right, with the
+   card's own padding around both and a rule down the middle. */
 .sg-body {
   display: grid;
   grid-template-columns: 234px minmax(0, 1fr);
@@ -64,14 +59,19 @@
 
 .sg-picker {
   border-right: 1px solid var(--border);
-  padding: 12px;
+  padding-right: 18px;
   display: grid;
   gap: 8px;
   position: sticky;
   top: 0;
 }
 @media (max-width: 860px) {
-  .sg-picker { border-right: none; border-bottom: 1px solid var(--border); position: static; }
+  .sg-picker {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 14px;
+    position: static;
+  }
 }
 .sg-mode {
   display: grid;
@@ -217,7 +217,10 @@
 
 /* ── The chosen group ────────────────────────────────────────────────────── */
 
-.sg-detail { padding: 12px 14px; display: grid; gap: 12px; min-width: 0; }
+.sg-detail { padding-left: 18px; display: grid; gap: 12px; min-width: 0; }
+@media (max-width: 860px) {
+  .sg-detail { padding: 14px 0 0; }
+}
 .sg-detail-head {
   display: flex;
   flex-wrap: wrap;
@@ -260,11 +263,16 @@
 
 /* ── Diagrams ────────────────────────────────────────────────────────────── */
 
+.sg-figure figcaption b { font-family: var(--font-mono); font-style: italic; }
 .sg-diagrams {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
+/* The plates share whatever width the card leaves, so the row's right edge
+   lines up with the cards above it instead of stopping short. The drawings
+   themselves stay at 1:1 and start at the left of their plate. */
+.sg-diagrams > .sg-figure { flex: 1 1 auto; }
 .sg-figure {
   margin: 0;
   border: 1px solid var(--border);
@@ -280,7 +288,6 @@
 .sg-figure figcaption { display: grid; gap: 2px; max-width: 42ch; }
 .sg-figure figcaption strong { font-size: 13px; }
 .sg-figure figcaption span { font-size: 12px; line-height: 1.45; color: var(--muted-foreground); }
-.sg-figure figcaption b { font-family: var(--font-mono); font-style: italic; }
 .sg-figure-note {
   margin: 0;
   font-family: var(--font-mono);
@@ -372,21 +379,17 @@
 
 /* ── The operation list ──────────────────────────────────────────────────── */
 
-.sg-operations { display: grid; gap: 6px; }
-.sg-operations h5 {
+.sg-operations > header h3 {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  margin: 0;
-  font-size: 13px;
 }
-.sg-operations h5 span {
+.sg-operations > header h3 span {
   font-size: 12px;
   font-weight: 400;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
-.sg-operations > p { margin: 0; font-size: 12px; color: var(--muted-foreground); }
 .sg-operations ul {
   list-style: none;
   margin: 0;
@@ -438,22 +441,14 @@
 
 /* ── One operation, step by step ─────────────────────────────────────────── */
 
-.sg-animation {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  display: grid;
-  gap: 10px;
-  padding: 10px;
-}
-.sg-animation-head {
-  display: flex;
+.sg-animation > header.sg-animation-head {
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
 }
-.sg-animation-head h5 { margin: 0; font-size: 13px; display: inline-flex; align-items: baseline; gap: 5px; }
+.sg-animation-head h3 { display: inline-flex; align-items: baseline; gap: 5px; }
 .sg-animation-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .sg-animation-count {
   font-size: 12px;
