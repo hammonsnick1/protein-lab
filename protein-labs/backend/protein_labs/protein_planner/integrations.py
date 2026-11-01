@@ -420,6 +420,8 @@ class RCSBClient:
     search_url = "https://search.rcsb.org/rcsbsearch/v2/query"
     data_url = "https://data.rcsb.org/rest/v1/core"
     files_url = "https://files.rcsb.org/download"
+    # CCD records live beside, not under, the entry download path.
+    ligands_url = "https://files.rcsb.org/ligands/download"
 
     def __init__(self, http: HttpClient):
         self.http = http
@@ -539,7 +541,7 @@ class RCSBClient:
         if cached is not None:
             return cached
         response = self.http.request(
-            "GET", f"{self.files_url}/ligands/download/{ccd_id}.cif",
+            "GET", f"{self.ligands_url}/{ccd_id}.cif",
             accept="text/plain", service="RCSB Chemical Component Dictionary",
             timeout=10, retry_attempts=2,
         )

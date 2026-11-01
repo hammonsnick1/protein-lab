@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from protein_labs.protein_planner.integrations import RemoteServiceError
+from protein_labs.protein_planner.integrations import HttpClient, HttpResponse, RCSBClient, RemoteServiceError
 from protein_labs.protein_planner.ligand_depiction import (
     LigandDepictionError,
     render_ligand_depiction,
@@ -158,3 +158,18 @@ def test_service_errors_name_the_problem():
         planner.get_ligand_depiction("p1", "pdb", "2BXG", chain_id="A", auth_seq_id="2001", ccd_id="IBP")
     with pytest.raises(ValueError, match="AlphaFold DB models contain no ligands"):
         planner.get_ligand_depiction("p1", "alphafold_db", "AF-1", chain_id="A", auth_seq_id="1", ccd_id="IBP")
+
+
+def test_rcsb_client_fetches_ccd_records_from_the_ligands_download_path():
+    requested: list[str] = []
+
+    def transport(method, url, *, data, headers):
+        requested.append(url)
+        return HttpResponse(200, _ccd("ATP"), {})
+
+    text = RCSBClient(HttpClient(transport=transport)).fetch_chemical_component(" atp ")
+
+    # https://files.rcsb.org/download/ligands/download/ATP.cif is a 404 for
+    # every component; the CCD lives at /ligands/download/ on the same host.
+    assert requested == ["https://files.rcsb.org/ligands/download/ATP.cif"]
+    assert text.startswith("data_ATP")
