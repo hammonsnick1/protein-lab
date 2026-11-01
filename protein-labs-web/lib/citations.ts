@@ -374,6 +374,21 @@ const entries = [
     source: "J Phys Chem 68:441–451", doi: "10.1021/j100785a001",
   },
   {
+    id: "carugo2017", kind: "article", name: "Crystal-contact distance", authors: "Carugo O, Blatova OA, Medrish EO, Blatov VA, Proserpio DM", year: "2017",
+    title: "Packing topology in crystals of proteins and small molecules: a comparison",
+    source: "Sci Rep 7:13209", doi: "10.1038/s41598-017-12699-4",
+  },
+  {
+    id: "jeffrey1997", kind: "book", name: "Hydrogen-bond distances", authors: "Jeffrey GA", year: "1997",
+    title: "An introduction to hydrogen bonding",
+    source: "Oxford University Press, New York", url: "https://archive.org/details/introductiontohy0000jeff",
+  },
+  {
+    id: "wwpdb-valsym", kind: "website", name: "wwPDB close symmetry contacts", authors: "wwPDB", year: "2026",
+    title: "PDBx/mmCIF dictionary: category pdbx_val_sym_contact",
+    source: "Worldwide Protein Data Bank", url: "https://mmcif.wwpdb.org/dictionaries/mmcif_pdbx_v50.dic/Categories/pdbx_val_sym_contact.html",
+  },
+  {
     id: "vijaykumar1987", kind: "article", name: "PDB 1UBQ", authors: "Vijay-Kumar S, Bugg CE, Cook WJ", year: "1987",
     title: "Structure of ubiquitin refined at 1.8 Å resolution",
     source: "J Mol Biol 194:531–544", doi: "10.1016/0022-2836(87)90679-6",
