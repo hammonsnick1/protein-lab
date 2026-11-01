@@ -38,11 +38,14 @@ export function FlipTile({ className, icon: Icon, art, title, subtitle, front, b
   function flip(value: boolean) { moved.current = true; setFlipped(value); }
 
   return <article className={`flip-tile ${className}-tile ${flipped ? "is-flipped" : ""}`}>
-    <button ref={frontRef} className={`flip-face flip-front dashboard-card ${className}`} onClick={() => flip(true)} aria-expanded={flipped} aria-controls={backId} inert={flipped}>
+    {/* The hint pill and the Back label are decorative: each button carries
+        its own aria-label, so a narrow tile drops the words outright instead
+        of keeping a clipped copy of them for screen readers. */}
+    <button ref={frontRef} className={`flip-face flip-front dashboard-card ${className}`} onClick={() => flip(true)} aria-expanded={flipped} aria-controls={backId} aria-label={`${title}: show all`} inert={flipped}>
       <span className="flip-front-head">
         <Icon/>
         <span><strong>{title}</strong><small>{subtitle}</small></span>
-        <em className="flip-hint"><RotateCw/><span>Show all</span></em>
+        <em className="flip-hint" aria-hidden="true"><RotateCw/><span>Show all</span></em>
       </span>
       <span className="flip-front-body"><span className="flip-front-content">{front}</span><TileArt kind={art}/></span>
     </button>
@@ -54,7 +57,7 @@ export function FlipTile({ className, icon: Icon, art, title, subtitle, front, b
         </button>
         <div>
           {actions}
-          <button ref={backRef} className="flip-back-button" onClick={() => flip(false)} aria-label={`Back to the ${title.toLowerCase()} overview`}><RotateCcw/><span>Back</span></button>
+          <button ref={backRef} className="flip-back-button" onClick={() => flip(false)} aria-label={`Back to the ${title.toLowerCase()} overview`}><RotateCcw aria-hidden="true"/><span aria-hidden="true">Back</span></button>
         </div>
       </header>
       <div className="flip-back-body">{back}</div>

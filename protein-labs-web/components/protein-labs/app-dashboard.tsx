@@ -3,11 +3,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowRight, CalendarDays, ChevronLeft, ChevronRight,
-  Clock3, ExternalLink, FlaskConical, FolderKanban, GitBranch, Pencil, Plus,
-  Columns2, Disc3, FileText, FolderCog, FolderSearch, HardDrive, Library, Send, Sparkles, TestTubes, Trash2, UserPlus, Users, X,
+  Clock3, FlaskConical, FolderKanban, GitBranch, Plus,
+  Columns2, Disc3, FileText, FolderCog, FolderSearch, HardDrive, Library, Send, Sparkles, TestTubes, UserPlus, Users, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DashboardStats, type BundlesState } from "@/components/protein-labs/dashboard-stats";
 import { FlipTile, TileHeadline } from "@/components/protein-labs/dashboard-flip-tile";
 import type { ProteinBundle, ProteinRecord } from "@/lib/protein-labs-api";
@@ -16,6 +15,8 @@ import type { ProjectTree } from "@/lib/project-tree-types";
 import { projectTreeStats } from "@/lib/project-trees";
 import { LIBRARY_TILE, libraryCount, summarizePlaces, type LibraryStorage, type LibraryTab } from "@/lib/library-hub";
 import { librarySearchParams, type FacetCounts } from "@/lib/protein-library";
+import type { SettingsSection } from "@/components/protein-labs/workspace-settings";
+import { PROFILE_KEY, TEAM_KEY, displayName, readProfile, readTeam, subscribeStored, type Profile, type TeamMember } from "@/lib/workspace-profile";
 
 const mascots = [
   { id: "bacteria", emoji: "🦠", label: "Bacterium", caption: "Fast growth, focused science" },
@@ -41,15 +42,12 @@ const timelineStages = [
 
 type TimelineStage = typeof timelineStages[number]["id"];
 type TimelineEvent = { id: string; date: string; title: string; projectId: string; stage: TimelineStage };
-type TeamMember = { id: string; name: string; email: string; role: "Member" | "Reviewer" | "Owner" };
-type Profile = { name: string; googleEmail: string; googleConnected: boolean };
 
-const defaultProfile: Profile = { name: "Researcher", googleEmail: "", googleConnected: false };
 // The companion stays out of the way until the researcher asks for it.
 const MASCOT_VISIBLE_KEY = "protein-labs-mascot-visible";
 const reportPages = ["Protein properties", "Transformation and expression", "Cell lysis and clarification", "Affinity capture", "Affinity-tag cleavage", "Subtractive cleanup", "SEC polishing", "Quality control and storage"];
 
-export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, storage, onLibrary, onWorkbench, onRevealStorage, onChangeStorage, onCreate }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; storage: LibraryStorage; onLibrary: (tab: LibraryTab) => void; onWorkbench: (libraryVectorId?: string) => void; onRevealStorage: () => void; onChangeStorage: () => void; onCreate: () => void }) {
+export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, onProjects, onTrees, storage, onLibrary, onWorkbench, onRevealStorage, onChangeStorage, onCreate, onSettings }: { proteins: ProteinRecord[]; trees: ProjectTree[]; onOpenProject: (id: string) => void; onOpenReports: (id: string) => void; onProjects: () => void; onTrees: () => void; storage: LibraryStorage; onLibrary: (tab: LibraryTab) => void; onWorkbench: (libraryVectorId?: string) => void; onRevealStorage: () => void; onChangeStorage: () => void; onCreate: () => void; onSettings: (section: SettingsSection) => void }) {
   const [now, setNow] = useState(new Date());
   const [bundles, setBundles] = useState<ProteinBundle[]>([]);
   // Which project list the bundles were loaded for, so a newer list reads as loading.
@@ -61,15 +59,9 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
   const [mascotId, setMascotId] = useState("bacteria");
   const [mascotVisible, setMascotVisible] = useState(false);
   const [picker, setPicker] = useState(false);
-  const [profile, setProfile] = useState<Profile>(defaultProfile);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [profileName, setProfileName] = useState(defaultProfile.name);
-  const [googleEmail, setGoogleEmail] = useState("");
+  // Both are edited in Settings; the dashboard only reads them.
+  const [profile, setProfile] = useState<Profile>({ name: "", googleEmail: "", googleConnected: false });
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [memberOpen, setMemberOpen] = useState(false);
-  const [memberName, setMemberName] = useState("");
-  const [memberEmail, setMemberEmail] = useState("");
-  const [memberRole, setMemberRole] = useState<TeamMember["role"]>("Member");
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
@@ -85,11 +77,14 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
     queueMicrotask(() => {
       if (savedMascot && mascots.some((item) => item.id === savedMascot)) setMascotId(savedMascot);
       setMascotVisible(savedVisible);
-      setProfile(readStored("protein-labs-profile", defaultProfile));
-      setMembers(readStored<TeamMember[]>("protein-labs-team", []));
+      setProfile(readProfile());
+      setMembers(readTeam());
       setEvents(readStored<TimelineEvent[]>("protein-labs-purification-timeline", []));
     });
   }, []);
+  // Settings writes both; the greeting and the team tile follow straight away.
+  useEffect(() => subscribeStored(PROFILE_KEY, () => setProfile(readProfile())), []);
+  useEffect(() => subscribeStored(TEAM_KEY, () => setMembers(readTeam())), []);
   useEffect(() => {
     let active = true;
     // Projects that fail to load are left out; the stats column says the
@@ -155,38 +150,12 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
 
   function showMascot(value: boolean) { setMascotVisible(value); if (!value) setPicker(false); localStorage.setItem(MASCOT_VISIBLE_KEY, String(value)); }
   function chooseMascot(id: string) { setMascotId(id); localStorage.setItem("protein-labs-mascot", id); setPicker(false); }
-  function openProfile() { setProfileName(profile.name); setGoogleEmail(profile.googleEmail); setProfileOpen(true); }
-  function saveProfile() {
-    const value = { ...profile, name: profileName.trim() || "Researcher", googleEmail: googleEmail.trim() };
-    setProfile(value); store("protein-labs-profile", value); setProfileOpen(false);
-  }
-  function connectGoogle() {
-    const value = { ...profile, name: profileName.trim() || profile.name, googleEmail: googleEmail.trim(), googleConnected: true };
-    setProfile(value); store("protein-labs-profile", value);
-    window.open("https://alphafoldserver.com/welcome", "_blank", "noopener,noreferrer");
-    setNotice("AlphaFold Server sign-in opened in your system browser. Protein Lab does not store your password or OAuth token.");
-  }
-  function disconnectGoogle() { const value = { ...profile, googleConnected: false }; setProfile(value); store("protein-labs-profile", value); }
-  async function openAlphaFold() {
-    const project = roots.find((item) => item.id === activeProjectId);
-    if (project) {
-      try { await navigator.clipboard.writeText(`>${project.name}\n${project.sequence}`); setNotice(`${project.name} was copied as FASTA. Paste it into AlphaFold Server.`); }
-      catch { setNotice("AlphaFold Server opened, but clipboard access was unavailable."); }
-    }
-    window.open("https://alphafoldserver.com/welcome", "_blank", "noopener,noreferrer");
-  }
   function addEvent() {
     if (!eventTitle.trim()) { setNotice("Give the purification timeline item a name first."); return; }
     const value: TimelineEvent = { id: crypto.randomUUID(), date: selectedDate, title: eventTitle.trim(), projectId: activeProjectId, stage: eventStage };
     const next = [...events, value]; setEvents(next); store("protein-labs-purification-timeline", next); setEventTitle(""); setNotice(`Added to ${formatCalendarDate(selectedDate)}.`);
   }
   function removeEvent(id: string) { const next = events.filter((event) => event.id !== id); setEvents(next); store("protein-labs-purification-timeline", next); }
-  function addMember() {
-    if (!memberName.trim() || !memberEmail.trim()) { setNotice("Enter the collaborator's name and email address."); return; }
-    const value: TeamMember = { id: crypto.randomUUID(), name: memberName.trim(), email: memberEmail.trim(), role: memberRole };
-    const next = [...members, value]; setMembers(next); store("protein-labs-team", next); setMemberName(""); setMemberEmail(""); setMemberRole("Member"); setMemberOpen(false);
-  }
-  function removeMember(id: string) { const next = members.filter((member) => member.id !== id); setMembers(next); store("protein-labs-team", next); }
   async function shareWith(member: TeamMember) {
     const project = roots.find((item) => item.id === activeProjectId);
     if (!project) { setNotice("Create or select a project before sharing."); return; }
@@ -196,7 +165,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
     downloadText(filename, handoff);
     try { await navigator.clipboard.writeText(handoff); } catch { /* The email draft still opens if clipboard permission is unavailable. */ }
     const subject = encodeURIComponent(`Protein Lab project: ${project.name}`);
-    const body = encodeURIComponent(`Hi ${member.name},\n\nI would like to share the Protein Lab project “${project.name}” (${project.sequence.length} aa) with you. Please find the exported project handoff file “${filename}” attached.\n\nBest,\n${profile.name}`);
+    const body = encodeURIComponent(`Hi ${member.name},\n\nI would like to share the Protein Lab project “${project.name}” (${project.sequence.length} aa) with you. Please find the exported project handoff file “${filename}” attached.\n\nBest,\n${displayName(profile)}`);
     window.open(`mailto:${encodeURIComponent(member.email)}?subject=${subject}&body=${body}`, "_blank");
     setNotice(`${filename} was downloaded, copied, and an email draft for ${member.name} was opened. Attach the downloaded file before sending.`);
   }
@@ -216,12 +185,13 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
       />}
     </DashboardStats>
     <div className="dashboard-content-column">
+    {/* A one-line header, not a hero: the projects tile is the first thing a
+        1280x720 window shows. */}
     <section className="dashboard-welcome dashboard-card">
-      <div className="dashboard-greeting"><div><span className="eyebrow">PROTEIN LAB · LOCAL WORKSPACE</span><h1>{greeting(now)}, {profile.name || "Researcher"}.</h1><p>Plan the next experiment, review active work, and keep the purification team synchronized.</p></div></div>
+      <div className="dashboard-greeting"><div><span className="eyebrow">PROTEIN LAB · LOCAL WORKSPACE</span><h1>{greeting(now)}, {displayName(profile)}.</h1></div></div>
       <div className="dashboard-welcome-actions">
         <LiveClock/>
         <Button size="sm" onClick={onCreate}><Plus/> New project</Button>
-        <Button variant="outline" size="sm" onClick={openProfile}><Pencil/> Profile</Button>
         <Button variant="outline" size="icon" className={`mascot-toggle ${mascotVisible ? "is-on" : ""}`} aria-pressed={mascotVisible} onClick={() => showMascot(!mascotVisible)} title={mascotVisible ? "Hide your lab companion" : "Show your lab companion"} aria-label={mascotVisible ? "Hide lab companion" : "Show lab companion"}><span aria-hidden="true">{mascot.emoji}</span></Button>
       </div>
     </section>
@@ -307,14 +277,16 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           </div>}
         />
 
-        <FlipTile className="dashboard-team-card" icon={Users} art="team" title="Team members" subtitle="Project handoffs for collaborators"
-          actions={<Button variant="outline" size="sm" onClick={() => setMemberOpen(true)}><UserPlus/> Add</Button>}
-          front={<TileHeadline value={members.length + 1} label={members.length ? "people on the team" : "person on the team"} detail={members.length ? `${profile.name || "You"} and ${members.length} collaborator${members.length === 1 ? "" : "s"}` : "Only you so far"}/>}
+        {/* Protein Lab is a single-user offline notebook, so there is no team
+            tile until a collaborator has actually been added in Settings. */}
+        {members.length > 0 && <FlipTile className="dashboard-team-card" icon={Users} art="team" title="Team members" subtitle="Project handoffs for collaborators"
+          actions={<Button variant="outline" size="sm" onClick={() => onSettings("collaborators")}><UserPlus/> Manage</Button>}
+          front={<TileHeadline value={members.length + 1} label="people on the team" detail={`${displayName(profile)} and ${members.length} collaborator${members.length === 1 ? "" : "s"}`}/>}
           back={<>
             {projectSelect("Project to share")}
-            <div className="team-list"><div className="team-member owner"><span>{initials(profile.name)}</span><div><strong>{profile.name || "Researcher"}</strong><small>{profile.googleEmail || "Local workspace owner"}</small></div><em>Owner</em></div>{members.map((member) => <div className="team-member" key={member.id}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><em>{member.role}</em><button title={`Share with ${member.name}`} onClick={() => void shareWith(member)}><Send/></button><button title={`Remove ${member.name}`} onClick={() => removeMember(member.id)}><Trash2/></button></div>)}{!members.length && <div className="team-empty"><Users/><span><strong>No collaborators yet</strong><small>Add a researcher, then create an email-ready project handoff.</small></span></div>}</div>
+            <div className="team-list"><div className="team-member owner"><span>{initials(displayName(profile))}</span><div><strong>{displayName(profile)}</strong><small>{profile.googleEmail || "Local workspace owner"}</small></div><em>Owner</em></div>{members.map((member) => <div className="team-member" key={member.id}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{member.email}</small></div><em>{member.role}</em><button title={`Share with ${member.name}`} aria-label={`Share with ${member.name}`} onClick={() => void shareWith(member)}><Send/></button></div>)}</div>
           </>}
-        />
+        />}
       </div>
 
       <div className="dashboard-board-column">
@@ -348,24 +320,11 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
             ]}
             storage={storage} onOpen={onLibrary} onReveal={onRevealStorage} onChange={onChangeStorage}/>}
         />
-
-        <FlipTile className="dashboard-account-card" icon={Sparkles} art="alphafold" title="AlphaFold access" subtitle="Through your system browser"
-          backSubtitle="Use your Google-authenticated system browser"
-          front={<span className={`tile-status ${profile.googleConnected ? "is-on" : ""}`}><i aria-hidden="true"/><span><b>{profile.googleConnected ? "Google browser link ready" : "Not connected"}</b><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab"}</small></span></span>}
-          back={<>
-            <div className="account-identity"><span className={profile.googleConnected ? "connected" : ""}>{profile.googleConnected ? "G" : mascot.emoji}</span><div><strong>{profile.googleConnected ? "Google browser link ready" : "Connect a Google account"}</strong><small>{profile.googleConnected ? profile.googleEmail || "Account selected in your browser" : "Your credentials stay with Google, not Protein Lab."}</small></div></div>
-            {profile.googleConnected ? <>{projectSelect("Sequence to prepare")}<Button className="wide" onClick={() => void openAlphaFold()}><ExternalLink/> Copy FASTA & open AlphaFold</Button><button className="account-text-action" onClick={disconnectGoogle}>Disconnect browser link</button></> : <Button className="wide" onClick={connectGoogle}><ExternalLink/> Choose Google account</Button>}
-            <p>AlphaFold Server remains a Google-hosted service. Protein Lab opens the official site and prepares the selected sequence; it never stores your Google password or authentication token.</p>
-          </>}
-        />
       </div>
     </div>
     </div>
     </div>
 
-    <Dialog open={profileOpen} onOpenChange={setProfileOpen}><DialogContent className="dialog-panel"><DialogHeader><DialogTitle>Your Protein Lab profile</DialogTitle><DialogDescription>Choose how Protein Lab greets you and which Google account label appears on this computer.</DialogDescription></DialogHeader><label className="field">Preferred name<input autoFocus value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="How should Protein Lab address you?"/></label><label className="field">Google account email <small>(optional display label)</small><input type="email" value={googleEmail} onChange={(event) => setGoogleEmail(event.target.value)} placeholder="researcher@institution.edu"/></label><div className="profile-google-status"><span className={profile.googleConnected ? "connected" : ""}/><strong>{profile.googleConnected ? "Browser sign-in configured" : "Google browser sign-in not configured"}</strong></div><DialogFooter><Button variant="outline" onClick={() => setProfileOpen(false)}>Cancel</Button><Button onClick={saveProfile}>Save profile</Button></DialogFooter></DialogContent></Dialog>
-
-    <Dialog open={memberOpen} onOpenChange={setMemberOpen}><DialogContent className="dialog-panel"><DialogHeader><DialogTitle>Add a team member</DialogTitle><DialogDescription>Team details remain on this computer and are used to prepare project handoffs.</DialogDescription></DialogHeader><label className="field">Name<input autoFocus value={memberName} onChange={(event) => setMemberName(event.target.value)} placeholder="Collaborator name"/></label><label className="field">Email<input type="email" value={memberEmail} onChange={(event) => setMemberEmail(event.target.value)} placeholder="name@institution.edu"/></label><label className="field">Role<select value={memberRole} onChange={(event) => setMemberRole(event.target.value as TeamMember["role"])}><option>Member</option><option>Reviewer</option><option>Owner</option></select></label><DialogFooter><Button variant="outline" onClick={() => setMemberOpen(false)}>Cancel</Button><Button onClick={addMember}><UserPlus/> Add member</Button></DialogFooter></DialogContent></Dialog>
   </main>;
 }
 

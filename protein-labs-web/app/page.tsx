@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, ExternalLink, FileDown, FilePlus2, FlaskConical, FolderCog, FolderOpen, FolderSearch, GitBranch, HelpCircle, Keyboard, LayoutGrid, LoaderCircle, MoreHorizontal, Plus, RefreshCw, Save, Settings, Share2, Sparkles, TestTubes, Workflow } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, CircleAlert, Disc3, Dna, FileDown, FilePlus2, FlaskConical, FolderCog, FolderOpen, FolderSearch, GitBranch, HelpCircle, Keyboard, LayoutGrid, LoaderCircle, MoreHorizontal, Palette, Plus, RefreshCw, Save, Share2, Sparkles, TestTubes, UserRound, Users, Workflow } from "lucide-react";
 import { Menubar as MenubarPrimitive } from "radix-ui";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ import { StructureViewer } from "@/components/protein-labs/structure-viewer";
 import { PurificationRoadmapWorkspace } from "@/components/protein-labs/purification-roadmap";
 import { LibraryHub } from "@/components/protein-labs/library-hub";
 import { UserManual } from "@/components/protein-labs/user-manual";
+import { WorkspaceSettings, type SettingsSection } from "@/components/protein-labs/workspace-settings";
 import { VectorWorkbench } from "@/components/protein-labs/vector-workbench";
 import { JsonObject, ProteinBundle, ProteinRecord, proteinLabsApi } from "@/lib/protein-labs-api";
 import { definitionFor } from "@/lib/workflow";
@@ -92,6 +93,9 @@ export default function Home() {
   const [enginePath, setEnginePath] = useState("");
   const [projectDirectory, setProjectDirectory] = useState<ProjectDirectoryState | null>(null);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("vectors");
+  // Profile, AlphaFold access and collaborators all live behind the Settings
+  // menu now; each menu item opens this dialog on its own section.
+  const [settings, setSettings] = useState<{ open: boolean; section: SettingsSection }>({ open: false, section: "profile" });
 
   const dark = visualThemes.find((theme) => theme.id === visualTheme)?.dark ?? false;
   const bundle = bundles[selectedId] ?? null;
@@ -146,6 +150,7 @@ export default function Home() {
   const openLibrary = createLibraryOpener({ currentView: () => viewRef.current, switchTab: setLibraryTab, openView: (tab) => setView("library", () => setLibraryTab(tab)) });
   function openJob(value: string, returnTo: "planning" | "roadmap" = "planning", direction?: NavDirection) { setView("job", () => { setActiveJob(definitionFor(value).id); setJobReturn(returnTo); }, direction); }
   function chooseVisualTheme(theme: VisualTheme) { setVisualTheme(theme); localStorage.setItem("protein-labs-visual-theme", theme); }
+  function openSettings(section: SettingsSection) { setSettings({ open: true, section }); }
   async function shareProject() { if (!bundle) return; const text = `${bundle.protein.name}\n${bundle.protein.sequence.length} aa\n${bundle.projectJobs.length} saved workflow jobs`; try { await navigator.clipboard.writeText(text); setError("Project summary copied to the clipboard."); } catch { setError("Clipboard access was not available."); } }
   // Each visit remounts the manual, so a Help item always lands on its section
   // even when the manual is already open with a search typed in.
@@ -208,7 +213,11 @@ export default function Home() {
           <MenuItem icon={<BookOpen/>} disabled={!bundle} onSelect={() => setView("reports")}>Edit report</MenuItem>
         </DesktopMenu>
         <DesktopMenu label="Settings" container={shellNode}>
-          <MenubarPrimitive.Label className="menu-heading"><Settings/> Appearance</MenubarPrimitive.Label>
+          <MenuItem icon={<UserRound/>} onSelect={() => openSettings("profile")}>Profile…</MenuItem>
+          <MenuItem icon={<Sparkles/>} onSelect={() => openSettings("alphafold")}>AlphaFold Server access…</MenuItem>
+          <MenuItem icon={<Users/>} onSelect={() => openSettings("collaborators")}>Collaborators…</MenuItem>
+          <MenubarPrimitive.Separator className="desktop-menu-separator"/>
+          <MenubarPrimitive.Label className="menu-heading"><Palette/> Appearance</MenubarPrimitive.Label>
           <MenubarPrimitive.RadioGroup className="theme-preset-list" value={visualTheme} onValueChange={(value) => chooseVisualTheme(value as VisualTheme)}>
             {/* Picking an appearance keeps the menu open so they can be compared. */}
             {visualThemes.map((theme) => <MenubarPrimitive.RadioItem key={theme.id} value={theme.id} className="theme-preset-item" onSelect={(event) => event.preventDefault()}><span className="theme-swatches">{theme.colors.map((color) => <i key={color} style={{ background: color }}/>)}</span><span><strong>{theme.label}</strong><small>{theme.description}</small></span><MenubarPrimitive.ItemIndicator><Check/></MenubarPrimitive.ItemIndicator></MenubarPrimitive.RadioItem>)}
@@ -232,14 +241,14 @@ export default function Home() {
         </DesktopMenu>
       </MenubarPrimitive.Root>
       <div className="topbar-spacer"/>
-      <div className="top-actions"><Button variant={view === "library" && libraryTab === "vectors" ? "secondary" : "ghost"} size="sm" className="topbar-vector-library" aria-pressed={view === "library" && libraryTab === "vectors"} title="Vector library (Ctrl+Shift+L)" onClick={() => openLibrary("vectors")}><Disc3/> Vector library</Button><Button variant={view === "library" && libraryTab === "proteins" ? "secondary" : "ghost"} size="sm" className="topbar-protein-library" aria-pressed={view === "library" && libraryTab === "proteins"} title="Protein library (Ctrl+Shift+P)" onClick={() => openLibrary("proteins")}><TestTubes/> Protein library</Button><TopGoogleAccount/></div>
+      <div className="top-actions"><Button variant={view === "library" && libraryTab === "vectors" ? "secondary" : "ghost"} size="sm" className="topbar-vector-library" aria-pressed={view === "library" && libraryTab === "vectors"} title="Vector library (Ctrl+Shift+L)" onClick={() => openLibrary("vectors")}><Disc3/> Vector library</Button><Button variant={view === "library" && libraryTab === "proteins" ? "secondary" : "ghost"} size="sm" className="topbar-protein-library" aria-pressed={view === "library" && libraryTab === "proteins"} title="Protein library (Ctrl+Shift+P)" onClick={() => openLibrary("proteins")}><TestTubes/> Protein library</Button></div>
     </header>
 
     {error && <div className="global-error"><CircleAlert/><span>{error}</span><button onClick={() => setError("")}>Dismiss</button></div>}
     {busy && <div className="global-working"><LoaderCircle className="spin"/> Working with the local scientific engine…</div>}
 
     <div className={`workspace-view-transition ${view === "home" ? "is-dashboard" : ""}`} key={`${view}:${selectedId}:${view === "job" ? activeJob : ""}`}>
-      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} storage={libraryStorage(projectDirectory, enginePath)} onLibrary={openLibrary} onWorkbench={(libraryId) => setView("workbench", () => setWorkbenchVisit((current) => ({ libraryId, visit: current.visit + 1 })))} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()} onCreate={() => setCreateOpen(true)}/>
+      {view === "home" ? <AppDashboard proteins={proteins} trees={projectTrees} onOpenProject={(id) => void openProject(id)} onOpenReports={(id) => void openProject(id, "reports")} onProjects={() => setView("projects")} onTrees={() => setView("project-trees")} storage={libraryStorage(projectDirectory, enginePath)} onLibrary={openLibrary} onWorkbench={(libraryId) => setView("workbench", () => setWorkbenchVisit((current) => ({ libraryId, visit: current.visit + 1 })))} onRevealStorage={() => void revealProjectDirectory()} onChangeStorage={() => void chooseProjectDirectory()} onCreate={() => setCreateOpen(true)} onSettings={openSettings}/>
         : view === "projects" ? <ProjectGallery proteins={proteins} onOpen={(id) => void openProject(id)} onCreate={() => { setError(""); setCreateOpen(true); }}/>
         : view === "manual" ? <UserManual key={manualVisit.visit} initialSection={manualVisit.section}/>
         : view === "workbench" ? <VectorWorkbench key={workbenchVisit.visit} proteins={proteins} initialLibraryId={workbenchVisit.libraryId} onBack={() => setView("home")}/>
@@ -249,6 +258,7 @@ export default function Home() {
         : <main className="gallery"><p>Select a saved protein project.</p></main>}
     </div>
 
+    <WorkspaceSettings open={settings.open} section={settings.section} proteins={proteins} onOpenChange={(open) => setSettings((current) => ({ ...current, open }))}/>
     <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent className="dialog-panel"><DialogHeader><DialogTitle>Start a protein project</DialogTitle><DialogDescription>Create an independent project with its own Workflow, Roadmap, and Report. Related projects can be connected later in Project Trees.</DialogDescription></DialogHeader><label className="field">Project name<input autoFocus value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="e.g. PA0012 · PDB 8U0I"/></label><label className="field">Protein sequence<textarea rows={7} value={newSequence} onChange={(event) => setNewSequence(event.target.value)} placeholder="Paste a one-letter amino acid sequence"/></label><small>{newSequence.replace(/\s/g, "").length} residues</small><DialogFooter><Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button><Button disabled={busy || !newSequence.trim()} onClick={() => void createProject()}>{busy && <LoaderCircle className="spin"/>} Create project</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={aboutOpen} onOpenChange={setAboutOpen}><DialogContent className="dialog-panel about-dialog"><DialogHeader><DialogTitle>Protein Lab {appVersion}</DialogTitle><DialogDescription>An offline workspace for planning protein expression, running purification analyses, and writing the purification report.</DialogDescription></DialogHeader><dl className="about-facts"><dt>Project directory</dt><dd className="about-path">{projectDirectory?.directory ?? (enginePath ? folderOf(enginePath) : "Engine not connected")}</dd><dt>Engine</dt><dd>{engineOnline ? "Connected" : engineOnline === false ? "Not connected" : "Connecting…"}</dd></dl><DialogFooter><Button variant="outline" onClick={() => { setAboutOpen(false); openManual(); }}><BookOpen/> Open the manual</Button><Button onClick={() => setAboutOpen(false)}>Close</Button></DialogFooter></DialogContent></Dialog>
   </div>;
@@ -300,21 +310,6 @@ function ProjectDirectoryNote({ state, enginePath }: { state: ProjectDirectorySt
   if (state?.missing) return <small className="desktop-menu-note warning" title={state.directory}>{state.missing} was not found, so projects are being saved in the default folder.</small>;
   if (state) return <small className="desktop-menu-note" title={state.directory}>{state.canChange ? "Projects are saved in" : "This engine was started outside Protein Lab and saves in"} <MenuPath path={state.directory}/></small>;
   return <small className="desktop-menu-note" title={enginePath}>{enginePath ? <>Choosing a folder needs the desktop app. The engine saves in <MenuPath path={folderOf(enginePath)}/></> : "Choosing a folder needs the desktop app."}</small>;
-}
-
-function TopGoogleAccount() {
-  const [profile, setProfile] = useState<{ name?: string; googleEmail?: string; googleConnected?: boolean }>({});
-  useEffect(() => {
-    const load = () => { try { setProfile(JSON.parse(localStorage.getItem("protein-labs-profile") || "{}")); } catch { setProfile({}); } };
-    load(); window.addEventListener("protein-labs-profile-changed", load); window.addEventListener("focus", load);
-    return () => { window.removeEventListener("protein-labs-profile-changed", load); window.removeEventListener("focus", load); };
-  }, []);
-  function connect() {
-    const next = { ...profile, googleConnected: true };
-    localStorage.setItem("protein-labs-profile", JSON.stringify(next)); setProfile(next);
-    window.open("https://alphafoldserver.com/welcome", "_blank", "noopener,noreferrer");
-  }
-  return <button className={`top-google-account ${profile.googleConnected ? "connected" : ""}`} onClick={connect}><span>G</span><span><strong>{profile.googleConnected ? "Google linked" : "Link Google account"}</strong>{profile.googleConnected && <small>{profile.googleEmail || "AlphaFold browser access"}</small>}</span><ExternalLink/></button>;
 }
 
 function ProjectGallery({ proteins, onOpen, onCreate }: { proteins: ProteinRecord[]; onOpen: (id: string) => void; onCreate: () => void }) { return <main className="gallery"><section className="gallery-heading"><div><span className="eyebrow">LOCAL LAB WORKSPACE</span><h1>Protein projects</h1><p>Each project has its own guided Workflow, purification Roadmap, and Report.</p></div><Button onClick={onCreate}><Plus/> New project</Button></section><section className="project-grid">{proteins.map((protein) => <button key={protein.id} className="project-card" onClick={() => onOpen(protein.id)}><ProjectCardPreview protein={protein}/><div className="project-card-body"><div className="project-meta"><span className="live-dot"/> SAVED LOCALLY <MoreHorizontal/></div><h2>{protein.name}</h2><p>{protein.sequence.length} aa{protein.organism ? ` · ${protein.organism}` : ""}</p><div className="modified">Updated {formatDate(protein.updatedAt)}</div></div></button>)}<button className="new-project-card" onClick={onCreate}><span><Plus/></span><strong>New project</strong><small>Start with a sequence</small></button></section>{proteins.length === 0 && <section className="recent-strip"><div><Dna/><span><strong>Begin with the protein sequence</strong><small>Protein Lab calculates properties locally as soon as it is saved.</small></span></div><Button variant="outline" onClick={onCreate}>Create first project</Button></section>}</main>; }
