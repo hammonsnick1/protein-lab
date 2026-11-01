@@ -243,11 +243,42 @@ describe("what each operation does", () => {
 
   it("summarises a group in a sentence a student can read", () => {
     const summary = spaceGroupSummary(group("P 21 21 21"));
-    assert.match(summary, /4 copies/);
-    assert.match(summary, /2₁/);
-    assert.match(summary, /one of the 65/);
-    assert.match(spaceGroupSummary(group("P m m m")), /never adopt it/);
-    assert.match(spaceGroupSummary(group("C 1 2 1")), /C centring adds 1 more/);
+    assert.match(summary.packing, /4 copies/);
+    assert.match(summary.packing, /2₁/);
+    assert.match(summary.handedness, /one of the 65/);
+    assert.match(spaceGroupSummary(group("C 1 2 1")).packing, /C centring adds 1 more/);
+  });
+
+  // The packing numbers are read off the gemmi-generated table; the handedness
+  // rule belongs to International Tables. The panel cites them separately, so
+  // they have to stay in separate strings (HOM-362).
+  it("keeps the packing facts and the handedness rule apart", () => {
+    const summary = spaceGroupSummary(group("P 21 21 21"));
+    assert.doesNotMatch(summary.packing, /handedness|Sohncke/);
+    assert.doesNotMatch(summary.handedness, /No\. 19|asymmetric unit into one unit cell/);
+  });
+
+  // A racemic mixture of L- and D-chains really does crystallise in the
+  // centrosymmetric groups, so no sentence may say proteins never do.
+  it("scopes the centrosymmetric groups to natural L-protein instead of saying never", () => {
+    const { handedness } = spaceGroupSummary(group("P m m m"));
+    assert.match(handedness, /natural L-protein/);
+    assert.match(handedness, /racemic/);
+    for (const entry of SPACE_GROUPS) {
+      assert.doesNotMatch(spaceGroupSummary(entry).handedness, /\bnever\b/, entry.short);
+    }
+  });
+
+  it("says a protein cannot mirror without claiming it never happens", () => {
+    for (const entry of SPACE_GROUPS) {
+      for (const element of groupElements(entry)) {
+        if (element.rigid) continue;
+        const sentence = elementSentence(element);
+        const where = `${entry.short} ${element.symbol}`;
+        assert.doesNotMatch(sentence, /\bnever\b/, where);
+        assert.match(sentence, /L-amino acid|L-protein/, where);
+      }
+    }
   });
 });
 

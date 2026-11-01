@@ -5,8 +5,11 @@
 // of symmetry operations. The 230 space groups are every way that set can be
 // built. Only 65 of them — the Sohncke groups — are made purely of rotations,
 // screw axes and translations; the other 165 also mirror or invert, which no
-// protein made of L-amino acids can do, so protein crystals are always in one
-// of the 65. The table itself is generated from gemmi; this module reads it.
+// protein made of L-amino acids can do, so a crystal of natural protein is
+// always in one of the 65. (A racemic mixture of L- and D-chains is a real
+// exception and does reach the centrosymmetric groups — Yeates & Kent 2012 —
+// so the wording here stays scoped to natural L-proteins.) The table itself is
+// generated from gemmi; this module reads it.
 //
 // Every operation is held exactly: the 3×3 part is integers and the
 // translation is an integer count of twelfths of a cell edge, so composing
@@ -552,26 +555,33 @@ export function elementSentence(element: SymmetryElement, cell: UnitCell | null 
     case "screw":
       return `Turn the protein a ${ORDER_WORDS[element.order] ?? "turn"} about the ${axisName(element.axis ?? [0, 0, 1])} axis at ${elementPosition(element)} and slide it ${prettyFraction(Math.round(Math.abs(element.shift) * DEN))} of the way along that axis${metres}. It climbs like a spiral staircase: ${element.order} steps take it one whole cell along ${axisName(element.axis ?? [0, 0, 1])}.`;
     case "mirror":
-      return `Reflect the protein in the plane perpendicular to ${axisName(element.axis ?? [0, 0, 1])} at ${elementPosition(element)}. A reflection swaps left for right, so no protein built from L-amino acids can sit in a crystal with this operation.`;
+      return `Reflect the protein in the plane perpendicular to ${axisName(element.axis ?? [0, 0, 1])} at ${elementPosition(element)}. A reflection swaps left for right, so no crystal of natural L-protein can have this operation — only a racemic mixture of L- and D-chains can.`;
     case "glide":
-      return `Reflect the protein in the plane perpendicular to ${axisName(element.axis ?? [0, 0, 1])} at ${elementPosition(element)}, then slide it along that plane${metres}. The reflection still swaps left for right, so proteins never do this.`;
+      return `Reflect the protein in the plane perpendicular to ${axisName(element.axis ?? [0, 0, 1])} at ${elementPosition(element)}, then slide it along that plane${metres}. The reflection still swaps left for right, so a natural L-protein cannot do this.`;
     case "inversion":
-      return `Push every atom through the point ${elementPosition(element)} and out the other side. That turns the protein into its mirror image, which L-amino acids cannot be.`;
+      return `Push every atom through the point ${elementPosition(element)} and out the other side. That turns the protein into its mirror image, which a chain of L-amino acids cannot be.`;
     default:
-      return `Turn the protein a ${ORDER_WORDS[element.order] ?? "turn"} about the ${axisName(element.axis ?? [0, 0, 1])} axis at ${elementPosition(element)} and then invert it through a point on that axis. Inversion makes a mirror image, so proteins never do this.`;
+      return `Turn the protein a ${ORDER_WORDS[element.order] ?? "turn"} about the ${axisName(element.axis ?? [0, 0, 1])} axis at ${elementPosition(element)} and then invert it through a point on that axis. Inversion makes a mirror image, so a natural L-protein cannot do this.`;
   }
 }
 
-/** The group in one paragraph: what it is made of and what that means. */
-export function spaceGroupSummary(group: SpaceGroup): string {
+/**
+ * The group in one paragraph, in two parts so each can be cited where it is
+ * shown. `packing` is read off the generated table (gemmi); `handedness` is the
+ * Sohncke rule, which belongs to International Tables Vol. A — and, for the
+ * other 165 groups, to the racemic-crystallography literature.
+ */
+export function spaceGroupSummary(group: SpaceGroup): { packing: string; handedness: string } {
   const copies = multiplicity(group);
   const screws = new Set(groupElements(group).filter((element) => element.kind === "screw").map((element) => element.symbol));
   const screwText = screws.size > 0 ? ` Its screw axes (${[...screws].sort().join(", ")}) turn the protein and slide it along the axis at the same time.` : "";
   const centringText = group.cen.length > 1 ? ` The ${group.centring} centring adds ${group.cen.length - 1} more copies inside the cell by pure translation.` : "";
-  const handed = group.sohncke
-    ? "Every operation is a rotation, a screw or a translation, so a protein keeps its handedness: this group is one of the 65 a protein crystal can use."
-    : "This group reflects or inverts the contents of the cell, which would turn L-amino acids into D-amino acids. Protein crystals never adopt it — it is here to show what the other 165 groups do.";
-  return `${group.short} (No. ${group.n}, ${group.system}) packs ${copies} ${copies === 1 ? "copy" : "copies"} of the asymmetric unit into one unit cell.${screwText}${centringText} ${handed}`;
+  return {
+    packing: `${group.short} (No. ${group.n}, ${group.system}) packs ${copies} ${copies === 1 ? "copy" : "copies"} of the asymmetric unit into one unit cell.${screwText}${centringText}`,
+    handedness: group.sohncke
+      ? "Every operation is a rotation, a screw or a translation, so a protein keeps its handedness: this group is one of the 65 a crystal of natural L-protein can use."
+      : "This group reflects or inverts the contents of the cell, which would turn L-amino acids into D-amino acids. A crystal grown from natural L-protein alone cannot adopt it; reaching it takes a racemic mixture of L- and D-chains, which is a real but deliberate experiment.",
+  };
 }
 
 // ── Animation ───────────────────────────────────────────────────────────────
@@ -627,7 +637,7 @@ function stepCaption(element: SymmetryElement, index: number, count: number, cel
   const metres = distance ? ` (${distance.toFixed(1)} Å)` : "";
   if (element.kind === "identity") return "Nothing moves. This is the copy you started from.";
   if (element.kind === "translation") return `Slide one whole centring vector${metres}. The copy is identical and the same way up — only its position changed.`;
-  if (!element.rigid) return `${element.kind === "inversion" ? "Invert" : "Reflect"} the protein. Watch the shape: it comes back as its mirror image, which is why this operation cannot appear in a protein crystal.`;
+  if (!element.rigid) return `${element.kind === "inversion" ? "Invert" : "Reflect"} the protein. Watch the shape: it comes back as its mirror image, which is why this operation cannot appear in a crystal of natural L-protein.`;
   const direction = axisName(element.axis ?? [0, 0, 1]);
   const words = ORDER_WORDS[element.order] ?? "turn";
   const climb = element.kind === "screw" ? ` and slide ${prettyFraction(Math.round(Math.abs(element.shift) * DEN))} along ${direction}${metres}` : "";
