@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 datas = []
 binaries = []
@@ -10,6 +10,9 @@ tmp_ret = collect_all('matplotlib')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('PIL')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# CA bundle for HTTPS on systems where the bundled OpenSSL finds none (see protein_labs/tls.py).
+datas += collect_data_files('certifi')
+hiddenimports += ['certifi']
 
 
 a = Analysis(

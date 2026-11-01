@@ -29,6 +29,7 @@ from .protein_planner.service import ProteinPlanner
 from .gel_analysis import analyze_gel
 from .chromatography import analyze_chromatogram, calibrate_sec, create_chromatography_run
 from .nmr import predict_hsqc
+from .tls import configure_ca_bundle
 from .vector_sources import VectorSourceError
 
 
@@ -881,6 +882,9 @@ def main() -> None:
         help="Contact email sent to NCBI in accordance with API etiquette",
     )
     args = parser.parse_args()
+    ca_bundle = configure_ca_bundle()
+    if ca_bundle:
+        print(f"Using CA certificates from {ca_bundle}", file=sys.stderr)
     ApiHandler.planner = make_planner(args.database, args.email)
     server = ThreadingHTTPServer((args.host, args.port), ApiHandler)
     print(
