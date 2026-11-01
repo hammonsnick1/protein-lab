@@ -297,6 +297,62 @@ const entries = [
     title: "MemGold and MemGold2: product pages and formulation sheets",
     source: "Molecular Dimensions (Calibre Scientific)", url: "https://moleculardimensions.com/en/category/memgold",
   },
+  // Crystal packing (HOM-311): contact rules and the PDB learning examples.
+  {
+    id: "carugo1997", kind: "article", name: "Crystal-packing contacts", authors: "Carugo O, Argos P", year: "1997",
+    title: "Protein–protein crystal-packing contacts",
+    source: "Protein Sci 6:2261–2263", doi: "10.1002/pro.5560061021",
+  },
+  {
+    id: "bakerhubbard1984", kind: "article", name: "Hydrogen bonds in proteins", authors: "Baker EN, Hubbard RE", year: "1984",
+    title: "Hydrogen bonding in globular proteins",
+    source: "Prog Biophys Mol Biol 44:97–179", doi: "10.1016/0079-6107(84)90007-5",
+  },
+  {
+    id: "word1999", kind: "article", name: "MolProbity contact dots", authors: "Word JM, Lovell SC, LaBean TH, Taylor HC, et al.", year: "1999",
+    title: "Visualizing and quantifying molecular goodness-of-fit: small-probe contact dots with explicit hydrogen atoms",
+    source: "J Mol Biol 285:1711–1733", doi: "10.1006/jmbi.1998.2400",
+  },
+  {
+    id: "bondi1964", kind: "article", name: "Van der Waals radii", authors: "Bondi A", year: "1964",
+    title: "van der Waals volumes and radii",
+    source: "J Phys Chem 68:441–451", doi: "10.1021/j100785a001",
+  },
+  {
+    id: "vijaykumar1987", kind: "article", name: "PDB 1UBQ", authors: "Vijay-Kumar S, Bugg CE, Cook WJ", year: "1987",
+    title: "Structure of ubiquitin refined at 1.8 Å resolution",
+    source: "J Mol Biol 194:531–544", doi: "10.1016/0022-2836(87)90679-6",
+  },
+  {
+    id: "teeter1984", kind: "article", name: "PDB 1CRN", authors: "Teeter MM", year: "1984",
+    title: "Water structure of a hydrophobic protein at atomic resolution: pentagon rings of water molecules in crystals of crambin",
+    source: "Proc Natl Acad Sci USA 81:6014–6018", doi: "10.1073/pnas.81.19.6014",
+  },
+  {
+    id: "ramanadham1990", kind: "article", name: "PDB 2LZT", authors: "Ramanadham M, Sieker LC, Jensen LH", year: "1990",
+    title: "Refinement of triclinic lysozyme: II. The method of stereochemically restrained least squares",
+    source: "Acta Crystallogr B 46:63–69", doi: "10.1107/S0108768189009195",
+  },
+  {
+    id: "vaney1996", kind: "article", name: "PDB 193L", authors: "Vaney MC, Maignan S, Riès-Kautt M, Ducruix A", year: "1996",
+    title: "High-resolution structure (1.33 Å) of a HEW lysozyme tetragonal crystal grown in the APCF apparatus",
+    source: "Acta Crystallogr D 52:505–517", doi: "10.1107/S090744499501674X",
+  },
+  {
+    id: "kumaraswamy1996", kind: "article", name: "PDB 1AMM", authors: "Kumaraswamy VS, Lindley PF, Slingsby C, Glover ID", year: "1996",
+    title: "An eye lens protein–water structure: 1.2 Å resolution structure of γB-crystallin at 150 K",
+    source: "Acta Crystallogr D 52:611–622", doi: "10.1107/S0907444995014302",
+  },
+  {
+    id: "loris2003", kind: "article", name: "PDB 1OUR", authors: "Loris R, Tielker D, Jaeger KE, Wyns L", year: "2003",
+    title: "Structural basis of carbohydrate recognition by the lectin LecB from Pseudomonas aeruginosa",
+    source: "J Mol Biol 331:861–870", doi: "10.1016/S0022-2836(03)00754-X",
+  },
+  {
+    id: "baker1988", kind: "article", name: "PDB 4INS", authors: "Baker EN, Blundell TL, Cutfield JF, Dodson EJ, et al.", year: "1988",
+    title: "The structure of 2Zn pig insulin crystals at 1.5 Å resolution",
+    source: "Philos Trans R Soc Lond B 319:369–456", doi: "10.1098/rstb.1988.0058",
+  },
 ] as const satisfies readonly Citation[];
 
 export type CitationId = (typeof entries)[number]["id"];

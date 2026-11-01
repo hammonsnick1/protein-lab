@@ -491,6 +491,32 @@ class ProteinPlanner:
             "errors": errors,
         }
 
+    def get_pdb_entry_mmcif(self, pdb_id: str) -> dict[str, Any]:
+        """Return a PDB entry's coordinates without any project or residue mapping."""
+        pdb_id = pdb_id.strip().upper()
+        structure_text = self.rcsb.fetch_mmcif(pdb_id)
+        errors: list[dict[str, Any]] = []
+        try:
+            entry_metadata = self.rcsb.entry_metadata(pdb_id)
+        except (RemoteServiceError, LookupError, ValueError) as error:
+            errors.append(self._source_error(f"RCSB PDB {pdb_id}", error))
+            entry_metadata = {
+                "id": pdb_id,
+                "source": "pdb",
+                "format": "cif",
+                "title": "",
+                "method": None,
+                "resolutionAngstrom": None,
+                "sourceUrl": f"https://www.rcsb.org/structure/{pdb_id}",
+            }
+        return {
+            "pdbId": pdb_id,
+            "structure": {**entry_metadata, **summarize_structure(structure_text)},
+            "structureText": structure_text,
+            "format": "cif",
+            "errors": errors,
+        }
+
     def get_structure(self, protein_id: str, source: str, structure_id: str) -> dict[str, Any]:
         bundle = self.database.get_bundle(protein_id)
         source = source.strip().lower()

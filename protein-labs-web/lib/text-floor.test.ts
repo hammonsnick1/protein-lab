@@ -8,12 +8,10 @@ import { describe, it } from "vitest";
 
 const FLOOR_PX = 12;
 const root = new URL("..", import.meta.url).pathname;
-const STYLESHEETS = ["app/globals.css", "app/vector-library.css", "app/protein-library.css", "app/compile-timeline.css", "app/space-groups.css"];
+const STYLESHEETS = ["app/globals.css", "app/vector-library.css", "app/protein-library.css", "app/compile-timeline.css", "app/space-groups.css", "app/crystal-lattice.css"];
 
 const EXEMPT: Record<string, string> = {
   // Chart axis ticks may stay at 11px.
-  ".stats-gridline em": "dashboard chart axis tick",
-  ".stats-week-axis": "dashboard chart axis tick",
   ".vmap-ruler text": "vector map ruler tick (SVG)",
   // SVG figure text placed in fixed geometry; a larger size makes labels collide.
   ".vmap-bar-label": "linear map feature label sized to its bar (SVG)",

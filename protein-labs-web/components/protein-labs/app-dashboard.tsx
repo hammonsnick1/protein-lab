@@ -275,8 +275,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           front={currentJob ? <span className="tile-job">
             <span className="current-job-head">
               <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
-              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small></span>
-              <em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em>
+              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small><em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em></span>
             </span>
             <span className="current-job-progress">
               <i style={{ "--value": `${Math.round(currentJob.progress * 100)}%` } as React.CSSProperties}/>
@@ -286,8 +285,7 @@ export function AppDashboard({ proteins, trees, onOpenProject, onOpenReports, on
           back={currentJob ? <button className="current-job-body" onClick={() => onOpenProject(currentJob.project.id)}>
             <span className="current-job-head">
               <span className="dashboard-project-avatar">{projectEmoji(currentJob.project)}</span>
-              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small></span>
-              <em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em>
+              <span><strong>{currentJob.job.name}</strong><small>{currentJob.project.name}</small><em className={`current-job-status status-${currentJob.job.status}`}>{jobStatusLabel(currentJob.job.status)}</em></span>
             </span>
             <span className="current-job-progress">
               <i style={{ "--value": `${Math.round(currentJob.progress * 100)}%` } as React.CSSProperties}/>

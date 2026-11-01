@@ -113,7 +113,19 @@ function WeekReadout({ rows, active, unit }: { rows: WeekRow[]; active: number |
 
 function WeekAxis({ rows }: { rows: WeekRow[] }) {
   // First, middle and current week keep the axis legible in a narrow column.
-  return <div className="stats-week-axis" aria-hidden="true">{rows.map((row, index) => <span key={row.key}>{index === 0 || index === rows.length - 1 || index === Math.floor(rows.length / 2) ? (index === rows.length - 1 ? "This wk" : row.label) : ""}</span>)}</div>;
+  // Each label spans the empty weeks beside it, so it has room without
+  // spilling out of a one-week cell; the middle one stays centred on its week.
+  const last = rows.length - 1;
+  const middle = Math.floor(rows.length / 2);
+  const span = rows.length >= 4 ? 2 : 1;
+  const ticks = [
+    { index: 0, column: `1 / span ${span}` },
+    ...(middle >= 3 && middle <= last - 3 ? [{ index: middle, column: `${middle} / span 3` }] : []),
+    ...(last > 0 ? [{ index: last, column: `${last + 2 - span} / span ${span}` }] : []),
+  ];
+  return <div className="stats-week-axis" aria-hidden="true" style={{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }}>
+    {ticks.map(({ index, column }) => <span key={rows[index].key} style={{ gridColumn: column }}>{index === last ? "This wk" : rows[index].label}</span>)}
+  </div>;
 }
 
 /** Columns per week. The peak and the current week carry labels; every week's
@@ -157,7 +169,7 @@ function WeekLine({ rows, unit }: { rows: WeekRow[]; unit: string }) {
       </svg>
       <i className="stats-line-dot" style={{ left: `${x(marker)}%`, bottom: `${100 - y(rows[marker].value)}%` }}/>
       {active === null && <b className="stats-line-end" style={{ bottom: `${100 - y(last.value)}%` }}>{last.value}</b>}
-      <div className="stats-hit" style={{ "--edge": `${rows.length > 1 ? -50 / (rows.length - 1) : 0}%` } as React.CSSProperties}>{rows.map((row, index) => <span key={row.key} onPointerEnter={() => setActive(index)}/>)}</div>
+      <div className="stats-hit" style={{ gridTemplateColumns: rows.map((_, index) => (index === 0 || index === rows.length - 1 ? "1fr" : "2fr")).join(" ") }}>{rows.map((row, index) => <span key={row.key} onPointerEnter={() => setActive(index)}/>)}</div>
     </div>
     <WeekAxis rows={rows}/>
     <WeekReadout rows={rows} active={active} unit={unit}/>

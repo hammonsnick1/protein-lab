@@ -399,6 +399,65 @@ def test_structure_list_fails_soft_when_rcsb_is_unavailable(tmp_path):
     assert all(error["retryable"] for error in result["errors"])
 
 
+def test_pdb_entry_mmcif_needs_no_project_or_reference_match(tmp_path):
+    http = HttpClient(transport=lambda *args, **kwargs: None)
+    service = ProteinPlanner(
+        Database(tmp_path / "planner.sqlite3"),
+        NCBIBlastClient(http),
+        UniProtClient(http),
+        RCSBClient(http),
+    )
+    # A brand-new project has no reference match, so the project route refuses 1CRN.
+    protein_id = service.create_protein({"sequence": CRAMBIN_SEQUENCE})["protein"]["id"]
+
+    class OfflineMetadataRCSB:
+        def fetch_mmcif(self, pdb_id):
+            assert pdb_id == "1CRN"
+            return CRAMBIN_DISULFIDES
+
+        def entry_metadata(self, pdb_id):
+            raise RemoteServiceError("RCSB PDB data", "timed out")
+
+    service.rcsb = OfflineMetadataRCSB()
+    try:
+        service.get_structure(protein_id, "pdb", "1CRN")
+    except LookupError as error:
+        assert "reference match" in str(error)
+    else:  # pragma: no cover - the precondition this route exists for
+        raise AssertionError("expected the project route to need a reference match")
+
+    result = service.get_pdb_entry_mmcif(" 1crn ")
+
+    assert result["pdbId"] == "1CRN"
+    assert result["format"] == "cif"
+    assert result["structureText"] == CRAMBIN_DISULFIDES
+    assert "mapping" not in result
+    assert result["structure"]["id"] == "1CRN"
+    assert result["structure"]["sourceUrl"] == "https://www.rcsb.org/structure/1CRN"
+    assert [chain["chainId"] for chain in result["structure"]["chains"]] == ["A"]
+    assert [error["source"] for error in result["errors"]] == ["RCSB PDB 1CRN"]
+    assert result["errors"][0]["retryable"] is True
+
+
+def test_pdb_entry_mmcif_rejects_malformed_ids_before_any_request(tmp_path):
+    def transport(*args, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("no request expected")
+
+    http = HttpClient(transport=transport)
+    service = ProteinPlanner(
+        Database(tmp_path / "planner.sqlite3"),
+        NCBIBlastClient(http),
+        UniProtClient(http),
+        RCSBClient(http),
+    )
+    for bad in ("1CR", "1CRN5", "../x"):
+        try:
+            service.get_pdb_entry_mmcif(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"{bad!r} should be rejected")
+
+
 def test_structure_get_routes_keep_the_documented_paths():
     calls = []
 
@@ -419,6 +478,10 @@ def test_structure_get_routes_keep_the_documented_paths():
             calls.append(("depiction", protein_id, source, structure_id, query))
             return {"svg": "<svg/>", "atomIndexToPdbAtomName": {"0": "PG"}}
 
+        def get_pdb_entry_mmcif(self, pdb_id):
+            calls.append(("mmcif", pdb_id))
+            return {"pdbId": pdb_id, "structureText": "data_1UBQ", "format": "cif"}
+
     handler = type("StructureApiHandler", (ApiHandler,), {"planner": FakePlanner()})
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -433,6 +496,8 @@ def test_structure_get_routes_keep_the_documented_paths():
             assert json.load(response)["groups"] == []
         with urlopen(f"{base}/v1/protein-planner/proteins/p1/structures/pdb/1ATP/ligand-depiction?chainId=A&authSeqId=401&ccdId=ATP") as response:
             assert json.load(response)["atomIndexToPdbAtomName"] == {"0": "PG"}
+        with urlopen(f"{base}/v1/pdb/entries/1UBQ/mmcif") as response:
+            assert json.load(response)["structureText"] == "data_1UBQ"
     finally:
         server.shutdown()
         server.server_close()
@@ -443,4 +508,5 @@ def test_structure_get_routes_keep_the_documented_paths():
         ("structure", "p1", "pdb", "1CRN"),
         ("regions", "p1", "alphafold_db", "AF-P01542-F1"),
         ("depiction", "p1", "pdb", "1ATP", {"chain_id": "A", "auth_seq_id": "401", "ccd_id": "ATP", "insertion_code": None}),
+        ("mmcif", "1UBQ"),
     ]
