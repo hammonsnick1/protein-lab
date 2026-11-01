@@ -6,6 +6,7 @@
 import { findLibraryComponent, resolvePurpose } from "./buffer-component-library.ts";
 import { normalizeBufferSteps, type BufferComponent, type BufferStep } from "./purification-catalog.ts";
 import type { StageBuffer } from "./purification-stage-catalog.ts";
+import { pIBufferChecks, type PIReference } from "./pi-distance.ts";
 
 export type Compatibility = { level:"pass"|"warning"|"error"; title:string; detail:string };
 
@@ -64,13 +65,13 @@ export function cleanupBufferChecks(tag:string, step:BufferStep):Compatibility[]
   return checks;
 }
 
-/** Checks on the edited SEC buffer: pH against the resin range and the pI, detergent for membrane proteins, glycerol and pressure. */
-export function secBufferChecks(column:{phMin:number;phMax:number}, step:BufferStep, context:{pI:number|null;membrane:boolean}):Compatibility[] {
+/** Checks on the edited SEC buffer: pH against the resin range and the cleaved product's pI, detergent for membrane proteins, glycerol and pressure. */
+export function secBufferChecks(column:{phMin:number;phMax:number}, step:BufferStep, context:{pI:PIReference|null;membrane:boolean}):Compatibility[] {
   const checks:Compatibility[]=[]; const pH=stepPH(step);
   if(pH===null)checks.push(err("Buffer pH is not set","Enter the SEC buffer pH so it can be checked against the resin operating range."));
   else if(pH<column.phMin||pH>column.phMax)checks.push(err("Buffer pH is outside the operating range",`pH ${pH} is outside the listed pH ${column.phMin}–${column.phMax} operating range.`));
   else checks.push(ok("Buffer pH fits the resin range",`pH ${pH} is within the listed pH ${column.phMin}–${column.phMax} operating range.`));
-  if(pH!==null&&context.pI!==null&&Math.abs(pH-context.pI)<.5)checks.push(warn("SEC buffer pH is close to predicted pI",`pH ${pH} is within 0.5 unit of pI ${context.pI.toFixed(2)}; aggregation can broaden or distort the peak.`));
+  checks.push(...pIBufferChecks([{step:"SEC buffer",pH,reference:context.pI}]).filter(item=>item.level!=="pass"));
   const detergents=find(step,"detergent");
   if(context.membrane&&!detergents.length)checks.push(err("Membrane-protein SEC buffer lacks detergent","Add the validated detergent or membrane mimic so the protein stays solubilized through SEC."));
   else if(context.membrane)checks.push(ok("Membrane solubilization is maintained",`${detergents.map(amount).join(", ")} keeps the protein solubilized.`));

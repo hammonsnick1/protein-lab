@@ -71,8 +71,10 @@ describe("SEC checks read the edited buffer", () => {
   it("checks the edited pH against the resin range and the pI", () => {
     const step = presetBufferStep(preset("sec-hepes"), "SEC / storage");
     assert.deepEqual(errors(secBufferChecks({ phMin: 3, phMax: 8 }, { ...step, pH: "8.5" }, { pI: null, membrane: false })), ["Buffer pH is outside the operating range"]);
-    assert.ok(titles(secBufferChecks(resin, { ...step, pH: "6.2" }, { pI: 6.0, membrane: false })).includes("SEC buffer pH is close to predicted pI"));
-    assert.ok(!titles(secBufferChecks(resin, step, { pI: 6.0, membrane: false })).includes("SEC buffer pH is close to predicted pI"));
+    const cleaved = { pI: 6.0, species: "cleaved product" };
+    assert.deepEqual(errors(secBufferChecks(resin, { ...step, pH: "6.2" }, { pI: cleaved, membrane: false })), ["Buffer pH is too close to the pI"]);
+    assert.ok(titles(secBufferChecks(resin, { ...step, pH: "6.8" }, { pI: cleaved, membrane: false })).includes("Buffer pH is close to the pI"));
+    assert.ok(!titles(secBufferChecks(resin, { ...step, pH: "7.0" }, { pI: cleaved, membrane: false })).some((title) => /pI/.test(title)));
     assert.deepEqual(errors(secBufferChecks(resin, { ...step, pH: "" }, { pI: null, membrane: false })), ["Buffer pH is not set"]);
   });
 });

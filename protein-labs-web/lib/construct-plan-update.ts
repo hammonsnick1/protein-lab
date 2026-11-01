@@ -18,6 +18,7 @@
 import { cleanPeptide, cleavageSites, tagModules, type TagModule } from "./construct-catalog.ts";
 import { affinityColumns, bufferPresets, cloneSteps, proteases, type AffinityColumn, type BufferStep } from "./purification-catalog.ts";
 import { cleanupBuffers, secBuffers, type StageBuffer } from "./purification-stage-catalog.ts";
+import { PI_WARN_DISTANCE, pIDistanceLevel } from "./pi-distance.ts";
 import { secColumns, type SecColumn } from "./sec-column-catalog.ts";
 import { loadStageBufferStep, presetBufferStep, stepPH } from "./stage-buffer.ts";
 import { reverseComplement, translate } from "./vector-geometry.ts";
@@ -351,12 +352,12 @@ export function expectedElutionMl(column: SecColumn, massKDa: number): number | 
   return column.vt >= 50 ? Math.round(ve) : Math.round(ve * 10) / 10;
 }
 
-/** A buffer pH at least half a unit from the pI, moved as little as possible; IMAC binding stays at pH 7 or above. */
+/** A buffer pH at least one unit from the pI (the warning line in pi-distance), moved as little as possible; IMAC binding stays at pH 7 or above. */
 export function pHAwayFromPI(pH: number | null, pI: number | null, floor = 6): number | null {
-  if (pH === null || pI === null || !Number.isFinite(pI) || Math.abs(pH - pI) >= .5) return null;
+  if (pH === null || pI === null || !Number.isFinite(pI) || pIDistanceLevel(pH, pI) === "pass") return null;
   // toFixed first: (7.3 + .5) * 10 is 78.00000000000001, which would ceil to 7.9.
   const tenths = (value: number) => Number((value * 10).toFixed(6));
-  const up = Math.ceil(tenths(pI + .5)) / 10, down = Math.floor(tenths(pI - .5)) / 10;
+  const up = Math.ceil(tenths(pI + PI_WARN_DISTANCE)) / 10, down = Math.floor(tenths(pI - PI_WARN_DISTANCE)) / 10;
   const options = [up, down].filter((value) => value >= floor && value <= 9).sort((left, right) => Math.abs(left - pH) - Math.abs(right - pH));
   return options[0] ?? null;
 }

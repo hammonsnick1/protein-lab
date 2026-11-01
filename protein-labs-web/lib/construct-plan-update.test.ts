@@ -190,10 +190,11 @@ describe("planFromConstruct", () => {
     const update = planFromConstruct(construct(), { fusion: metrics(construct().fusion), cleaved: metrics(construct().cleaved, 7.6) }, empty, { subunits: 4, appliedAt: at });
     assert.equal(update.configs.sec!.expectedMassKDa, 35.3);
     assert.match(update.changes[3].after, /35\.3 kDa \(4 × 8\.8 kDa\)/);
-    // pH 7.5 is within 0.5 of pI 7.6, so both buffers move to the nearer safe side.
-    assert.equal(update.bufferSteps.cleavage.pH, "7.1");
-    assert.equal(update.bufferSteps.storage.pH, "7.1");
-    assert.match(update.changes[2].detail, /Buffer pH moved to 7\.1 to stay clear of pI 7\.60\./);
+    // pH 7.5 is 0.1 from pI 7.6. SEC moves to the nearer side a full unit away (6.6);
+    // reverse IMAC must stay at pH 7 or above, so it goes up to 8.6.
+    assert.equal(update.bufferSteps.cleavage.pH, "8.6");
+    assert.equal(update.bufferSteps.storage.pH, "6.6");
+    assert.match(update.changes[2].detail, /Buffer pH moved to 8\.6 to stay clear of pI 7\.60\./);
   });
 
   it("skips subtractive cleanup when no protease site is annotated", () => {
@@ -225,13 +226,16 @@ describe("SEC helpers", () => {
     assert.equal(expectedElutionMl(s200, 600), 8);
     assert.equal(expectedElutionMl(column("custom"), 20), null);
   });
-  it("moves pH at least half a unit from the pI, as little as possible", () => {
+  it("moves pH at least one unit from the pI, as little as possible", () => {
     assert.equal(pHAwayFromPI(7.5, 6.0), null);
-    assert.equal(pHAwayFromPI(7.5, 7.3), 7.8);
-    assert.equal(pHAwayFromPI(7.5, 7.6, 7), 7.1);
+    assert.equal(pHAwayFromPI(7.5, 6.5), null);
+    // 0.7 unit away is a warning now, so it moves too.
+    assert.equal(pHAwayFromPI(7.5, 6.8), 7.8);
+    assert.equal(pHAwayFromPI(7.5, 7.3), 8.3);
+    assert.equal(pHAwayFromPI(7.5, 7.6, 7), 8.6);
     // IMAC binding stays at pH 7 or above, even when going down would be the smaller move.
-    assert.equal(pHAwayFromPI(6.8, 7.0, 7), 7.5);
-    assert.equal(pHAwayFromPI(6.8, 7.0), 6.5);
+    assert.equal(pHAwayFromPI(6.8, 7.0, 7), 8.0);
+    assert.equal(pHAwayFromPI(6.8, 7.0), 6.0);
     assert.equal(pHAwayFromPI(7.5, null), null);
   });
 });
