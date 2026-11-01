@@ -24,6 +24,8 @@ export type InterfaceResult = {
   pairs: InterfacePair[];
 };
 
+// Two molecules touch when any pair of their atoms is closer than 4.5 Å, the
+// rule used by crystal-packing surveys (Carugo et al. 2017, citation `carugo2017`).
 export const DEFAULT_INTERFACE_CUTOFF = 4.5;
 export const INTERFACE_CUTOFF_RANGE = { min: 3, max: 6, step: 0.5 } as const;
 
