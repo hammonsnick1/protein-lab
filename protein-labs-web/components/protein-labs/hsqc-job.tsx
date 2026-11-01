@@ -11,6 +11,8 @@ import type { ViewerRegion } from "@/components/protein-labs/molstar-viewer";
 import { citationScope, type CitationId, type CitationScope } from "@/lib/citations";
 import { ensureProjectJob, proteinLabsApi, type JsonObject, type ProteinBundle } from "@/lib/protein-labs-api";
 import { proteinFacts, type ProteinFacts } from "@/lib/protein-facts";
+import { averageMassKDa } from "@/lib/crystallization-guidance";
+import { formatMg, HSQC_CONCENTRATION_MM, SIZE_LIMITS_KDA, sizeTier, tubeRequirements } from "@/lib/nmr-sample-prep";
 import { structureOptionLabel, type ResidueAddress, type StructureDetail, type StructureEntry, type StructureRegion } from "@/lib/structure-regions";
 import {
   DEFAULT_VIEW, HSQC_APP_TYPE, hsqcConfig, hsqcInputs, hsqcPeaks, LINEWIDTH_HZ, positionAt, PREDICTOR_CITATIONS, PREDICTOR_ROLES, readHsqcPrediction, residuesAt, revealPoint, SPECTROMETER_MHZ, threeLetter, viewBounds,
@@ -20,7 +22,9 @@ import {
 const JOB_LABEL = "HSQC spectrum prediction";
 
 // Every source this job cites, in first-use order down the page.
-const REFERENCES: CitationId[] = ["bodenhausen1980", "kay1992", "cavanagh2007", "pervushin1997", "ucbshift2", "legolas2025", "shiftx2", "wishart1995", "nmrfam-sparky", "molstar", "alphafold2021", "uniprot2023"];
+const REFERENCES: CitationId[] = ["bodenhausen1980", "kay1992", "cavanagh2007", "pervushin1997", "ucbshift2", "legolas2025", "shiftx2", "wishart1995", "nmrfam-sparky", "molstar", "alphafold2021", "uniprot2023",
+  // Preparing the sample, at the foot of the page.
+  "kwan2011", "ncbs-nmr-sample", "sattler1996", "gardner1998", "nesg-sample-prep", "lumsden2002", "umd-nmr-sample", "wilmad-cleaning", "marley2001", "bai1993", "kelly2002", "getz1999", "wishart1995ref", "bondos2003"];
 
 type Load<T> = { state: "idle" | "loading" } | { state: "ready"; value: T } | { state: "error"; message: string };
 type StructureLoad = { key: string; detail: Load<StructureDetail>; regions: Load<StructureRegion[]> };
@@ -139,7 +143,7 @@ export function HsqcJob({ bundle, onChanged, onOpenJob }: { bundle: ProteinBundl
     finally { setBusy(false); }
   }
 
-  if (!sequence) return <div className="hsqc-workspace"><Intro refs={refs} name={bundle.protein.name}/><div className="hsqc-empty"><CircleAlert/><strong>No sequence saved yet</strong><small>The prediction starts from your construct&apos;s amino-acid sequence. Save it in the Protein sequence job first.</small><Button variant="outline" onClick={() => onOpenJob("sequence")}>Open Protein sequence <ArrowRight/></Button></div></div>;
+  if (!sequence) return <div className="hsqc-workspace"><Intro refs={refs} name={bundle.protein.name}/><div className="hsqc-empty"><CircleAlert/><strong>No sequence saved yet</strong><small>The prediction starts from your construct&apos;s amino-acid sequence. Save it in the Protein sequence job first.</small><Button variant="outline" onClick={() => onOpenJob("sequence")}>Open Protein sequence <ArrowRight/></Button></div><SamplePrep refs={refs} name={bundle.protein.name} massKDa={null}/><ReferenceList scope={refs} className="hsqc-references"/></div>;
 
   return <div className="hsqc-workspace">
     <header>
@@ -171,6 +175,8 @@ export function HsqcJob({ bundle, onChanged, onOpenJob }: { bundle: ProteinBundl
 
     {result && <PeakTable peaks={peaks} noPeak={noPeak} selectedId={selectedId} onSelect={(peak) => selectPeak(peak, true)}/>}
 
+    <SamplePrep refs={refs} name={bundle.protein.name} massKDa={averageMassKDa(sequence)}/>
+
     <ReferenceList scope={refs} className="hsqc-references"/>
 
     <footer>
@@ -195,6 +201,68 @@ function Intro({ refs, name }: { refs: CitationScope; name: string }) {
         <li>A prediction is a guide for assigning a real spectrum, not a replacement for one.</li>
       </ul></div>
     </div>
+  </section>;
+}
+
+// ── Preparing the sample ────────────────────────────────────────────────────
+
+function SamplePrep({ refs, name, massKDa }: { refs: CitationScope; name: string; massKDa: number | null }) {
+  const tier = massKDa === null ? null : sizeTier(massKDa);
+  const mass = massKDa === null ? "" : `${massKDa.toFixed(1)} kDa`;
+  return <section className="hsqc-section hsqc-prep" aria-labelledby="hsqc-prep-heading">
+    <header><h3 id="hsqc-prep-heading">Preparing a protein NMR sample</h3><small>General practice for a ¹H–¹⁵N HSQC. Where your NMR facility&apos;s own sample rules differ, follow theirs.<CiteGroup scope={refs} ids={["kwan2011", "ncbs-nmr-sample"]}/></small></header>
+
+    <div className={`hsqc-prep-size ${tier ?? "unknown"}`} role="note">
+      <Info/>
+      <div>
+        <strong>{tier === null ? "Protein size: known once the sequence is saved" : tier === "standard" ? `${name} is ${mass}: an ordinary HSQC should work` : tier === "trosy" ? `${name} is ${mass}: use a TROSY-HSQC` : `${name} is ${mass}: deuterate it and use TROSY`}</strong>
+        <p>{tier === null ? `Below about ${SIZE_LIMITS_KDA.trosy} kDa a ¹⁵N-labelled, fully protonated sample gives a good ordinary HSQC. Above that, slow tumbling broadens the peaks: TROSY helps from about ${SIZE_LIMITS_KDA.trosy}–30 kDa, and above about ${SIZE_LIMITS_KDA.deuterate} kDa the protein should also be deuterated.`
+          : tier === "standard" ? `Below about ${SIZE_LIMITS_KDA.trosy} kDa a ¹⁵N-labelled, fully protonated sample gives sharp peaks in a standard sensitivity-enhanced HSQC. Deuteration is not needed.`
+          : tier === "trosy" ? `From about ${SIZE_LIMITS_KDA.trosy}–30 kDa slow tumbling broadens the amide peaks. A TROSY-HSQC keeps the sharpest component of each peak. Growing the protein in D₂O medium (deuteration) sharpens them further and is worth it for triple-resonance work.`
+          : `Above about ${SIZE_LIMITS_KDA.deuterate} kDa the peaks of a protonated protein broaden into the noise. Express it in D₂O-based M9 medium so most hydrogens become ²H, let the amides exchange back in H₂O buffer, and record a TROSY-HSQC at the highest field available.`}
+          <CiteGroup scope={refs} ids={tier !== null && tier !== "standard" ? ["pervushin1997", "sattler1996", "gardner1998"] : ["pervushin1997", "sattler1996"]}/>
+          {massKDa !== null && " The mass is for one chain. A dimer or larger complex tumbles as its whole mass, so judge by the oligomer."}</p>
+      </div>
+    </div>
+
+    <div className="hsqc-prep-grid">
+      <div><h4>Tube and volume</h4><ul>
+        <li><b>Standard 5 mm tube:</b> 500–600 µL, about 4 cm of liquid, so the sample reaches well past both ends of the receiver coil. Less volume makes shimming and water suppression poor.<CiteGroup scope={refs} ids={["ncbs-nmr-sample", "nesg-sample-prep", "lumsden2002"]}/></li>
+        <li><b>Shigemi tube:</b> 250–300 µL, for scarce protein. Its glass plug matches water&apos;s magnetic susceptibility; push it down without trapping bubbles. Brittle and expensive.<Cite scope={refs} id="nesg-sample-prep"/></li>
+        <li><b>3 mm tube:</b> about 160–200 µL. It also copes better with salty samples on a cryoprobe.<Cite scope={refs} id="umd-nmr-sample"/></li>
+        <li>Buy tubes rated for your spectrometer&apos;s field. Higher grades are straighter and more even in wall thickness, so they shim better.<Cite scope={refs} id="lumsden2002"/> Never clean tubes with a brush: scratches broaden lines. Rinse with water, then acetone, and dry them lying flat; tubes dried upright in a hot oven bend.<Cite scope={refs} id="wilmad-cleaning"/></li>
+      </ul></div>
+      <div><h4>Concentration and labelling</h4><ul>
+        <li>For a ¹H–¹⁵N HSQC use {HSQC_CONCENTRATION_MM.low}–{HSQC_CONCENTRATION_MM.high} mM protein; 0.3–0.5 mM is a comfortable middle. A cryoprobe copes with the low end.<CiteGroup scope={refs} ids={["kwan2011", "umd-nmr-sample"]}/></li>
+        <li>Label with ¹⁵N for an HSQC, ¹³C and ¹⁵N for backbone assignment, and add ²H for large proteins. Grow <i>E. coli</i> in M9 minimal medium with ¹⁵NH₄Cl and ¹³C-glucose as the only nitrogen and carbon sources.<CiteGroup scope={refs} ids={["marley2001", "gardner1998"]}/></li>
+        <li>Aim for more than 95 % purity, one oligomeric state, and a protein that stays intact for days at the measuring temperature.<Cite scope={refs} id="ncbs-nmr-sample"/></li>
+      </ul></div>
+      <div><h4>Buffer and D₂O</h4><ul>
+        <li>Add 5–10 % D₂O for the field-frequency lock. Use 100 % D₂O only for experiments on non-exchangeable hydrogens: the backbone N–H peaks disappear in it.<CiteGroup scope={refs} ids={["ncbs-nmr-sample", "kwan2011"]}/></li>
+        <li>Keep the pH at 7 or below if the protein allows. Above about pH 3, amide hydrogens exchange with water about ten times faster for each pH unit, and fast exchange weakens or erases surface peaks.<Cite scope={refs} id="bai1993"/></li>
+        <li>Prefer phosphate, or deuterated buffers such as Tris-d₁₁, HEPES-d₁₈ or acetate-d₃. Protonated organic buffers at high concentration add large peaks to the ¹H spectrum.<Cite scope={refs} id="ncbs-nmr-sample"/></li>
+        <li>Keep salt low: under about 100 mM total ionic strength on a cryoprobe, where salt costs sensitivity. If the protein needs more, use a 3 mm tube or a low-conductivity buffer.<CiteGroup scope={refs} ids={["kelly2002", "ncbs-nmr-sample"]}/></li>
+      </ul></div>
+      <div><h4>Additives and reference</h4><ul>
+        <li>If the protein has free cysteines, add 1–5 mM TCEP. It lasts longer than DTT in air, but in phosphate buffer it oxidises within days, so add it fresh.<Cite scope={refs} id="getz1999"/></li>
+        <li>Add 10–50 µM DSS (or TSP) as the chemical-shift reference. ¹⁵N and ¹³C shifts are referenced indirectly from its ¹H peak.<Cite scope={refs} id="wishart1995ref"/></li>
+        <li>0.02 % NaN₃ against bacteria and a protease-inhibitor cocktail keep the sample intact through long runs.<Cite scope={refs} id="ncbs-nmr-sample"/></li>
+      </ul></div>
+      <div><h4>Before it goes in the magnet</h4><ul>
+        <li>Spin the sample (for example 10 min at 16 000 × g) or pass it through a 0.22 µm filter to remove aggregates and dust; particles broaden every peak.<Cite scope={refs} id="bondos2003"/></li>
+        <li>Transfer it with a long pipette, spin out bubbles, seal the cap with Parafilm, and label the tube with tape, not ink.<CiteGroup scope={refs} ids={["nesg-sample-prep", "umd-nmr-sample"]}/></li>
+        <li>Measure at 25 °C unless you have a reason not to. Warmer samples tumble faster and give sharper peaks, but amides exchange faster and the protein may not last.<CiteGroup scope={refs} ids={["kwan2011", "bai1993"]}/></li>
+      </ul></div>
+    </div>
+
+    {massKDa !== null && <div className="hsqc-prep-amounts">
+      <h4>Protein needed for {name} ({mass})</h4>
+      <table>
+        <thead><tr><th scope="col">Tube</th><th scope="col" className="num">Volume</th><th scope="col" className="num">At {HSQC_CONCENTRATION_MM.low} mM</th><th scope="col" className="num">At {HSQC_CONCENTRATION_MM.high} mM</th></tr></thead>
+        <tbody>{tubeRequirements(massKDa).map(({ tube, lowMg, highMg }) => <tr key={tube.id}><th scope="row">{tube.label}</th><td className="num">{tube.minUl}–{tube.maxUl} µL</td><td className="num">{formatMg(lowMg)}</td><td className="num">{formatMg(highMg)}</td></tr>)}</tbody>
+      </table>
+      <small>For the larger volume of each tube, from the average mass of the sequence. Make about 10 % extra to cover transfer losses.</small>
+    </div>}
   </section>;
 }
 
