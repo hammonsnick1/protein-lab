@@ -1,18 +1,19 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, BadgeCheck, BookOpen, Calculator, Check, ChevronDown, Database, Dna, Filter, FlaskConical, LoaderCircle, RefreshCw, Ruler } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/status-chip";
 import type { JsonObject, ProteinBundle } from "@/lib/protein-labs-api";
 import { ensureProjectJob, proteinLabsApi } from "@/lib/protein-labs-api";
 import { LOW_EXTINCTION_THRESHOLD_M1CM1, formatExtinction, isLowExtinction, resolveExtinctionThreshold } from "@/lib/readiness";
+import type { ConservationEvidence, ModelConfidence, ReadinessAnswer } from "@/lib/readiness-evidence";
+import { assessDisorder, assessMembrane, conservationSummary, disorderWindow, hydrophobicWindow, modelConfidenceSummary } from "@/lib/readiness-evidence";
 import type { ReadinessCheck, ReadinessGroupId, ReadinessTone } from "@/lib/readiness-summary";
 import { countTones, groupReadinessChecks, needsDisclosure, readinessScore, readinessVerdict } from "@/lib/readiness-summary";
 
-type Answer = "Not reviewed" | "Yes" | "No" | "Needs follow-up";
+type Answer = ReadinessAnswer;
 type Tone = ReadinessTone;
-type WindowEvidence = { start: number; end: number; score: number; sequence: string } | null;
 const answers: Answer[] = ["Not reviewed", "Yes", "No", "Needs follow-up"];
 const toneLabels: Record<Tone, string> = { pass: "Pass", attention: "Attention", review: "Review" };
 const groupIcons: Record<ReadinessGroupId, typeof Dna> = { sequence: Dna, expression: FlaskConical, purification: Filter, quantitation: Ruler };
@@ -21,8 +22,15 @@ export function ProteinReadinessJob({ bundle, onChanged, onReports, onOpenJob }:
   const savedJob = bundle.projectJobs.find((job) => job.appType === "protein-readiness");
   const saved = savedJob?.config ?? {};
   const evidence = useMemo(() => gatherEvidence(bundle, bundle.projectJobs.find((job) => job.appType === "reference-match")?.config ?? {}), [bundle]);
-  const [membrane, setMembrane] = useState<Answer>(() => savedAnswer(saved.membraneProtein, evidence.transmembrane.length ? "Yes" : evidence.membraneFlag ? "Needs follow-up" : "Not reviewed"));
-  const [disorder, setDisorder] = useState<Answer>(() => savedAnswer(saved.intrinsicallyDisordered, evidence.disordered.length ? "Yes" : evidence.disorderFlag ? "Needs follow-up" : "Not reviewed"));
+  // Model pLDDT and ConSurf grades come from the engine; `model` is undefined until they arrive.
+  const hasModel = bundle.alphaFoldModels.length > 0;
+  const [structure, setStructure] = useState<{ model: ModelConfidence | null | undefined; conservation: ConservationEvidence | null }>({ model: hasModel ? undefined : null, conservation: null });
+  const membraneAssessment = assessMembrane({ referenceAccession: evidence.referenceAccession, transmembraneCount: evidence.transmembrane.length, hydrophobic: evidence.hydrophobic });
+  const disorderAssessment = assessDisorder({ referenceAccession: evidence.referenceAccession, disorderedCount: evidence.disordered.length, model: structure.model, window: evidence.disorderWindow, conservation: structure.conservation });
+  const [membrane, setMembrane] = useState<Answer>(() => savedAnswer(saved.membraneProtein, membraneAssessment.answer));
+  const [disorder, setDisorder] = useState<Answer>(() => savedAnswer(saved.intrinsicallyDisordered, disorderAssessment.answer));
+  // An unsaved disorder answer follows the evidence once the model has been read; a saved or edited one is left alone.
+  const disorderSettled = useRef(answers.includes(saved.intrinsicallyDisordered as Answer));
   const [cofactor, setCofactor] = useState<Answer>(() => savedAnswer(saved.cofactorRequired, evidence.cofactors.length ? "Yes" : "Not reviewed"));
   const [ptm, setPtm] = useState<Answer>(() => savedAnswer(saved.postTranslationalModification, evidence.ptms.length ? "Yes" : "Not reviewed"));
   const [location, setLocation] = useState(String(saved.cellularLocation ?? evidence.locations.join("; ")));
@@ -35,27 +43,31 @@ export function ProteinReadinessJob({ bundle, onChanged, onReports, onOpenJob }:
   const [savedJobId, setSavedJobId] = useState(savedJob?.id ?? "");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+  useEffect(() => {
+    let live = true;
+    const firstModel = bundle.alphaFoldModels[0];
+    proteinLabsApi.readinessEvidence(bundle.protein.id).then(
+      (value) => { if (live) setStructure({ model: value.modelConfidence, conservation: value.conservation }); },
+      (reason) => { if (live) setStructure({ model: firstModel ? { modelId: String(firstModel.modelId ?? "model"), source: String(firstModel.source ?? ""), accession: "", name: "", error: errorText(reason) } : null, conservation: null }); },
+    );
+    return () => { live = false; };
+  }, [bundle.protein.id, bundle.alphaFoldModels]);
+  useEffect(() => { if (!disorderSettled.current && disorderAssessment.basis !== "pending") setDisorder(disorderAssessment.answer); }, [disorderAssessment.answer, disorderAssessment.basis]);
+
   const reduced = evidence.reducedExtinction;
   const oxidized = evidence.oxidizedExtinction;
   const lowExtinction = isLowExtinction(reduced, threshold);
-  const membraneEvidence = evidence.transmembrane.length
-    ? `${evidence.transmembrane.length} membrane-spanning region(s) reported by the selected UniProt reference.`
-    : evidence.membraneFlag && evidence.hydrophobic
-      ? `A hydrophobic composition screen flagged residues ${evidence.hydrophobic.start}–${evidence.hydrophobic.end}; confirm with a dedicated topology predictor.`
-      : "No transmembrane annotation in the selected reference or strong local hydrophobic segment was found. Absence of evidence is not proof that the protein is soluble.";
-  const disorderEvidence = evidence.disordered.length
-    ? `${evidence.disordered.length} disordered region(s) reported by the selected UniProt reference.`
-    : evidence.disorderFlag && evidence.disorderWindow
-      ? `A disorder-enriched composition screen flagged residues ${evidence.disorderWindow.start}–${evidence.disorderWindow.end}; confirm with a dedicated disorder predictor.`
-      : "No disordered-region annotation in the selected reference or strong composition flag was found. This local screen is not a disorder predictor.";
+  const membraneEvidence = membraneAssessment.detail;
+  const disorderEvidence = disorderAssessment.detail;
 
   function useEvidence() {
-    if (evidence.transmembrane.length) setMembrane("Yes"); else if (evidence.membraneFlag) setMembrane("Needs follow-up");
-    if (evidence.disordered.length) setDisorder("Yes"); else if (evidence.disorderFlag) setDisorder("Needs follow-up");
+    if (membraneAssessment.answer !== "Not reviewed") setMembrane(membraneAssessment.answer);
+    if (disorderAssessment.answer !== "Not reviewed") { disorderSettled.current = true; setDisorder(disorderAssessment.answer); }
     if (evidence.cofactors.length) { setCofactor("Yes"); if (!cofactorDetails.trim()) setCofactorDetails(evidence.cofactors.join("; ")); }
     if (evidence.ptms.length) { setPtm("Yes"); if (!ptmDetails.trim()) setPtmDetails(evidence.ptms.map(regionSummary).join("; ")); }
     if (evidence.locations.length && !location.trim()) setLocation(evidence.locations.join("; "));
-    setMessage(evidence.referenceAccession ? `Evidence from ${evidence.referenceAccession} and local sequence screens was applied for review.` : "Local sequence screens were applied. Select a UniProt reference to transfer biological annotations.");
+    const model = structure.model && !structure.model.error ? ` and model ${structure.model.modelId}` : "";
+    setMessage(evidence.referenceAccession ? `Evidence from ${evidence.referenceAccession}${model} was applied for review.` : `Local sequence screens${model} were applied. Select a UniProt reference to transfer biological annotations.`);
   }
 
   function config(): JsonObject {
@@ -68,6 +80,7 @@ export function ProteinReadinessJob({ bundle, onChanged, onReports, onOpenJob }:
       referenceQueryCoverage: evidence.referenceQueryCoverage,
       membraneProtein: membrane,
       membraneEvidence,
+      membraneBasis: membraneAssessment.basis,
       cysteineCount: evidence.cysteines,
       hasCysteines: evidence.cysteines > 0,
       cellularLocation: location.trim(),
@@ -77,6 +90,9 @@ export function ProteinReadinessJob({ bundle, onChanged, onReports, onOpenJob }:
       reducedExtinctionBelowThreshold: lowExtinction,
       intrinsicallyDisordered: disorder,
       disorderEvidence,
+      disorderBasis: disorderAssessment.basis,
+      modelConfidence: structure.model && !structure.model.error ? { modelId: structure.model.modelId, source: structure.model.source, meanPlddt: structure.model.meanPlddt ?? null, thresholdPlddt: structure.model.threshold ?? null, minimumRunLength: structure.model.minimumRunLength ?? null, lowConfidenceRegions: structure.model.lowConfidenceRegions ?? [] } : null,
+      conservationJobId: structure.conservation?.jobId ?? "",
       cofactorRequired: cofactor,
       cofactorDetails: cofactorDetails.trim(),
       postTranslationalModification: ptm,
@@ -152,8 +168,8 @@ export function ProteinReadinessJob({ bundle, onChanged, onReports, onOpenJob }:
       </section>;
     })}
     <div className="readiness-editor">
-      <section><header><h3>Researcher review</h3><small>Confirm or override each answer before saving.</small></header><div className="readiness-answer-grid"><AnswerField label="Membrane protein" value={membrane} onChange={setMembrane}/><AnswerField label="Intrinsically disordered" value={disorder} onChange={setDisorder}/><AnswerField label="Requires a cofactor" value={cofactor} onChange={setCofactor}/><AnswerField label="Known PTM/maturation" value={ptm} onChange={setPtm}/></div><label>Cellular location<input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="e.g. cytosol, periplasm, secreted"/></label><label>Cofactor details<input value={cofactorDetails} onChange={(event) => setCofactorDetails(event.target.value)} placeholder="e.g. heme, Zn²⁺, FAD, none"/></label><label>PTM and maturation details<textarea rows={3} value={ptmDetails} onChange={(event) => setPtmDetails(event.target.value)} placeholder="e.g. initiator methionine removed, phosphoserine, glycosylation"/></label><label>Low-extinction warning threshold (M⁻¹ cm⁻¹)<input type="number" min="0" step="500" value={threshold} onChange={(event) => setThreshold(Number(event.target.value) || 0)}/><small className="field-hint">Reduced-Cys ε₂₈₀ below {formatExtinction(threshold)} is flagged. Default {formatExtinction(LOW_EXTINCTION_THRESHOLD_M1CM1)}.</small></label><label>Readiness notes<textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)}/></label></section>
-      <section><header><h3>Evidence ledger</h3><small>What each answer above is based on.</small></header><Evidence title="Selected UniProt reference" values={evidence.referenceAccession ? [`${evidence.referenceAccession} · ${evidence.referenceProteinName} · ${percent(evidence.referenceIdentity)} identity · ${percent(evidence.referenceQueryCoverage)} coverage`] : []}/><Evidence title="Cofactors" values={evidence.cofactors}/><Evidence title="PTM and maturation features" values={evidence.ptms.map(regionSummary)}/><Evidence title="UniProt transmembrane regions" values={evidence.transmembrane.map(regionSummary)}/><Evidence title="UniProt disordered regions" values={evidence.disordered.map(regionSummary)}/><Evidence title="Subcellular locations" values={evidence.locations}/>{evidence.hydrophobic && <Evidence title="Strongest hydrophobic window" values={[`${evidence.hydrophobic.start}–${evidence.hydrophobic.end} · score ${evidence.hydrophobic.score.toFixed(3)} · ${evidence.hydrophobic.sequence}`]}/>} {evidence.disorderWindow && <Evidence title="Strongest disorder-composition window" values={[`${evidence.disorderWindow.start}–${evidence.disorderWindow.end} · score ${evidence.disorderWindow.score.toFixed(3)} · ${evidence.disorderWindow.sequence}`]}/>}<div className="readiness-method"><Database/><span><strong>Evidence hierarchy</strong><small>The selected UniProt record is used exclusively for transferred biological annotations. Cysteine count and extinction values come directly from this construct. Local window screens are triage only.</small></span></div></section>
+      <section><header><h3>Researcher review</h3><small>Confirm or override each answer before saving.</small></header><div className="readiness-answer-grid"><AnswerField label="Membrane protein" value={membrane} onChange={setMembrane}/><AnswerField label="Intrinsically disordered" value={disorder} onChange={(value) => { disorderSettled.current = true; setDisorder(value); }}/><AnswerField label="Requires a cofactor" value={cofactor} onChange={setCofactor}/><AnswerField label="Known PTM/maturation" value={ptm} onChange={setPtm}/></div><label>Cellular location<input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="e.g. cytosol, periplasm, secreted"/></label><label>Cofactor details<input value={cofactorDetails} onChange={(event) => setCofactorDetails(event.target.value)} placeholder="e.g. heme, Zn²⁺, FAD, none"/></label><label>PTM and maturation details<textarea rows={3} value={ptmDetails} onChange={(event) => setPtmDetails(event.target.value)} placeholder="e.g. initiator methionine removed, phosphoserine, glycosylation"/></label><label>Low-extinction warning threshold (M⁻¹ cm⁻¹)<input type="number" min="0" step="500" value={threshold} onChange={(event) => setThreshold(Number(event.target.value) || 0)}/><small className="field-hint">Reduced-Cys ε₂₈₀ below {formatExtinction(threshold)} is flagged. Default {formatExtinction(LOW_EXTINCTION_THRESHOLD_M1CM1)}.</small></label><label>Readiness notes<textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)}/></label></section>
+      <section><header><h3>Evidence ledger</h3><small>What each answer above is based on.</small></header><Evidence title="Selected UniProt reference" values={evidence.referenceAccession ? [`${evidence.referenceAccession} · ${evidence.referenceProteinName} · ${percent(evidence.referenceIdentity)} identity · ${percent(evidence.referenceQueryCoverage)} coverage`] : []}/><Evidence title="Cofactors" values={evidence.cofactors}/><Evidence title="PTM and maturation features" values={evidence.ptms.map(regionSummary)}/><Evidence title="UniProt transmembrane regions" values={evidence.transmembrane.map(regionSummary)}/><Evidence title="UniProt disordered regions" values={evidence.disordered.map(regionSummary)}/><Evidence title="Structure model confidence (pLDDT)" values={structure.model === undefined ? ["Reading the saved model…"] : modelConfidenceSummary(structure.model)}/><Evidence title="ConSurf conservation" values={conservationSummary(structure.conservation)}/><Evidence title="Subcellular locations" values={evidence.locations}/>{evidence.hydrophobic && <Evidence title="Strongest hydrophobic window" values={[`${evidence.hydrophobic.start}–${evidence.hydrophobic.end} · score ${evidence.hydrophobic.score.toFixed(3)} · ${evidence.hydrophobic.sequence}`]}/>} {evidence.disorderWindow && <Evidence title={`Strongest disorder-composition window${disorderAssessment.basis === "plddt" ? " (not used: a model exists)" : ""}`} values={[`${evidence.disorderWindow.start}–${evidence.disorderWindow.end} · score ${evidence.disorderWindow.score.toFixed(3)} · ${evidence.disorderWindow.sequence}`]}/>}<div className="readiness-method"><Database/><span><strong>Evidence hierarchy</strong><small>The selected UniProt record is used exclusively for transferred biological annotations. Disorder comes from UniProt annotation, then model pLDDT (below 50 for 10 or more residues), and only without a model from the composition window. Cysteine count and extinction values come directly from this construct. Local window screens are triage only.</small></span></div></section>
     </div>
     <footer><span role="status">{message}</span><Button variant="outline" disabled={busy} onClick={() => void sendToJournal()}><BookOpen/> Send this section to journal</Button><Button disabled={busy} onClick={() => void save()}>{busy ? <LoaderCircle className="spin"/> : <Check/>} Save readiness check</Button></footer>
   </div>;
@@ -221,15 +237,13 @@ function gatherEvidence(bundle: ProteinBundle, referenceConfig: JsonObject) {
   for (const comment of asObjects(source.comments)) if (String(comment.type).toUpperCase() === "SUBCELLULAR LOCATION") for (const value of Array.isArray(comment.texts) ? comment.texts : []) if (String(value).trim()) locations.add(String(value).trim());
   for (const cofactorItem of asObjects(source.cofactors)) { const label = [cofactorItem.name, cofactorItem.chebiId].filter(Boolean).map(String).join(" · "); if (label) cofactors.add(label); }
   const sequence = bundle.protein.sequence.toUpperCase();
-  const hydrophobic = windowScreen(sequence, 15, 21, "AILMFWVY", "DEKR");
-  const disorderWindow = windowScreen(sequence, 20, 30, "PESTQKRGND", "AILMFWVY");
+  const hydrophobic = hydrophobicWindow(sequence);
   const extinction = asObject(bundle.protparam?.result.extinctionCoefficient280);
-  return { referenceAccession: selectedAccession, referenceProteinName: String(referenceConfig.selectedProteinName ?? selectedRecord.proteinName ?? selectedRecord.uniProtkbId ?? ""), referenceIdentity: finiteOrNull(referenceConfig.identity ?? selectedMatch?.identity), referenceQueryCoverage: finiteOrNull(referenceConfig.queryCoverage ?? selectedMatch?.queryCoverage), transmembrane, disordered, ptms, locations: [...locations], cofactors: [...cofactors], cysteines: [...sequence].filter((aa) => aa === "C").length, hydrophobic, disorderWindow, membraneFlag: (hydrophobic?.score ?? 0) >= .52, disorderFlag: (disorderWindow?.score ?? 0) >= .43, reducedExtinction: finiteOrNull(extinction.reducedMolarM1Cm1), oxidizedExtinction: finiteOrNull(extinction.oxidizedMolarM1Cm1) };
+  return { referenceAccession: selectedAccession, referenceProteinName: String(referenceConfig.selectedProteinName ?? selectedRecord.proteinName ?? selectedRecord.uniProtkbId ?? ""), referenceIdentity: finiteOrNull(referenceConfig.identity ?? selectedMatch?.identity), referenceQueryCoverage: finiteOrNull(referenceConfig.queryCoverage ?? selectedMatch?.queryCoverage), transmembrane, disordered, ptms, locations: [...locations], cofactors: [...cofactors], cysteines: [...sequence].filter((aa) => aa === "C").length, hydrophobic, disorderWindow: disorderWindow(sequence), reducedExtinction: finiteOrNull(extinction.reducedMolarM1Cm1), oxidizedExtinction: finiteOrNull(extinction.oxidizedMolarM1Cm1) };
 }
 
 function recordFor(match: JsonObject | undefined) { const record = asObject(match?.record); return Object.keys(record).length ? record : (match ?? {}); }
 function accessionFor(match: JsonObject) { const record = recordFor(match); return String(record.accession ?? match.accession ?? ""); }
-function windowScreen(sequence: string, minimum: number, maximumWindow: number, positive: string, negative: string): WindowEvidence { if (sequence.length < minimum) return null; const window = Math.min(maximumWindow, sequence.length); let best: NonNullable<WindowEvidence> | null = null; for (let start = 0; start <= sequence.length - window; start++) { const segment = sequence.slice(start, start + window); const score = ([...segment].filter((aa) => positive.includes(aa)).length - [...segment].filter((aa) => negative.includes(aa)).length) / window; if (!best || score > best.score) best = { start: start + 1, end: start + window, score, sequence: segment }; } return best; }
 function finiteOrNull(value: unknown) { const number = Number(value); return value === null || value === undefined || value === "" || !Number.isFinite(number) ? null : number; }
 function percent(value: number | null) { return value === null ? "—" : `${(value * 100).toFixed(1)}%`; }
 function errorText(value: unknown) { return value instanceof Error ? value.message : String(value); }
