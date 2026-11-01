@@ -113,7 +113,7 @@ const entries = [
     id: "ucbshift2", kind: "software", name: "UCBShift 2.0", authors: "Ptaszek AL, Li J, Konrat R, Platzer G, Head-Gordon T", year: "2024",
     title: "UCBShift 2.0: bridging the gap from backbone to side chain protein chemical shift prediction for protein structures",
     source: "J Am Chem Soc 146:31733–31745", doi: "10.1021/jacs.4c10474", url: "https://github.com/THGLab/CSpred",
-    license: { name: "UC Regents, not-for-profit only", reuse: "restricted", url: "https://github.com/THGLab/CSpred/blob/master/LICENSE.txt", usage: "Method studied and cited; no code shipped." },
+    license: { name: "UC Regents, not-for-profit only", reuse: "restricted", url: "https://github.com/THGLab/CSpred/blob/master/LICENSE.txt", usage: "Method studied and cited; no code shipped. Wishart 1995 random-coil values read from its transcription." },
   },
   {
     id: "legolas2025", kind: "software", name: "LEGOLAS", authors: "Darrows MY, Kodituwakku D, Xue J, Pickering I, Terrel NS, Roitberg AE", year: "2025",
@@ -125,12 +125,19 @@ const entries = [
     id: "shiftx2", kind: "software", name: "SHIFTX2", authors: "Han B, Liu Y, Ginzinger SW, Wishart DS", year: "2011",
     title: "SHIFTX2: significantly improved protein chemical shift prediction",
     source: "J Biomol NMR 50:43–57", doi: "10.1007/s10858-011-9478-4", url: "http://www.shiftx2.ca",
+    license: { name: "No licence published", reuse: "none", url: "http://www.shiftx2.ca/download.html", usage: "Optional operator-installed HSQC predictor; not bundled or installed by the app." },
+  },
+  {
+    id: "biopython", kind: "software", name: "Biopython", authors: "Cock PJA, Antao T, Chang JT, Chapman BA, Cox CJ, Dalke A, Friedberg I, Hamelryck T, Kauff F, Wilczynski B, de Hoon MJL", year: "2009",
+    title: "Biopython: freely available Python tools for computational molecular biology and bioinformatics",
+    source: "Bioinformatics 25:1422–1423", doi: "10.1093/bioinformatics/btp163", url: "https://biopython.org",
+    license: { name: "Biopython License Agreement", reuse: "permissive", url: "https://github.com/biopython/biopython/blob/master/LICENSE.rst", usage: "Bundled in the engine; reads mmCIF files, including ligand definitions for 2D drawing; notice in THIRD_PARTY_NOTICES.md." },
   },
   {
     id: "rdkit", kind: "software", name: "RDKit", authors: "RDKit contributors", year: "2006–",
     title: "RDKit: open-source cheminformatics",
     source: "rdkit.org", doi: "10.5281/zenodo.591637", url: "https://www.rdkit.org",
-    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Backend dependency for 2D ligand drawing and R/S, E/Z labels; notice in THIRD_PARTY_NOTICES.md." },
+    license: { name: "BSD-3-Clause", reuse: "permissive", url: "https://github.com/rdkit/rdkit/blob/master/license.txt", usage: "Bundled in the engine for 2D ligand drawing and R/S, E/Z labels, with its Boost, cairo, InChI and other native libraries; notices in THIRD_PARTY_NOTICES.md." },
   },
   {
     id: "molstar", kind: "software", name: "Mol*", authors: "Sehnal D, Bittrich S, Deshpande M, Svobodová R, Berka K, Bazgier V, Velankar S, Burley SK, Koča J, Rose AS", year: "2021",
@@ -150,7 +157,7 @@ const entries = [
     source: "Chem Phys Lett 69:185–189", doi: "10.1016/0009-2614(80)80041-8",
   },
   {
-    id: "kay1992", kind: "article", name: "Sensitivity-enhanced HSQC", authors: "Kay L, Keifer P, Saarinen T", year: "1992",
+    id: "kay1992", kind: "article", name: "Sensitivity-enhanced HSQC", authors: "Kay LE, Keifer P, Saarinen T", year: "1992",
     title: "Pure absorption gradient enhanced heteronuclear single quantum correlation spectroscopy with improved sensitivity",
     source: "J Am Chem Soc 114:10663–10665", doi: "10.1021/ja00052a088",
   },

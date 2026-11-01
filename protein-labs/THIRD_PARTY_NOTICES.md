@@ -29,9 +29,11 @@ Licences list reads the same data from `protein-labs-web/lib/citations.ts`.
 | --- | --- | --- | --- |
 | Mol* (https://github.com/molstar/molstar) | MIT | Allowed with notice | Bundled as the 3D structure viewer; notice below. |
 | OpenCloning backend (https://github.com/OpenCloning/OpenCloning_backend) | MIT | Allowed with notice | Vector builder conventions adapted; notice below. |
-| RDKit (https://github.com/rdkit/rdkit) | BSD-3-Clause | Allowed with notice | Backend dependency for 2D ligand drawing and R/S, E/Z labels; notice below. |
+| RDKit (https://github.com/rdkit/rdkit) | BSD-3-Clause | Allowed with notice | Bundled in the engine for 2D ligand drawing and R/S, E/Z labels, with the native libraries its wheel carries; notices below. |
+| Biopython (https://github.com/biopython/biopython) | Biopython License Agreement | Allowed with notice | Bundled in the engine; reads mmCIF files, including ligand definitions for 2D drawing; notice below. |
 | LEGOLAS (https://github.com/roitberg-group/legolas) | MIT | Allowed with notice | Method studied and cited; no code copied yet. |
-| UCBShift 2.0 (https://github.com/THGLab/CSpred) | UC Regents, not-for-profit only | Restricted | Method studied and cited; no code shipped. |
+| UCBShift 2.0 (https://github.com/THGLab/CSpred) | UC Regents, not-for-profit only | Restricted | Method studied and cited; no code shipped. Wishart 1995 random-coil values read from its transcription; see below. |
+| SHIFTX2 (http://www.shiftx2.ca) | No licence published | Cite only | Optional operator-installed HSQC predictor; not bundled or installed. |
 | Shoebill (https://github.com/KJ-Liao/Shoebill) | No licence file | Cite only | Method studied and cited; no code copied. |
 | UCL space-group diagrams (http://img.chem.ucl.ac.uk/sgp/mainmenu.htm) | © 1997–1999 Birkbeck College | Cite only | Visual model only; the app draws its own diagrams. |
 | gemmi (https://github.com/project-gemmi/gemmi) | MPL-2.0 | Allowed with notice | Space-group table generated from gemmi 0.7.5; notice below. |
@@ -73,6 +75,148 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+### Libraries bundled inside the RDKit wheel
+
+The engine is built with PyInstaller from the PyPI `rdkit` wheel, so the
+packaged engine carries every native library that wheel ships, not only RDKit
+itself. Versions below are for `rdkit` 2025.9.6 (`Release_2025_09_6`, read from
+`External/*/CMakeLists.txt` and the wheel's own file list and SBOM).
+
+Compiled into the RDKit libraries on every platform:
+
+| Component | Version | Licence | Copyright | Source |
+| --- | --- | --- | --- | --- |
+| Boost (`libboost_*`, `boost_*.dll`) | 1.85.0 on Linux; Windows and macOS wheels do not state it | BSL-1.0 | Boost contributors (per file) | https://www.boost.org |
+| InChI | 1.07.3 | MIT | Copyright (c) 2024 InChI Project | https://github.com/IUPAC-InChI/InChI |
+| Avalon Toolkit | 2.0.5-pre.3 | BSD-3-Clause | Copyright 2001-2011 Novartis Pharma AG. All rights reserved. | https://github.com/rdkit/ava-formake |
+| coordgenlibs | 3.0.2 | BSD-3-Clause | Copyright (c) 2017, Schrödinger, Inc. | https://github.com/schrodinger/coordgenlibs |
+| maeparser | 1.3.3 | MIT | Copyright 2017 Schrödinger, LLC | https://github.com/schrodinger/maeparser |
+| FreeSASA | 2.0.3 | MIT | Copyright (c) 2016 Simon Mitternacht | https://github.com/mittinatten/freesasa |
+| RingDecomposerLib | 1.1.3_rdkit | BSD-3-Clause | Copyright (c) 2016 University of Hamburg, ZBH - Center for Bioinformatics, Niek Andresen, Florian Flachsenberg, Matthias Rarey. All rights reserved. | https://github.com/rareylab/RingDecomposerLib |
+| YAeHMOP | 2025.03.2 | BSD-2-Clause | Copyright (C) 1995 Greg Landrum. All rights reserved. | https://github.com/greglandrum/yaehmop |
+| Revvity ChemDraw reader (with bundled expat/expatpp) | 1.0.12 | BSD-3-Clause | Copyright (c) 1986-2025, Revvity Inc, CambridgeSoft Corp and others. | https://github.com/Glysade/chemdraw |
+| pubchem-align3d | RDKit-pinned commit | Public domain (United States Government Work, NCBI) | none | https://github.com/ncbi/pubchem-align3d |
+| Eigen (header-only, compiled in) | RDKit-pinned | MPL-2.0 | Eigen contributors | https://gitlab.com/libeigen/eigen |
+| rdkit-pypi wheel build scripts | 2025.9.6 | MIT | Copyright (c) 2022 Christopher Kuenneth | https://github.com/kuelumbus/rdkit-pypi |
+
+Shared libraries the wheel adds on Linux (manylinux_2_28, from its auditwheel SBOM):
+
+| Component | Version | Licence |
+| --- | --- | --- |
+| cairo | 1.15.12 | LGPL-2.1-only OR MPL-1.1; Protein Labs uses it under MPL-1.1 |
+| fontconfig | 2.13.1 | HPND-sell-variant (MIT-style), Copyright © 2000-2007 Keith Packard and others |
+| FreeType | 2.9.1 | FTL OR GPL-2.0-or-later; used under the FreeType License (FTL) |
+| pixman | 0.38.4 | MIT |
+| libpng | 1.6.34 | Libpng |
+| bzip2 (`libbz2`) | 1.0.6 | bzip2-1.0.6, Copyright (C) 1996-2010 Julian R Seward |
+| libquadmath (GCC) | 8.5.0 | LGPL-2.1-or-later |
+| libuuid (util-linux) | 2.32.1 | BSD-3-Clause |
+| libxcb, libxcb-render, libxcb-shm | 1.13.1 | X11 |
+| libXau | 1.0.9 | MIT-open-group |
+
+On Windows the wheel adds cairo, fontconfig, FreeType, libpng, pixman and bzip2
+(licences as above), plus brotli (MIT), expat (MIT), zlib (Zlib) and the
+Microsoft Visual C++ runtime `msvcp140.dll` (Microsoft Visual C++
+Redistributable licence). The macOS wheels add only Boost and the RDKit
+libraries.
+
+FreeType credit, as its licence requires: Portions of this software are
+copyright © The FreeType Project (www.freetype.org). All rights reserved.
+
+The BSD-3-Clause components carry the same licence text as RDKit above, with
+their own copyright line from the table. The MIT and BSL-1.0 texts are:
+
+MIT: Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions: The above copyright
+notice and this permission notice shall be included in all copies or
+substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT
+WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Boost Software License - Version 1.0 - August 17th, 2003
+
+Permission is hereby granted, free of charge, to any person or organization
+obtaining a copy of the software and accompanying documentation covered by
+this license (the "Software") to use, reproduce, display, distribute,
+execute, and transmit the Software, and to prepare derivative works of the
+Software, and to permit third-parties to whom the Software is furnished to
+do so, all subject to the following:
+
+The copyright notices in the Software and this entire statement, including
+the above license grant, this restriction and the following disclaimer,
+must be included in all copies of the Software, in whole or in part, and
+all derivative works of the Software, unless such copies or derivative
+works are solely in the form of machine-executable object code generated by
+a source language processor.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+The full texts of the other licences named above are at
+https://spdx.org/licenses/ under each SPDX identifier.
+
+## Biopython
+
+The engine imports Biopython throughout, and `protein-labs-backend.spec` bundles
+it with `collect_all('Bio')`. The 2D ligand depiction
+(`protein-labs/backend/protein_labs/protein_planner/ligand_depiction.py`) reads
+Chemical Component Dictionary records with `Bio.PDB.MMCIF2Dict`. No Biopython
+source is copied.
+Version: `1.88` (requirement `biopython>=1.85,<2`)
+
+Source: https://github.com/biopython/biopython
+Licence: Biopython License Agreement (some files dual-licensed BSD-3-Clause)
+
+Biopython is currently released under the "Biopython License Agreement"
+(given in full below). Unless stated otherwise in individual file headers,
+all Biopython's files are under the "Biopython License Agreement".
+
+Some files are explicitly dual licensed under your choice of the
+"Biopython License Agreement" or the "BSD 3-Clause License" (both given
+in full below). This is with the intention of later offering all of
+Biopython under this dual licensing approach.
+
+Biopython License Agreement
+
+Permission to use, copy, modify, and distribute this software and its
+documentation with or without modifications and for any purpose and
+without fee is hereby granted, provided that any copyright notices
+appear in all copies and that both those copyright notices and this
+permission notice appear in supporting documentation, and that the
+names of the contributors or copyright holders not be used in
+advertising or publicity pertaining to distribution of the software
+without specific prior permission.
+
+THE CONTRIBUTORS AND COPYRIGHT HOLDERS OF THIS SOFTWARE DISCLAIM ALL
+WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL THE
+CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY SPECIAL, INDIRECT
+OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
+OR PERFORMANCE OF THIS SOFTWARE.
+
+BSD 3-Clause License
+
+Copyright (c) 1999-2025, The Biopython Contributors
+All rights reserved.
+
+The remaining BSD-3-Clause conditions and disclaimer are identical to the
+RDKit text above.
+
 ## Shoebill (not distributed)
 
 Protein Labs does not copy, redistribute, or execute Shoebill code or model
@@ -89,6 +233,12 @@ upstream license's educational, research, and not-for-profit grant. The source
 license is non-commercial and has no SPDX identifier; it is not suitable for
 general commercial redistribution without permission from UC Berkeley's Office
 of Technology Licensing.
+
+Random-coil values: the HSQC random-coil fallback (`protein-labs/backend/protein_labs/nmr.py`)
+uses the measured amide ¹H/¹⁵N values of Wishart et al., J Biomol NMR 5:67-81 (1995).
+That paper is paywalled, so the numbers were read from its transcription in
+CSpred's `ucbshifty.py`. Only those published measurements are reused; no
+CSpred code, structure or other data is copied.
 
 Source and license: https://github.com/THGLab/CSpred/blob/master/LICENSE.txt
 

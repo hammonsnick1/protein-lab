@@ -64,6 +64,8 @@ describe("licence register", () => {
     assert.ok(rows.some((row) => row.id === "molstar" && row.license.reuse === "permissive"));
     assert.ok(rows.some((row) => row.id === "ucbshift2" && row.license.reuse === "restricted"));
     assert.ok(rows.some((row) => row.id === "shoebill2026" && row.license.reuse === "none"));
+    assert.ok(rows.some((row) => row.id === "shiftx2" && row.license.reuse === "none"));
+    assert.ok(rows.some((row) => row.id === "biopython" && row.license.reuse === "permissive"));
     assert.ok(!rows.some((row) => row.id === "bmrb"));
     for (const row of rows) assert.match(row.license.url, /^https?:\/\//);
   });
