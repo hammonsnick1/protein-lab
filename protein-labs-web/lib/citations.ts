@@ -67,6 +67,26 @@ const entries = [
     source: "Proteins 93:1747–1766", doi: "10.1002/prot.26844",
   },
   {
+    id: "pdb2000", kind: "database", name: "Protein Data Bank", authors: "Berman HM, et al.", year: "2000",
+    title: "The Protein Data Bank",
+    source: "Nucleic Acids Res 28:235–242", doi: "10.1093/nar/28.1.235", url: "https://www.rcsb.org",
+  },
+  {
+    id: "uniprot2023", kind: "database", name: "UniProtKB", authors: "UniProt Consortium", year: "2023",
+    title: "UniProt: the Universal Protein Knowledgebase in 2023",
+    source: "Nucleic Acids Res 51:D523–D531", doi: "10.1093/nar/gkac1052", url: "https://www.uniprot.org",
+  },
+  {
+    id: "alphafold2021", kind: "software", name: "AlphaFold", authors: "Jumper J, Evans R, Pritzel A, et al.", year: "2021",
+    title: "Highly accurate protein structure prediction with AlphaFold",
+    source: "Nature 596:583–589", doi: "10.1038/s41586-021-03819-2",
+  },
+  {
+    id: "consurf2023", kind: "software", name: "ConSurf", authors: "Yariv B, Yariv E, Kessel A, et al.", year: "2023",
+    title: "Using evolutionary data to make sense of macromolecules with a “face-lifted” ConSurf",
+    source: "Protein Sci 32:e4582", doi: "10.1002/pro.4582", url: "https://consurf.tau.ac.il",
+  },
+  {
     id: "ucl-sgp", kind: "website", name: "UCL space-group diagrams", authors: "Cockcroft JK", year: "1999",
     title: "A hypertext book of crystallographic space group diagrams and tables",
     source: "Birkbeck College, University of London; hosted by the Department of Chemistry, UCL",
