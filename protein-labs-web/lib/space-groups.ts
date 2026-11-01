@@ -94,6 +94,37 @@ export function findSpaceGroup(symbol: string): SpaceGroup | null {
   return byKey.get(spaceGroupKey(text)) ?? null;
 }
 
+/**
+ * One piece of a Hermann–Mauguin symbol, ready to typeset: "4₃" is
+ * `{ text: "4", subscript: "3" }` and "3̄" is `{ text: "3", bar: true }`.
+ * Read from the spaced symbol, which says where one part ends and the next
+ * begins; the interleaved 1s of the monoclinic and trigonal settings are
+ * dropped the way a crystallographer writes them.
+ */
+export type SymbolToken = { text: string; subscript?: string; bar?: boolean };
+
+export function symbolTokens(group: SpaceGroup): SymbolToken[] {
+  const parts = group.hm.trim().split(/\s+/);
+  const tokens: SymbolToken[] = [{ text: parts[0] }];
+  for (const part of parts.slice(1)) {
+    if (part === "1" && parts.length > 2) continue;
+    for (const piece of part.split("/").flatMap((value, index) => (index === 0 ? [value] : ["/", value]))) {
+      const axis = /^(-?)(\d)(\d*)$/.exec(piece);
+      if (axis) {
+        tokens.push({ text: axis[2], subscript: axis[3] || undefined, bar: axis[1] === "-" });
+      } else {
+        tokens.push({ text: piece });
+      }
+    }
+  }
+  return tokens;
+}
+
+/** The symbol as one string, with the subscripts and bars as characters. */
+export function symbolText(group: SpaceGroup): string {
+  return symbolTokens(group).map((token) => `${token.text}${token.bar ? "̅" : ""}${token.subscript ? SUBSCRIPT[Number(token.subscript)] ?? token.subscript : ""}`).join("");
+}
+
 /** How many copies of the protein one cell holds: operations × centrings. */
 export function multiplicity(group: SpaceGroup): number {
   return group.ops.length * group.cen.length;

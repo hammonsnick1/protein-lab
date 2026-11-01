@@ -8,7 +8,7 @@ import {
   applyOperation, axisName, composeOperations, describeOperation, elementPosition, elementSentence,
   findSpaceGroup, fractionText, groupElements, groupOperations, matrixOrder, multiplicity,
   operationSteps, operationTriplet, parseOperation, searchSpaceGroups, spaceGroupByNumber,
-  spaceGroupKey, spaceGroupSummary, type SpaceGroup, type SymmetryElement,
+  spaceGroupKey, spaceGroupSummary, symbolText, symbolTokens, type SpaceGroup, type SymmetryElement,
 } from "./space-groups.ts";
 
 const group = (symbol: string): SpaceGroup => {
@@ -56,6 +56,28 @@ describe("the generated space-group table", () => {
     assert.equal(multiplicity(group("F 41 3 2")), 96);
     assert.equal(multiplicity(group("R 3")), 9);
     assert.equal(multiplicity(group("P 1")), 1);
+  });
+
+  it("typesets the Hermann-Mauguin symbol with its subscripts and bars", () => {
+    assert.deepEqual(symbolTokens(group("P 21 21 21")), [
+      { text: "P" }, { text: "2", subscript: "1", bar: false },
+      { text: "2", subscript: "1", bar: false }, { text: "2", subscript: "1", bar: false },
+    ]);
+    assert.deepEqual(symbolTokens(group("P 1 21 1")), [{ text: "P" }, { text: "2", subscript: "1", bar: false }]);
+    assert.deepEqual(symbolTokens(group("P 1")), [{ text: "P" }, { text: "1", subscript: undefined, bar: false }]);
+    assert.deepEqual(symbolTokens(group("I 41/a")), [
+      { text: "I" }, { text: "4", subscript: "1", bar: false }, { text: "/" }, { text: "a" },
+    ]);
+    assert.deepEqual(symbolTokens(group("P n -3 n")), [
+      { text: "P" }, { text: "n" }, { text: "3", subscript: undefined, bar: true }, { text: "n" },
+    ]);
+    assert.equal(symbolText(group("P 21 21 21")), "P2\u20812\u20812\u2081");
+    assert.equal(symbolText(group("P 43 21 2")), "P4\u20832\u20812");
+    assert.equal(symbolText(group("P n -3 n")), "Pn3\u0305n");
+    // Every group must come out as something a reader can match to the table.
+    for (const entry of SPACE_GROUPS) {
+      assert.ok(symbolText(entry).replace(/[\u0305\u2080-\u2089]/g, "").length >= 2, entry.hm);
+    }
   });
 
   it("searches by symbol, number, system and point group", () => {

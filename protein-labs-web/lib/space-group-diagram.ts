@@ -272,7 +272,7 @@ export function generalPositions(group: SpaceGroup, frame: DiagramFrame, seed: T
       at: frame.project(point),
       mirrored: determinant < 0,
       height: heightLabel(op, point),
-      transform: motifTransform(op, frame),
+      transform: operationTransform(op, frame),
       triplet: tripletOf(op),
       op,
     });
@@ -310,7 +310,7 @@ function heightLabel(op: SymOp, point: Triple): string {
  * cubic 3-fold axes) have no 2D equivalent, so the motif is left upright and
  * the height label carries the information instead.
  */
-function motifTransform(op: SymOp, frame: DiagramFrame): GeneralPosition["transform"] {
+export function operationTransform(op: SymOp, frame: DiagramFrame): GeneralPosition["transform"] {
   const { ax, ay, bx, by } = frame.basis;
   const [[xx, xy], [yx, yy]] = [op.matrix[0], op.matrix[1]];
   if (op.matrix[0][2] !== 0 || op.matrix[1][2] !== 0 || op.matrix[2][0] !== 0 || op.matrix[2][1] !== 0) {
